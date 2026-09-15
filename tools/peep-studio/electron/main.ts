@@ -11,14 +11,18 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_SOURCE_IMAGE_DIMENSION = 4096;
 const MAX_GENERATED_PNG_BYTES = 16 * 1024 * 1024;
 const EMULATOR_POPOUT_CONTENT_WIDTH = 430;
-const EMULATOR_POPOUT_CONTENT_HEIGHT = 560;
-const EMULATOR_POPOUT_ASPECT_RATIO = EMULATOR_POPOUT_CONTENT_WIDTH / EMULATOR_POPOUT_CONTENT_HEIGHT;
+const EMULATOR_POPOUT_EXPANDED_CONTENT_HEIGHT = 520;
+const EMULATOR_POPOUT_COLLAPSED_CONTENT_HEIGHT = 425;
+const EMULATOR_POPOUT_EXPANDED_ASPECT_RATIO = EMULATOR_POPOUT_CONTENT_WIDTH / EMULATOR_POPOUT_EXPANDED_CONTENT_HEIGHT;
+const EMULATOR_POPOUT_COLLAPSED_ASPECT_RATIO = EMULATOR_POPOUT_CONTENT_WIDTH / EMULATOR_POPOUT_COLLAPSED_CONTENT_HEIGHT;
 const EMULATOR_POPOUT_MIN_WIDTH = 300;
-const EMULATOR_POPOUT_MIN_HEIGHT = Math.round(EMULATOR_POPOUT_MIN_WIDTH / EMULATOR_POPOUT_ASPECT_RATIO);
+const EMULATOR_POPOUT_EXPANDED_MIN_HEIGHT = Math.round(EMULATOR_POPOUT_MIN_WIDTH / EMULATOR_POPOUT_EXPANDED_ASPECT_RATIO);
+const EMULATOR_POPOUT_COLLAPSED_MIN_HEIGHT = Math.round(EMULATOR_POPOUT_MIN_WIDTH / EMULATOR_POPOUT_COLLAPSED_ASPECT_RATIO);
 
 let studioWindow: BrowserWindow | null = null;
 let emulatorPopoutWindow: BrowserWindow | null = null;
 let latestEmulatorPopoutState: unknown = null;
+let emulatorPopoutCollapsed = false;
 let nativeWindowInteractionTimer: NodeJS.Timeout | null = null;
 
 type FontAssetRecord = {
@@ -462,6 +466,21 @@ function sendLatestEmulatorPopoutState(): void {
   emulatorPopoutWindow.webContents.send("peep:emulator-popout-state", latestEmulatorPopoutState);
 }
 
+function applyEmulatorPopoutLayout(collapsed: boolean): void {
+  if (emulatorPopoutWindow === null || emulatorPopoutWindow.isDestroyed()) {
+    return;
+  }
+  emulatorPopoutCollapsed = collapsed;
+  const aspectRatio = collapsed ? EMULATOR_POPOUT_COLLAPSED_ASPECT_RATIO : EMULATOR_POPOUT_EXPANDED_ASPECT_RATIO;
+  const minHeight = collapsed ? EMULATOR_POPOUT_COLLAPSED_MIN_HEIGHT : EMULATOR_POPOUT_EXPANDED_MIN_HEIGHT;
+  const contentBounds = emulatorPopoutWindow.getContentBounds();
+  const width = Math.max(EMULATOR_POPOUT_MIN_WIDTH, contentBounds.width || EMULATOR_POPOUT_CONTENT_WIDTH);
+  const height = Math.round(width / aspectRatio);
+  emulatorPopoutWindow.setMinimumSize(EMULATOR_POPOUT_MIN_WIDTH, minHeight);
+  emulatorPopoutWindow.setAspectRatio(aspectRatio);
+  emulatorPopoutWindow.setContentSize(width, height);
+}
+
 function sendNativeWindowInteraction(active: boolean): void {
   if (studioWindow === null || studioWindow.isDestroyed()) {
     return;
@@ -505,9 +524,9 @@ function createEmulatorPopout(owner: BrowserWindow | null): void {
   }
   const window = new BrowserWindow({
     width: EMULATOR_POPOUT_CONTENT_WIDTH,
-    height: EMULATOR_POPOUT_CONTENT_HEIGHT,
+    height: EMULATOR_POPOUT_EXPANDED_CONTENT_HEIGHT,
     minWidth: EMULATOR_POPOUT_MIN_WIDTH,
-    minHeight: EMULATOR_POPOUT_MIN_HEIGHT,
+    minHeight: EMULATOR_POPOUT_EXPANDED_MIN_HEIGHT,
     useContentSize: true,
     backgroundColor: "#f3f5f4",
     title: "Peep Studio Emulator",
@@ -523,8 +542,9 @@ function createEmulatorPopout(owner: BrowserWindow | null): void {
     },
   });
   emulatorPopoutWindow = window;
+  emulatorPopoutCollapsed = false;
   window.setAlwaysOnTop(true, "floating");
-  window.setAspectRatio(EMULATOR_POPOUT_ASPECT_RATIO);
+  window.setAspectRatio(EMULATOR_POPOUT_EXPANDED_ASPECT_RATIO);
   window.setMenuBarVisibility(false);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -534,6 +554,7 @@ function createEmulatorPopout(owner: BrowserWindow | null): void {
   window.on("closed", () => {
     if (emulatorPopoutWindow === window) {
       emulatorPopoutWindow = null;
+      emulatorPopoutCollapsed = false;
     }
     studioWindow?.webContents.send("peep:emulator-popout-closed");
   });
@@ -579,6 +600,16 @@ ipcMain.handle("peep:emulator-popout-close", () => {
 ipcMain.handle("peep:emulator-popout-sync", (_event, state: unknown) => {
   latestEmulatorPopoutState = state;
   sendLatestEmulatorPopoutState();
+  return true;
+});
+
+ipcMain.handle("peep:emulator-popout-layout", (_event, collapsed: unknown) => {
+  if (typeof collapsed !== "boolean") {
+    return false;
+  }
+  if (collapsed !== emulatorPopoutCollapsed) {
+    applyEmulatorPopoutLayout(collapsed);
+  }
   return true;
 });
 

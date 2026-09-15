@@ -171,7 +171,7 @@ button:focus-visible {
 
 .app-toolbar {
   display: grid;
-  grid-template-columns: var(--project-width, 320px) auto minmax(160px, 1fr) auto auto;
+  grid-template-columns: var(--project-width, 320px) auto minmax(180px, 1fr) auto var(--inspector-width, 360px);
   align-items: center;
   gap: 0;
   padding: 0;
@@ -181,7 +181,9 @@ button:focus-visible {
   -webkit-app-region: drag;
 }
 
-.topbar-brand-panel,
+.topbar-project-panel,
+.topbar-studio-brand,
+.topbar-system-actions,
 .toolbar-actions,
 .service-state,
 .button,
@@ -193,22 +195,48 @@ button:focus-visible {
   align-items: center;
 }
 
-.topbar-brand-panel {
+.topbar-project-panel {
   height: 100%;
   min-width: 0;
   justify-content: flex-start;
-  gap: 10px;
+  gap: 9px;
   padding: 0 12px;
-  border-right: 1px solid color-mix(in srgb, var(--studio-chrome-text), transparent 74%);
+}
+
+.topbar-system-actions {
+  height: 100%;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 0 0 12px;
+}
+
+.topbar-system-actions > .topbar-button {
+  width: 70px;
+  height: 70px;
+}
+
+.topbar-system-actions > .topbar-button .topbar-icon {
+  width: 60px;
+  height: 60px;
+}
+
+.topbar-studio-brand {
+  height: 100%;
+  min-width: 0;
+  justify-content: center;
+  padding: 0 18px;
+  pointer-events: none;
 }
 
 .topbar-project-title {
   display: grid;
   min-width: 0;
-  justify-items: center;
+  flex: 1 1 auto;
+  justify-items: start;
   align-content: center;
-  padding: 0 22px;
-  text-align: center;
+  padding: 0;
+  text-align: left;
 }
 
 .topbar-project-title h1,
@@ -222,21 +250,20 @@ button:focus-visible {
 .topbar-project-title h1 {
   margin: 0;
   color: var(--studio-chrome-text);
-  font-size: 17px;
-  line-height: 22px;
+  font-size: 15px;
+  line-height: 19px;
   font-weight: 780;
 }
 
 .topbar-project-title p {
   margin: 1px 0 0;
   color: color-mix(in srgb, var(--studio-chrome-text), transparent 24%);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .brand-logo-lockup {
   display: flex;
   min-width: 0;
-  flex: 1 1 auto;
   align-items: center;
   gap: 8px;
 }
@@ -250,7 +277,7 @@ button:focus-visible {
 
 .brand-name-logo {
   display: block;
-  width: min(164px, calc(100% - 60px));
+  width: min(190px, calc(100% - 60px));
   max-height: 56px;
   object-fit: contain;
 }
@@ -282,7 +309,7 @@ button:focus-visible {
 }
 
 .topbar-workspace-actions .mode-tabs {
-  gap: 10px;
+  gap: 16px;
 }
 
 .topbar-workspace-actions .topbar-button {
@@ -293,6 +320,25 @@ button:focus-visible {
 .topbar-workspace-actions .topbar-icon {
   width: 60px;
   height: 60px;
+}
+
+.topbar-emulator-button {
+  width: 70px;
+  height: 70px;
+  flex: 0 0 70px;
+}
+
+.topbar-emulator-button .topbar-icon {
+  width: 62px;
+  height: 62px;
+  transform: translateY(-3px);
+}
+
+.topbar-mode-tabs .topbar-button,
+.topbar-emulator-button,
+.topbar-mode-tabs .topbar-icon,
+.topbar-emulator-button .topbar-icon {
+  transition: transform 140ms ease, filter 140ms ease;
 }
 
 .topbar-button,
@@ -321,6 +367,39 @@ button:focus-visible {
   border-color: color-mix(in srgb, var(--studio-chrome-text), transparent 48%);
   background: color-mix(in srgb, var(--studio-chrome-text), transparent 78%);
   color: var(--studio-chrome-text);
+}
+
+.topbar-mode-tabs .topbar-button:hover,
+.topbar-mode-tabs .topbar-button:focus-visible,
+.topbar-mode-tabs .topbar-button.active,
+.topbar-mode-tabs .topbar-button.active:hover,
+.topbar-mode-tabs .topbar-button.active:focus-visible,
+.topbar-emulator-button:hover,
+.topbar-emulator-button:focus-visible,
+.topbar-emulator-button.active,
+.topbar-emulator-button.active:hover,
+.topbar-emulator-button.active:focus-visible {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.topbar-mode-tabs .topbar-button:hover .topbar-icon,
+.topbar-mode-tabs .topbar-button:focus-visible .topbar-icon,
+.topbar-emulator-button:hover .topbar-icon,
+.topbar-emulator-button:focus-visible .topbar-icon {
+  transform: scale(1.12);
+  filter: drop-shadow(0 4px 4px rgb(0 0 0 / 14%));
+}
+
+.topbar-emulator-button:hover .topbar-icon,
+.topbar-emulator-button:focus-visible .topbar-icon {
+  transform: translateY(-3px) scale(1.12);
+}
+
+.topbar-mode-tabs .topbar-button.active .topbar-icon {
+  transform: scale(1.42);
+  filter: drop-shadow(0 7px 7px rgb(0 0 0 / 24%));
 }
 
 .topbar-button.primary {
@@ -394,14 +473,14 @@ button:focus-visible {
 .topbar-history {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 6px;
   padding: 0 2px;
 }
 
 .topbar-history .icon-button {
-  width: 34px;
-  height: 64px;
-  flex-basis: 34px;
+  width: 46px;
+  height: 70px;
+  flex-basis: 46px;
   border-color: transparent;
   background: transparent;
   color: inherit;
@@ -410,8 +489,8 @@ button:focus-visible {
 
 .topbar-history-icon {
   display: block;
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
 }
 
@@ -489,7 +568,6 @@ button:focus-visible {
   display: flex;
   align-self: stretch;
   height: 100%;
-  border-left: 1px solid color-mix(in srgb, var(--studio-chrome-text), transparent 74%);
   -webkit-app-region: no-drag;
 }
 
@@ -560,15 +638,20 @@ button:focus-visible {
 .project-pane,
 .inspector-pane {
   min-width: 0;
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #9ba9a1 transparent;
-  scrollbar-gutter: stable;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: #f9faf9;
 }
 
 .project-pane {
   grid-area: project;
+  scrollbar-width: none;
+}
+
+.project-pane::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .emulator-dock-strip {
@@ -606,6 +689,9 @@ button:focus-visible {
 
 .inspector-pane {
   grid-area: inspector;
+  scrollbar-width: thin;
+  scrollbar-color: #9ba9a1 transparent;
+  scrollbar-gutter: stable;
 }
 
 .inspector-resize-handle {
@@ -636,9 +722,9 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   padding: 0 13px;
-  border-bottom: 1px solid var(--studio-chrome-edge);
-  background: var(--studio-chrome);
-  color: var(--studio-chrome-text);
+  border-bottom: 1px solid #d8e0dc;
+  background: #eef3f0;
+  color: #25302a;
   font-size: 12px;
   font-weight: 750;
   text-transform: uppercase;
@@ -962,22 +1048,42 @@ button:focus-visible {
 
 .hierarchy-emulator-load {
   display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
   place-items: center;
   padding: 0;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  border: 0;
+  border-radius: 7px;
   background: transparent;
   color: #59665f;
   cursor: pointer;
 }
 
 .hierarchy-emulator-load:hover:not(:disabled) {
-  border-color: #80a78a;
-  background: #eaf5ed;
-  color: #247a35;
+  background: transparent;
+}
+
+.hierarchy-emulator-load img {
+  display: block;
+  width: 31px;
+  height: 31px;
+  object-fit: contain;
+  opacity: 0.5;
+  filter: grayscale(1);
+  transition: filter 140ms ease, opacity 140ms ease, transform 140ms ease;
+}
+
+.hierarchy-emulator-load:hover:not(:disabled) img,
+.hierarchy-emulator-load:focus-visible img {
+  opacity: 0.85;
+  filter: grayscale(0.35);
+  transform: scale(1.08);
+}
+
+.hierarchy-emulator-load.active img {
+  opacity: 1;
+  filter: grayscale(0);
 }
 
 .hierarchy-emulator-load:disabled {
@@ -1100,14 +1206,12 @@ button:focus-visible {
 
 .hierarchy-runtime-indicator {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 9px;
-  height: 9px;
-  border: 1px solid #ffffff;
-  border-radius: 50%;
-  background: #2f9e44;
-  box-shadow: 0 0 0 1px #247a35;
+  right: -6px;
+  bottom: -5px;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 26%));
 }
 
 .hierarchy-state-meta {
@@ -1353,7 +1457,8 @@ button:focus-visible {
 }
 
 .preview-pane-compact .panel-bezel {
-  width: min(calc(100% - 2px), calc(var(--project-width, 320px) - 42px));
+  width: 100%;
+  max-width: none;
   min-width: 148px;
   padding: 6px;
   box-shadow: 0 8px 18px rgb(37 43 40 / 12%);
@@ -1980,6 +2085,41 @@ button:focus-visible {
 .native-object-overrides { display: grid; gap: 2px; margin: 3px 0 8px 28px; padding-left: 10px; border-left: 1px solid #bdcbc6; }
 .native-object-overrides .hierarchy-branch-select { width: 100%; min-width: 0; grid-template-columns: 30px minmax(0, 1fr); }
 .native-object-overrides small { display: none; }
+.native-object-override-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.hierarchy-state-logic-button {
+  display: grid;
+  width: 34px;
+  height: 38px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.hierarchy-state-logic-button:hover,
+.hierarchy-state-logic-button:focus-visible {
+  background: #f0f5f2;
+}
+
+.hierarchy-state-logic-button .studio-ui-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.native-object-overrides .native-object-override-select {
+  grid-template-columns: minmax(0, 1fr);
+  padding-left: 7px;
+}
 .placement-edit-scope label { display: grid; gap: 4px; }
 .placement-edit-scope select { min-width: 0; width: 100%; }
 
@@ -7000,11 +7140,7 @@ button:focus-visible {
   }
 
   .preview-pane-compact {
-    height: clamp(430px, calc(202px + ((var(--project-width, 300px) - 36px) * 0.8572)), 620px);
-  }
-
-  .preview-pane-compact .panel-bezel {
-    width: min(calc(100% - 2px), calc(var(--project-width, 300px) - 36px));
+    height: clamp(430px, calc(202px + (var(--project-width, 300px) * 0.8572)), 620px);
   }
 
   .trigger-buttons {
@@ -7052,14 +7188,17 @@ button:focus-visible {
     padding: 10px 12px;
   }
 
-  .topbar-brand-panel {
+  .topbar-project-panel,
+  .topbar-system-actions {
     min-height: 64px;
+    border-left: 0;
     border-right: 0;
     border-bottom: 1px solid #d7ded9;
   }
 
   .topbar-file-actions,
-  .topbar-workspace-actions {
+  .topbar-workspace-actions,
+  .topbar-system-actions {
     flex-wrap: wrap;
     justify-content: flex-start;
     height: auto;
@@ -7110,10 +7249,6 @@ button:focus-visible {
 
   .project-pane .preview-pane {
     grid-template-rows: 72px minmax(270px, 1fr) 112px;
-  }
-
-  .preview-pane-compact .panel-bezel {
-    width: min(74vw, 280px);
   }
 
   .state-graph-pane,
@@ -7179,7 +7314,8 @@ button:focus-visible {
 }
 
 .studio-shell[data-theme="dark"] .app-toolbar,
-.studio-shell[data-theme="dark"] .topbar-brand-panel,
+.studio-shell[data-theme="dark"] .topbar-project-panel,
+.studio-shell[data-theme="dark"] .topbar-system-actions,
 .studio-shell[data-theme="dark"] .topbar-file-actions,
 .studio-shell[data-theme="dark"] .project-resize-handle,
 .studio-shell[data-theme="dark"] .inspector-resize-handle {
@@ -7287,6 +7423,30 @@ button:focus-visible {
   border-color: #58a6c8;
   background: #1b3a47;
   color: #d9f3ff;
+}
+
+.studio-shell[data-theme="dark"] .native-object-row,
+.studio-shell[data-theme="dark"] .placement-tree-object.hierarchy-object-row {
+  border-color: transparent;
+  background: transparent;
+}
+
+.studio-shell[data-theme="dark"] .placement-tree-object.hierarchy-object-row:hover {
+  border-color: transparent;
+  background: #17201b;
+}
+
+.studio-shell[data-theme="dark"] .hierarchy-state-logic-button:hover,
+.studio-shell[data-theme="dark"] .hierarchy-state-logic-button:focus-visible,
+.studio-shell[data-theme="dark"] .native-object-overrides .native-object-override-select:hover {
+  background: #17201b;
+}
+
+.studio-shell[data-theme="dark"] .placement-tree-object.hierarchy-object-row.selected {
+  border-color: transparent;
+  background: #2b2219;
+  color: #ffe6ca;
+  box-shadow: inset 4px 0 #d6812f;
 }
 
 .studio-shell[data-theme="dark"] .topbar-dropdown-menu,
@@ -7641,7 +7801,6 @@ button:focus-visible {
 }
 
 .studio-shell[data-theme="dark"] .app-toolbar,
-.studio-shell[data-theme="dark"] .pane-heading,
 .studio-shell[data-theme="dark"] .status-bar,
 .studio-shell[data-theme="dark"] .project-resize-handle,
 .studio-shell[data-theme="dark"] .inspector-resize-handle {
@@ -7650,9 +7809,16 @@ button:focus-visible {
   color: var(--studio-chrome-text);
 }
 
-.studio-shell[data-theme="dark"] .topbar-brand-panel,
+.studio-shell[data-theme="dark"] .pane-heading {
+  border-color: #33413a;
+  background: #171d1a;
+  color: #dfe7e2;
+}
+
+.studio-shell[data-theme="dark"] .topbar-project-panel,
+.studio-shell[data-theme="dark"] .topbar-system-actions,
 .studio-shell[data-theme="dark"] .window-controls {
-  border-color: color-mix(in srgb, var(--studio-chrome-text), transparent 74%);
+  border-color: transparent;
 }
 
 .studio-shell[data-theme="dark"] .topbar-project-title h1,
@@ -7694,6 +7860,21 @@ button:focus-visible {
   border-color: color-mix(in srgb, var(--studio-chrome-text), transparent 48%);
   background: color-mix(in srgb, var(--studio-chrome-text), transparent 78%);
   color: var(--studio-chrome-text);
+}
+
+.studio-shell[data-theme="dark"] .topbar-mode-tabs .topbar-button:hover,
+.studio-shell[data-theme="dark"] .topbar-mode-tabs .topbar-button:focus-visible,
+.studio-shell[data-theme="dark"] .topbar-mode-tabs .topbar-button.active,
+.studio-shell[data-theme="dark"] .topbar-mode-tabs .topbar-button.active:hover,
+.studio-shell[data-theme="dark"] .topbar-mode-tabs .topbar-button.active:focus-visible,
+.studio-shell[data-theme="dark"] .topbar-emulator-button:hover,
+.studio-shell[data-theme="dark"] .topbar-emulator-button:focus-visible,
+.studio-shell[data-theme="dark"] .topbar-emulator-button.active,
+.studio-shell[data-theme="dark"] .topbar-emulator-button.active:hover,
+.studio-shell[data-theme="dark"] .topbar-emulator-button.active:focus-visible {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .studio-shell[data-theme="dark"] .window-control-button.close:hover {

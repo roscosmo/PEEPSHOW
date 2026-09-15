@@ -42,6 +42,7 @@ interface PeepStudioBridge {
   focusEmulatorPopout?(): Promise<boolean>;
   closeEmulatorPopout?(): Promise<boolean>;
   syncEmulatorPopout?(state: unknown): Promise<boolean>;
+  setEmulatorPopoutCollapsed?(collapsed: boolean): Promise<boolean>;
   sendEmulatorPopoutCommand?(command: unknown): Promise<boolean>;
   windowControl?(action: "minimize" | "maximize" | "close"): Promise<boolean>;
   onEmulatorPopoutState?(callback: (state: unknown) => void): () => void;

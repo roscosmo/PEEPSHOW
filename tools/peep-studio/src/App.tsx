@@ -112,6 +112,9 @@ const TOPBAR_ICONS = {
   assets: "/topbar-icons/assets.png",
   build: "/topbar-icons/build.png",
   egg: "/topbar-icons/egg.png",
+  emulator: "/topbar-icons/emulator.png",
+  emulatorOpen: "/topbar-icons/emulator_open.png",
+  emulatorSleep: "/topbar-icons/emulator_sleep.png",
   logic: "/topbar-icons/local_logic.png",
   newProject: "/topbar-icons/new_project.png",
   open: "/topbar-icons/open.png",
@@ -131,6 +134,7 @@ const WORKSPACE_MODES: Array<{ mode: WorkspaceMode; label: string; icon: string 
   { mode: "assets", label: "Assets", icon: TOPBAR_ICONS.assets },
   { mode: "placement", label: "Placement", icon: TOPBAR_ICONS.placement },
 ];
+const EMULATOR_POPOUT_DRAG_THRESHOLD = 34;
 const UI_ICONS = {
   circle: "/ui-icons/circle.png",
   line: "/ui-icons/line.png",
@@ -735,6 +739,7 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("scene-flow");
+  const [emulatorDockVisible, setEmulatorDockVisible] = useState(false);
   const [emulatorPoppedOut, setEmulatorPoppedOut] = useState(false);
   const [nativeWindowInteracting, setNativeWindowInteracting] = useState(false);
   useEffect(() => {
@@ -814,6 +819,8 @@ export default function App() {
   const previewAudioCacheRef = useRef(new Map<string, string>());
   const previewRestoreAttemptRef = useRef<string | null>(null);
   const previewStartRef = useRef<PreviewStartTarget | null>(null);
+  const emulatorIconDragRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
+  const suppressEmulatorToggleClickRef = useRef(false);
   const placementSelectionAnchorRef = useRef<string | null>(null);
   const placementSceneRef = useRef<string | null>(null);
   const placementDrawCancelRef = useRef<(() => boolean) | null>(null);
@@ -5119,6 +5126,7 @@ export default function App() {
     }
     try {
       await bridge.openEmulatorPopout();
+      setEmulatorDockVisible(true);
       setEmulatorPoppedOut(true);
       await bridge.syncEmulatorPopout?.(emulatorPopoutState);
     } catch (error) {
@@ -5145,8 +5153,60 @@ export default function App() {
       setEmulatorPoppedOut(false);
     }
   };
+  const hideEmulatorSurface = async () => {
+    if (emulatorPoppedOut) {
+      await closeEmulatorPopout();
+    }
+    setEmulatorDockVisible(false);
+  };
+  const toggleEmulatorSurface = () => {
+    if (emulatorDockVisible || emulatorPoppedOut) {
+      void hideEmulatorSurface();
+      return;
+    }
+    setEmulatorDockVisible(true);
+  };
+  const handleEmulatorIconPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 || bridge?.openEmulatorPopout === undefined) {
+      return;
+    }
+    emulatorIconDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const handleEmulatorIconPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = emulatorIconDragRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+    if (distance < EMULATOR_POPOUT_DRAG_THRESHOLD) {
+      return;
+    }
+    emulatorIconDragRef.current = null;
+    suppressEmulatorToggleClickRef.current = true;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    void openEmulatorPopout();
+  };
+  const handleEmulatorIconPointerEnd = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (emulatorIconDragRef.current?.pointerId === event.pointerId) {
+      emulatorIconDragRef.current = null;
+    }
+  };
+  const handleEmulatorToggleClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (suppressEmulatorToggleClickRef.current) {
+      suppressEmulatorToggleClickRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    toggleEmulatorSurface();
+  };
   const renderDockedEmulator = () => (
-    emulatorPoppedOut ? (
+    !emulatorDockVisible ? null : emulatorPoppedOut ? (
       <section className="emulator-dock-strip" aria-label="Device emulator">
         <div>
           <span className="section-kicker">Emulator</span>
@@ -5198,7 +5258,6 @@ export default function App() {
         onTogglePlaying={() => setPlaying((value) => !value)}
         onAdvance={() => void advancePreview(250)}
         onInput={(source) => void sendInput(source)}
-        onPopOut={bridge?.openEmulatorPopout === undefined ? undefined : () => void openEmulatorPopout()}
       /> : <section className="preview-pane preview-pane-large">
         <div
           className={`display-stage ${variant === "placement" ? `placement-viewport-stage ${placementViewportPanning ? "panning" : ""}` : ""}`}
@@ -7114,6 +7173,12 @@ export default function App() {
     setSelectedPlacementElement(null);
     setSceneSelection({ kind: "state", id: state.state_id });
   };
+  const openHierarchyStateLogic = (scene: SceneDocument, state: StateRecord) => {
+    setWorkspaceMode("logic");
+    setSelectedScene(scene.scene_id);
+    setSelectedPlacementElement(null);
+    setSceneSelection({ kind: "state", id: state.state_id });
+  };
   const openHierarchyVariable = async (scene: SceneDocument) => {
     setWorkspaceMode("logic");
     if (selectedScene !== scene.scene_id) {
@@ -7182,9 +7247,6 @@ export default function App() {
               <span>
                 <strong>{objectLabelById.get(element.element_id) ?? placementObjectLabelBase(element)}</strong>
               </span>
-            </span>
-            <span className="placement-object-badges">
-              {badges.map((badge) => <code key={badge}>{badge}</code>)}
             </span>
           </button>
         );
@@ -7257,13 +7319,44 @@ export default function App() {
                       overrides.length ? () => toggleHierarchyGroup(groupId) : undefined)}
                   </div>
                   {objectExpanded && overrides.length > 0 && <div className="native-object-overrides">
-                    {overrides.map(({ state, description }) => <button type="button" key={state.state_id}
-                      data-state-id={state.state_id}
-                      className={`hierarchy-branch-select ${sceneSelected && workspaceMode === "placement" && placementStateId === state.state_id && selectedPlacementElement === element.element_id ? "selected" : ""}`}
-                      title={`${state.display_name} · ${description}`}
-                      onClick={() => void openHierarchyPlacementTarget(scene, state.state_id, element.element_id)}>
-                      <StudioIcon name="state" /><span><strong>{state.display_name}</strong></span>
-                    </button>)}
+                    {overrides.map(({ state, description }) => {
+                      const active = preview?.scene.scene_id === scene.scene_id && preview.scene.state_id === state.state_id;
+                      const selected = sceneSelected && workspaceMode === "placement" && placementStateId === state.state_id && selectedPlacementElement === element.element_id;
+                      return (
+                        <div className="native-object-override-row" key={state.state_id} data-state-id={state.state_id}>
+                          <button
+                            className="hierarchy-state-logic-button"
+                            type="button"
+                            title={`Open ${state.display_name} logic`}
+                            aria-label={`Open ${state.display_name} logic`}
+                            onClick={() => openHierarchyStateLogic(scene, state)}
+                          >
+                            <StudioIcon name="state" />
+                          </button>
+                          <button
+                            type="button"
+                            className={`hierarchy-branch-select native-object-override-select ${selected ? "selected" : ""}`}
+                            title={`${state.display_name} · ${description}`}
+                            onClick={() => void openHierarchyPlacementTarget(scene, state.state_id, element.element_id)}
+                          >
+                            <span><strong>{state.display_name}</strong></span>
+                          </button>
+                          <button
+                            className={`hierarchy-emulator-load ${active ? "active" : ""}`}
+                            type="button"
+                            disabled={!projectValid || busy !== null}
+                            aria-label={active ? `${state.display_name} is active in emulator` : `Load ${state.display_name} in emulator`}
+                            title={active ? `${state.display_name} is active in emulator` : `Load ${state.display_name} in emulator`}
+                            onClick={() => void startPreview(scene.scene_id, {
+                              stateId: state.state_id,
+                              updateSelection: false,
+                            })}
+                          >
+                            <img src={TOPBAR_ICONS.emulator} alt="" aria-hidden="true" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>}
                 </section>;
               }) : <>
@@ -7399,7 +7492,7 @@ export default function App() {
                             <span className="hierarchy-state-icon">
                               <StudioIcon name="state" />
                               {active && (
-                                <span className="hierarchy-runtime-indicator" title="Emulator active" aria-label="Emulator active" />
+                                <img className="hierarchy-runtime-indicator" src={TOPBAR_ICONS.emulator} title="Emulator active" alt="Emulator active" />
                               )}
                             </span>
                             <span>
@@ -7415,17 +7508,17 @@ export default function App() {
                             </span>
                           </button>
                           <button
-                            className="hierarchy-emulator-load"
+                            className={`hierarchy-emulator-load ${active ? "active" : ""}`}
                             type="button"
                             disabled={!projectValid || busy !== null}
-                            aria-label={`Load ${state.display_name} in emulator`}
-                            title={`Load ${state.display_name} in emulator`}
+                            aria-label={active ? `${state.display_name} is active in emulator` : `Load ${state.display_name} in emulator`}
+                            title={active ? `${state.display_name} is active in emulator` : `Load ${state.display_name} in emulator`}
                             onClick={() => void startPreview(scene.scene_id, {
                               stateId: state.state_id,
                               updateSelection: false,
                             })}
                           >
-                            <MonitorDot size={15} aria-hidden="true" />
+                            <img src={TOPBAR_ICONS.emulator} alt="" aria-hidden="true" />
                           </button>
                         </div>
                         {stateExpanded && changedElements.length > 0 && (
@@ -7984,10 +8077,31 @@ export default function App() {
       } as CSSProperties}
     >
       <header className="app-toolbar">
-        <div className="topbar-brand-panel">
-          <div className="brand-logo-lockup">
-            <img className="brand-icon-image" src={TOPBAR_ICONS.studioIcon} alt="" aria-hidden="true" />
-            <img className="brand-name-logo" src={TOPBAR_ICONS.studioName} alt="Peep Studio" />
+        <div className="topbar-project-panel">
+          <button
+            className={`topbar-button topbar-emulator-button ${emulatorDockVisible || emulatorPoppedOut ? "active" : ""}`}
+            type="button"
+            title={emulatorDockVisible || emulatorPoppedOut ? "Hide emulator" : "Show emulator"}
+            aria-label={emulatorDockVisible || emulatorPoppedOut ? "Hide emulator" : "Show emulator"}
+            aria-pressed={emulatorDockVisible || emulatorPoppedOut}
+            onPointerDown={handleEmulatorIconPointerDown}
+            onPointerMove={handleEmulatorIconPointerMove}
+            onPointerUp={handleEmulatorIconPointerEnd}
+            onPointerCancel={handleEmulatorIconPointerEnd}
+            onClick={handleEmulatorToggleClick}
+          >
+            <img
+              className="topbar-icon"
+              src={emulatorDockVisible || emulatorPoppedOut ? TOPBAR_ICONS.emulatorOpen : TOPBAR_ICONS.emulatorSleep}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+            />
+            <span className="sr-only">Emulator</span>
+          </button>
+          <div className="topbar-project-title">
+            <h1>{project?.summary.project_name ?? "Peep Studio"}</h1>
+            <p>{workspaceDetail}</p>
           </div>
           <span className={`service-state topbar-service ${connected ? "connected" : "disconnected"}`}>
             <MonitorDot size={15} aria-hidden="true" />
@@ -8044,12 +8158,17 @@ export default function App() {
           </button>
         </div>
 
-        <div className="topbar-project-title">
-          <h1>{project?.summary.project_name ?? "Peep Studio"}</h1>
-          <p>{workspaceDetail}</p>
+        <div className="topbar-studio-brand" aria-label="Peep Studio">
+          <div className="brand-logo-lockup">
+            <img className="brand-icon-image" src={TOPBAR_ICONS.studioIcon} alt="" aria-hidden="true" />
+            <img className="brand-name-logo" src={TOPBAR_ICONS.studioName} alt="Peep Studio" />
+          </div>
         </div>
 
         <div className="toolbar-actions topbar-workspace-actions" aria-label="Workspace actions">
+          {renderModeTabs()}
+        </div>
+        <div className="topbar-system-actions">
           <div className="topbar-history" aria-label="Edit history">
             <button className="icon-button" onClick={() => void stepHistory("project.undo")} disabled={!canUndo || project === null || busy !== null || service?.operations.includes("project.undo") !== true} title="Undo" aria-label="Undo">
               <img className="topbar-history-icon" src={TOPBAR_ICONS.undo} alt="" aria-hidden="true" />
@@ -8058,30 +8177,29 @@ export default function App() {
               <img className="topbar-history-icon" src={TOPBAR_ICONS.redo} alt="" aria-hidden="true" />
             </button>
           </div>
-          {renderModeTabs()}
           <button className={`topbar-button ${settingsOpen ? "active" : ""}`} type="button" title="Settings" aria-label="Settings"
             aria-pressed={settingsOpen} aria-controls="studio-inspector"
             onClick={() => setSettingsOpen(current => !current)}>
             <img className="topbar-icon" src={TOPBAR_ICONS.settings} alt="" aria-hidden="true" />
             <span className="sr-only">Settings</span>
           </button>
+          {bridge?.windowControl !== undefined && (
+            <div className="window-controls" aria-label="Window controls">
+              <button type="button" className="window-control-button" title="Minimize" aria-label="Minimize"
+                onClick={() => void bridge.windowControl?.("minimize")}>
+                <Minus size={16} aria-hidden="true" />
+              </button>
+              <button type="button" className="window-control-button" title="Maximize or restore" aria-label="Maximize or restore"
+                onClick={() => void bridge.windowControl?.("maximize")}>
+                <Maximize2 size={15} aria-hidden="true" />
+              </button>
+              <button type="button" className="window-control-button close" title="Close" aria-label="Close"
+                onClick={() => void bridge.windowControl?.("close")}>
+                <X size={17} aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
-        {bridge?.windowControl !== undefined && (
-          <div className="window-controls" aria-label="Window controls">
-            <button type="button" className="window-control-button" title="Minimize" aria-label="Minimize"
-              onClick={() => void bridge.windowControl?.("minimize")}>
-              <Minus size={16} aria-hidden="true" />
-            </button>
-            <button type="button" className="window-control-button" title="Maximize or restore" aria-label="Maximize or restore"
-              onClick={() => void bridge.windowControl?.("maximize")}>
-              <Maximize2 size={15} aria-hidden="true" />
-            </button>
-            <button type="button" className="window-control-button close" title="Close" aria-label="Close"
-              onClick={() => void bridge.windowControl?.("close")}>
-              <X size={17} aria-hidden="true" />
-            </button>
-          </div>
-        )}
       </header>
 
       {hostOnlyProject && <div className="host-preview-notice" role="status">

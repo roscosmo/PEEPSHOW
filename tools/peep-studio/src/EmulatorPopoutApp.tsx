@@ -53,7 +53,7 @@ export function EmulatorPopoutApp() {
         onTogglePlaying={() => sendCommand({ kind: "togglePlaying" })}
         onAdvance={() => sendCommand({ kind: "advance", elapsedMs: 250 })}
         onInput={(source) => sendCommand({ kind: "input", source })}
-        onDock={() => void bridge?.closeEmulatorPopout?.()}
+        onCollapsedChange={(collapsed) => void bridge?.setEmulatorPopoutCollapsed?.(collapsed)}
       />
     </main>
   );
