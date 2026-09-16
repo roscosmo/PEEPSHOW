@@ -73,6 +73,37 @@ class ObjectSceneReplacementTests(unittest.TestCase):
             self.assertIn("g_ps_object_development_probe.api_version != 4",
                           (self.firmware / name).read_text())
 
+    def test_installed_preflight_entry_replacement_failure_and_reload(self):
+        blob = build_development_egg_v2(replacement_bundle())
+        path = self.work / "installed_replacement.egg"
+        path.write_bytes(blob)
+        path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())
+        result = subprocess.run([str(self.exe), str(path), "installed"], capture_output=True,
+                                text=True, timeout=20, env=self.env)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_installed_entry_selection_limits_and_invalid_later_scene(self):
+        from test_firmware_v2_scene_candidate import V2SceneCandidateTests
+        fixtures = V2SceneCandidateTests()
+        fixtures.gui = load_project(Path(__file__).resolve().parents[3] /
+                                    "examples/authoring/native_v2_installation.peepproj")
+        # Use the same boundary fixtures as the private decoder, now through
+        # normal install preflight and installed-source entry.
+        cases = [case for case in fixtures.accepted_cases()
+                 if case[0] in {"entry_second_False", "maximum_at_resident_limit"}]
+        cases += fixtures.rejected_cases()
+        for name, blob, selected, reason, loader, scene_id, item, count in cases:
+            if name in {"selected_out_of_range", "selected_max_uint"}:
+                continue  # Installed entry selects the manifest, not a caller ID.
+            with self.subTest(name=name):
+                expected = (2 if name == "entry_second_False" else 1) if reason == 0 else 0
+                path = self.work / "installed_boundary.egg"
+                path.write_bytes(blob)
+                path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())
+                result = subprocess.run([str(self.exe), str(path), "selection", str(expected), str(count)],
+                    capture_output=True, text=True, timeout=20, env=self.env)
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
     def test_labelled_hardware_fixture_real_owner_admission(self):
         from build_object_development import scene_exit_fixture_bundle
         blob = build_development_egg_v2(scene_exit_fixture_bundle())

@@ -57,6 +57,8 @@ class ObjectCandidateQueueTests(unittest.TestCase):
         self.assertIn("PS_HW6_RTOS_CandidateService();", owner)
         command = firmware_function(self.source, "PS_HW6_RTOS_HandleRuntimeCommand")
         self.assertIn("PS_HW6_RTOS_RunPackageValidation(clock_status);", command)
+        activation = firmware_function(self.source, "PS_HW6_RTOS_RuntimePackageActivateStub")
+        self.assertIn("PS_SceneRuntime_SetObjectSceneAdmission(PS_HW6_RTOS_ObjectSceneCheck);", activation)
         for name in ("RunStop2EligibilityDryRun", "Stop2AutoRuntimeAllowsIdle"):
             function = firmware_function(self.source, "PS_HW6_RTOS_" + name)
             self.assertIn("ps_candidate_busy != 0UL", function)

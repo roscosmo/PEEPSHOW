@@ -41,6 +41,7 @@ static uint32_t ps_object_rtc_start_tick, ps_object_rtc_valid;
 static uint32_t ps_object_last_tick, ps_object_tick_fraction;
 static uint32_t ps_object_clock_activation;
 static struct { uint32_t runtime_active_unit_id; } g_ps_hw6_rtos_probe;
+static struct { uint32_t active; } g_ps_hw6_battery_fault_wait_probe;
 typedef struct { uint32_t Hours, Minutes, Seconds, SubSeconds, SecondFraction; } RTC_TimeTypeDef;
 typedef struct { uint32_t Year, Month, Date; } RTC_DateTypeDef;
 static RTC_TimeTypeDef rtc_time;

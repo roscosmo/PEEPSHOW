@@ -56,6 +56,12 @@ class ObjectTimerTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.run_timer(mode, bundle=replacement_bundle(timer_exit=True))
 
+    def test_installed_multiscene_timer_replacement_and_rejection(self):
+        from test_firmware_object_scene_replacement import replacement_bundle
+        for mode in (16, 17, 18):
+            with self.subTest(mode=mode):
+                self.run_timer(mode, bundle=replacement_bundle(timer_exit=True), installed=True)
+
     @classmethod
     def setUpClass(cls):
         awake.ObjectAwakeTests.setUpClass.__func__(cls)
@@ -82,7 +88,7 @@ class ObjectTimerTests(unittest.TestCase):
         if result.returncode:
             raise AssertionError(result.stdout + result.stderr)
 
-    def run_timer(self, mode, scene=None, bundle=None):
+    def run_timer(self, mode, scene=None, bundle=None, installed=False):
         if bundle is None:
             bundle = timer_fixture_bundle()
         if scene is not None:
@@ -92,7 +98,10 @@ class ObjectTimerTests(unittest.TestCase):
         path.write_bytes(blob)
         path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())
         output = self.work / "timer_pixels.bin"
-        result = subprocess.run([str(self.timer_exe), str(path), str(output), str(mode)],
+        args = [str(self.timer_exe), str(path), str(output), str(mode)]
+        if installed:
+            args.append("installed")
+        result = subprocess.run(args,
             capture_output=True, text=True, timeout=10, env=self.env)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         return output.read_bytes()

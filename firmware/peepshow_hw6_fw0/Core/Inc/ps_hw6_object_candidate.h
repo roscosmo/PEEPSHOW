@@ -55,7 +55,8 @@ extern volatile ps_hw6_object_candidate_probe_t g_ps_object_candidate_probe;
  * Returns 0 only after matching successful completion, 1 otherwise. Copies the
  * resident egg privately; timeout retains that copy until matching completion.
  * The caller's blob need only remain immutable through this synchronous call.
- * Existing installed/export single-scene restrictions remain unchanged. */
+ * Installed preflight uses the scene-set batch below; public export admission
+ * remains a separate host capability. */
 uint32_t PS_HW6_ObjectCandidate_CheckScene(const uint8_t *blob, uint32_t size,
   uint32_t scene_id);
 

@@ -218,14 +218,21 @@ int main(int argc, char **argv)
 {
   uint32_t size, timer, state_timer, state_epoch, scene_epoch, mode, next;
   FILE *output;
-  assert(argc == 4);
+  assert(argc == 4 || argc == 5);
   size = read_blob(argv[1], candidate);
   set_hash(argv[1], candidate, size);
   mode = (uint32_t)atoi(argv[3]);
   if (mode >= 16)
   {
     PS_SceneRuntime_SetObjectSceneAdmission(timer_scene_admission);
-    assert(PS_SceneRuntime_EnterDevelopmentSceneSet(candidate, size) == 0);
+    if (argc == 5)
+    {
+      memcpy(baseline, candidate, size);
+      baseline_size = size;
+      assert(PS_SceneRuntime_EnterStateScene() != PS_SCENE_RUNTIME_INDEX_INVALID);
+      assert(PS_SceneRuntime_InstalledObjectsActive());
+    }
+    else { assert(PS_SceneRuntime_EnterDevelopmentSceneSet(candidate, size) == 0); }
   }
   else { assert(PS_SceneRuntime_EnterDevelopmentObjects(candidate, size) == 0); }
   now = ps_object_last_tick = 100;

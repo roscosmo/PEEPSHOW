@@ -192,7 +192,7 @@ device check passed embedded V1 install, PLAY and normal reboot, then same-slot
 reinstallation (generation 2 to 4) and PLAY/reboot again. Both writes verified
 all 321,480 bytes with zero mismatches. This is not different-artifact replacement,
 physical power-cut or V2 acceptance; see [[Package_Workflow_Validation_Runbook]].
-Restricted V2 install and activation are now implemented for the single-scene,
+Restricted V2 install and activation were initially implemented for the single-scene,
 fully resident, input/timer/object profile in `PeepPkg_V2_Development_Layout.md`.
 Entry and each staged transaction require exact display-owner admission; a
 loader-only pass cannot authorize them. On 2026-09-11 the restricted 2196-byte
@@ -203,8 +203,17 @@ The follow-up passed user-observed installed A/B animation continuity and settle
 sleep accounting (WFI returns/measured/reconciled 5/5/5, clock status 0), with
 completed drawing and admission status 0. Precise installed cadence/current
 measurement and physical power-cut acceptance remain separate.
-Authoring API 42 now advertises a conservative restricted V2 export subset;
-Studio integration and its normal build/export/USB round trip remain pending.
+Authoring API 42 introduced the conservative single-scene V2 export subset;
+the Studio build/export/USB round trip subsequently passed for that fixture.
+The 2026-09-15 firmware increment admits up to eight V2 scenes in the same
+65536-byte resident limit through normal preflight and installed activation.
+Every scene's initial presentation must pass exact display-owner admission
+before storage replacement; later scene changes require fresh destination
+admission. Exits have no actions and enter the destination default state afresh.
+Installed HOME/AWAY functional hardware testing passed on 2026-09-16, including
+four successful scene replacements and 19 reconciled sleep intervals. Public
+multi-scene export remains disabled pending the Studio fixture and remaining
+acceptance work. See [[V2_Multiscene_Installed_Test_Runbook]].
 See [[Peep_Studio_Restricted_V2_Export_Handoff]] and
 [[V2_Installed_Package_Test_Runbook]]. Exact firmware admission remains required.
 

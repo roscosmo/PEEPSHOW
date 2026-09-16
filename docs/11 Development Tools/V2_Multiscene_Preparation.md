@@ -1,11 +1,13 @@
 # V2 Multi-scene Preparation
 
-Status: private firmware candidate decoding, display-owner admission and
-development-only fresh scene replacement
-implemented on 2026-09-12. Decoder baseline is
+Status (2026-09-16): normal V2 install preflight and installed launch now support
+the bounded fresh-entry scene set. Installed HOME/AWAY functional hardware testing
+passed; public multi-scene export remains disabled. See the installed follow-up
+below and [[V2_Multiscene_Installed_Test_Runbook]]. Earlier preparation milestones
+are retained as history, not current installation restrictions. Decoder baseline is
 `ac46c0e70e3f7aeab05ad22ae4b987d3e29c6436`, following authoring API 43.
-Not multi-scene installation, export permission or a
-hardware pass.
+The original decoder increment alone was not installation, export permission or
+a hardware pass.
 
 ## Delivered Boundary
 
@@ -54,7 +56,7 @@ Do not call with active descriptor/catalog storage as output scratch.
 A decode success does not prove rasterization, payload fit, autonomous playback
 or safe replacement. No display-owner admission is performed by this API.
 
-## What Is Still Blocked
+## Original Preparation Restrictions
 
 Existing `ValidateV2Profile` and `DecodeV2Candidate` retain the installed
 single-scene restriction. Storage preflight, the installed launcher and existing
@@ -295,6 +297,65 @@ behavior and service capabilities are unchanged.
 
 ## Next OS Work
 
-1. Measure and resolve the reported HOME/AWAY response delay.
-2. Repeat with Studio's actual two-scene project when delivered.
-3. Only after those results widen and advertise the installed/export subset.
+1. Installed HOME/AWAY functional testing passed on 2026-09-16: four scene
+   replacements without failure, four applied timers without error and 19
+   reconciled sleep intervals. See the installed runbook for evidence limits.
+2. Repeat with Studio's actual two-scene project when delivered, including the
+   outstanding timer acceptance cases. Responsiveness work and subsequent
+   functional checks are recorded in [[V2_Object_Input_Latency_Investigation]].
+3. Widen shared public export/readiness and advertise it only after installed
+   hardware acceptance. No Studio-side compiler workaround.
+
+## Installed Scene-Set Follow-up (2026-09-15)
+
+`PS_HW6_RTOS_RunPackageValidation` now uses
+`PS_HW6_ObjectCandidate_CheckSceneSet` for V2 candidates. All scenes, including
+unreachable ones, must pass metadata, graph, feature, schedule and exact private
+display-owner admission before storage is allowed to begin replacement. The
+existing single-slot transaction, protected regions and V1 path are unchanged.
+Failures retain the failing scene and specific content reason when known;
+busy/timeout is not mislabeled as content rejection. Late completion only
+releases the private candidate lease, never resumes installation.
+
+Normal package activation registers the selected-scene admission callback.
+`PS_SceneRuntime_EnterObjectSceneSet` validates the scene set and admits every
+initial presentation before publishing its catalog. Single-scene packages retain
+their existing installed entry/transaction path. Multi-scene packages retain
+installed-source identity and immutable resident bytes while using the same
+fresh replacement path as the development fixture. Local transactions admit
+against the current scene once, not both the package entry and current scene.
+Both input and timer exits use the existing staged destination transaction.
+
+Limits remain eight scenes in a fully resident egg of at most 65536 bytes,
+continuous V2 interaction, supported local object/variable/timer operations,
+and action-free exits to another scene's default entry. No audio, self-exits,
+mixed execution models, remembered state, retained resume or named destination
+entries are added. No new heap, retained scene banks, clock settings, flash
+layout or payload limits are introduced. `ValidateV2Profile` and
+`DecodeV2Candidate` remain single-scene APIs for their existing callers;
+installed scene sets explicitly use selected decoding and all-scene admission.
+
+Native checks exercise normal install preflight and installed-source entry,
+non-first package entry, eight scenes at the resident-byte ceiling, invalid
+later scenes, initial and replacement raster failure, clock/queue failure,
+timeout and late completion, source preservation, explicit retry and fresh
+reload. Installed timer tests cover outgoing timer cancellation, fresh target
+deadlines, rejected pending expiry and explicit restart. Host queue/HASH/clock
+substitutes do not prove physical flash writes, panel transfer or STOP2.
+
+Verification: 55 focused tests pass across candidate queues, scene replacement,
+scene admission, timers, STOP2, package workflows, V2 profiles, scene candidates
+and restricted export. Generated target-profile freshness also passes. The
+shell and STOP2 native harnesses now include the existing battery fault-wait
+probe stub; no battery firmware behavior changed.
+
+The Debug build passes: RAM 553632 bytes, ROM 884312 bytes, SRAM4 15480 bytes.
+Expanded ARM call-chain analysis includes installed multi-scene boot/PLAY and
+timer callbacks: worst checked path is 2528 bytes including the existing
+512-byte reserve, leaving 1568 bytes of the 4096-byte runtime stack. This is
+static analysis, not measured high-water usage.
+
+Service API 43, `hw6_v2_resident_v1` and `multi_scene_export=false` remain
+unchanged for this hardware checkpoint. Timer event validation labels are not
+promoted. The generated test egg uses the explicit development encoder, not a
+claim that Studio public export now supports multiple scenes.

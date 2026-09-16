@@ -541,6 +541,8 @@ static uint32_t PS_HW6_RTOS_ObjectAdvance(uint32_t now_tick);
 static void PS_HW6_RTOS_ObjectService(uint32_t now_tick);
 static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
   uint32_t size, const ps_scene_objects_t *objects);
+static uint32_t PS_HW6_RTOS_ObjectSceneCheck(const uint8_t *blob,
+  uint32_t size, uint32_t scene_id, const ps_scene_objects_t *objects);
 static UINT PS_HW6_RTOS_InstalledObjectLaunch(void);
 
 volatile uint32_t g_ps_object_development_request;
@@ -8280,6 +8282,7 @@ static uint32_t PS_HW6_RTOS_RuntimePackageActivateStub(
   {
     PS_HW6_RTOS_PackageProgress(PS_PACKAGE_WORKFLOW_LAUNCHING);
     PS_SceneRuntime_SetObjectAdmission(PS_HW6_RTOS_InstalledObjectCheck);
+    PS_SceneRuntime_SetObjectSceneAdmission(PS_HW6_RTOS_ObjectSceneCheck);
     if (PS_SceneRuntime_EnterStateScene() == PS_SCENE_RUNTIME_INDEX_INVALID)
     {
       if (g_ps_scene_runtime_probe.activation_status ==
@@ -10297,6 +10300,7 @@ static void PS_HW6_RTOS_RuntimeResume(void)
 
 static void PS_HW6_RTOS_RunPackageValidation(uint32_t clock_status)
 {
+  ps_hw6_object_scene_set_result_t scene_set = {0};
   uint32_t token = g_ps_object_candidate_probe.request_id;
   uint32_t v2 = (ps_package_validation_blob != NULL) &&
     (ps_package_validation_size >= 8UL) &&
@@ -10312,8 +10316,8 @@ static void PS_HW6_RTOS_RunPackageValidation(uint32_t clock_status)
   if (clock_status == TX_SUCCESS)
   {
     ps_package_validation_status = (v2 != 0UL) ?
-      PS_HW6_RTOS_InstalledObjectCheck(ps_package_validation_blob,
-        ps_package_validation_size, NULL) :
+      PS_HW6_ObjectCandidate_CheckSceneSet(ps_package_validation_blob,
+        ps_package_validation_size, &scene_set) :
       PS_EggStateLoader_ValidatePackage(ps_package_validation_blob,
         ps_package_validation_size);
   }
@@ -10336,7 +10340,8 @@ static void PS_HW6_RTOS_RunPackageValidation(uint32_t clock_status)
   {
     if (g_ps_object_candidate_probe.profile_status != PS_HW6_RTOS_STATUS_NOT_RUN)
     {
-      g_ps_package_workflow_probe.validation_scene = g_ps_egg_validation_probe.selected_scene_id;
+      g_ps_package_workflow_probe.validation_scene = (ps_package_validation_status == 0UL) ?
+        g_ps_object_candidate_probe.scene_id : scene_set.failed_scene;
       if (g_ps_object_candidate_probe.profile_status != 0UL)
       {
         uint32_t reason = g_ps_object_candidate_probe.loader_reason;
