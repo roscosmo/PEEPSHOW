@@ -1137,6 +1137,35 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   identifiers as a workaround. No backend or schema changes are made by this
   documentation request.
 
+### Accepted Lobby/Garden Fixture And Backend Increments (2026-09-17)
+
+OS accepted commit `79ecdd758c58aff33bac1ee90f6fa4528dcb7091` and fixture
+`examples/authoring/native_v2_lobby_garden_integration.peepproj` for the next
+multi-scene integration test. The host-verified source covers static Lobby HOLD,
+fresh Garden replacement, four-frame animation continuity across local L/R
+state changes, a scene-entry timer unaffected by those changes, and B return.
+Keep multi-scene export disabled until the shared capability and whole-project
+readiness handoff; build only through the normal Studio command afterward.
+
+OS recorded the following as separate backend increments:
+
+- Object display names and asset tags are persisted authoring metadata. They
+  must preserve stable IDs and every existing reference.
+- Project settings must distinguish import-normalization preferences from
+  runtime inactivity behavior. Persisting a value does not advertise firmware
+  execution support for that value.
+- Runtime system-font text is a genuine scene-object type with shared
+  layout/bounds rules. Studio must not substitute sprite baking.
+- V2 audio requires explicitly bounded execution and export capabilities. Shell
+  suspension continues to discard package SFX.
+- Expanded timer nodes require a shared execution contract before controls are
+  enabled. Sequential checks, fallback/all-pass selection and ordered actions
+  must be unambiguous and must not imply parallel execution.
+
+Studio enables each increment only from its dedicated hello/per-scene
+capabilities and supported-command lists. A service API-version increase alone
+never enables these controls or export.
+
 ### Countdown Node Design (2026-09-12)
 
 See [[Peep_Studio_Time_Node_Design_Handoff]] and the live [[Peep Studio Design]].
