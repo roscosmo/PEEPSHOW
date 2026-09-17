@@ -40,6 +40,7 @@ import { SpriteAssetCard } from "./SpriteAssetCard";
 import { AnimationClipEditor } from "./AnimationClipEditor";
 import { canBuildProject } from "./exportReadiness";
 import { AudioWaveform } from "./AudioWaveform";
+import { AudioImportWaveform } from "./AudioImportWaveform";
 import { EmulatorPanel } from "./EmulatorPanel";
 import type { EmulatorPopoutState } from "./EmulatorPopoutApp";
 import {
@@ -218,9 +219,85 @@ type AudioAuditionProgress = {
   cueId: string;
   progress: number;
 };
+type PendingAudioImport = {
+  sourcePath: string;
+  sourceName: string;
+  channels: number;
+  sampleRateHz: number;
+  bitsPerSample: number;
+  durationMs: number;
+  peakDbfs: number | null;
+  waveformPeaks: number[];
+  suggestedTrimStartMs: number;
+  suggestedTrimEndMs: number;
+  trimStartMs: number;
+  trimEndMs: number;
+};
 
 function audioCueDisplayName(cue: Pick<AudioCueRecord, "cue_id" | "display_name">): string {
   return cue.display_name?.trim() || cue.cue_id.replace(/\.cue(?:_\d+)?$/i, "");
+}
+
+function AudioCueSettings({ cue, disabled, onApply }: {
+  cue: AudioCueRecord;
+  disabled: boolean;
+  onApply: (next: AudioCueRecord) => void;
+}) {
+  const [volume, setVolume] = useState(cue.volume);
+  const [priority, setPriority] = useState(cue.priority);
+  useEffect(() => {
+    setVolume(cue.volume);
+    setPriority(cue.priority);
+  }, [cue.cue_id, cue.priority, cue.volume]);
+  const commit = (nextVolume = volume, nextPriority = priority) => {
+    const boundedVolume = Number.isFinite(nextVolume) ? Math.max(0, Math.min(255, Math.round(nextVolume))) : cue.volume;
+    const boundedPriority = Number.isFinite(nextPriority) ? Math.max(0, Math.min(255, Math.round(nextPriority))) : cue.priority;
+    setVolume(boundedVolume);
+    setPriority(boundedPriority);
+    if (boundedVolume !== cue.volume || boundedPriority !== cue.priority) {
+      onApply({ ...cue, volume: boundedVolume, priority: boundedPriority });
+    }
+  };
+  return <div className="audio-cue-settings">
+    <label className="audio-volume-field">
+      <span><strong>Volume</strong><output>{volume}</output></span>
+      <input
+        type="range"
+        min={0}
+        max={255}
+        step={1}
+        value={volume}
+        disabled={disabled}
+        aria-label="SFX cue volume"
+        onChange={(event) => setVolume(Number(event.target.value))}
+        onPointerUp={(event) => event.currentTarget.blur()}
+        onBlur={() => commit()}
+      />
+      <small>0 is muted; 255 is full authored level.</small>
+    </label>
+    <label className="audio-priority-field">
+      <span>Priority</span>
+      <input
+        type="number"
+        min={0}
+        max={255}
+        step={1}
+        value={priority}
+        disabled={disabled}
+        aria-label="SFX cue priority"
+        onChange={(event) => setPriority(Number(event.target.value))}
+        onBlur={() => commit(volume, priority)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") {
+            setPriority(cue.priority);
+            event.currentTarget.blur();
+          }
+        }}
+      />
+      <small>Higher-priority sounds may replace lower-priority voices.</small>
+    </label>
+  </div>;
 }
 const SYSTEM_FONT_8X8_BASIC_ID = "peepshow.system.8x8.basic.v1";
 const PLACEMENT_VIEWPORT_MIN_ZOOM = 0.5;
@@ -763,6 +840,11 @@ export default function App() {
   const [fontPreviewFamilies, setFontPreviewFamilies] = useState<Record<string, string>>({});
   const [bakedTextSources, setBakedTextSources] = useState<BakedTextSourceRecord[]>([]);
   const [audioAuditionStatus, setAudioAuditionStatus] = useState("No cue auditioned.");
+  const [normalizeAudioImports, setNormalizeAudioImports] = useState(true);
+  const [audioImportPeakDbfs, setAudioImportPeakDbfs] = useState(-6);
+  const [pendingAudioImport, setPendingAudioImport] = useState<PendingAudioImport | null>(null);
+  const [selectedAudioTrim, setSelectedAudioTrim] = useState<PendingAudioImport | null>(null);
+  const [selectedAudioTrimError, setSelectedAudioTrimError] = useState<string | null>(null);
   const [audioAuditionProgress, setAudioAuditionProgress] = useState<AudioAuditionProgress | null>(null);
   const [assetPreviewPlaying, setAssetPreviewPlaying] = useState(false);
   const [assetPreviewStep, setAssetPreviewStep] = useState(0);
@@ -2166,46 +2248,74 @@ export default function App() {
     if (bridge === undefined || project === null || projectPath === null || busy !== null) {
       return;
     }
-    setBusy("Importing audio");
+    setBusy("Reading audio");
     setPlaying(false);
     try {
-      const imported = await bridge.importAudioWav(projectPath);
-      if (imported === null) {
+      const selected = await bridge.chooseAudioWav(projectPath);
+      if (selected === null) {
         setAudioAuditionStatus("WAV picker cancelled.");
         setMessage("Audio import cancelled.");
         return;
       }
+      setPendingAudioImport({ ...selected, trimStartMs: 0, trimEndMs: selected.durationMs });
+      setAssetSelection(null);
+      setMessage(`Review ${selected.sourceName}, then trim and import it.`);
+    } catch (error) {
+      const text = errorText(error);
+      setAudioAuditionStatus(`Import failed: ${text}`);
+      setMessage(text);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const importPendingAudioWav = async () => {
+    if (bridge === undefined || project === null || projectPath === null || pendingAudioImport === null || busy !== null) return;
+    setBusy("Importing audio");
+    setPlaying(false);
+    try {
+      const imported = await bridge.importAudioWav(projectPath, pendingAudioImport.sourcePath, {
+        normalize: normalizeAudioImports,
+        targetPeakDbfs: audioImportPeakDbfs,
+        trimStartMs: pendingAudioImport.trimStartMs,
+        trimEndMs: pendingAudioImport.trimEndMs,
+      });
+      if (imported === null) throw new Error("Audio import did not produce a project asset");
       const assetId = uniqueImportedAssetId(imported.assetId);
       const cueId = uniqueAudioCueId(`${assetId}.cue`);
+      const commands: Array<Record<string, unknown>> = [{
+        kind: "audio_asset.upsert",
+        audio_asset: {
+          asset_id: assetId,
+          asset_type: "sampled_sfx",
+          source_path: imported.sourcePath,
+          source_format: "wav",
+        },
+      }];
+      commands.push({
+        kind: "audio_cue.upsert",
+        audio_cue: {
+          cue_id: cueId,
+          display_name: assetId,
+          asset_ref: assetId,
+          priority: 96,
+          volume: 200,
+        },
+      });
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision,
-        commands: [
-          {
-            kind: "audio_asset.upsert",
-            audio_asset: {
-              asset_id: assetId,
-              asset_type: "sampled_sfx",
-              source_path: imported.sourcePath,
-              source_format: "wav",
-            },
-          },
-          {
-            kind: "audio_cue.upsert",
-            audio_cue: {
-              cue_id: cueId,
-              display_name: assetId,
-              asset_ref: assetId,
-              priority: 96,
-              volume: 200,
-            },
-          },
-        ],
+        commands,
       });
       applyProjectResult(result);
+      setPendingAudioImport(null);
       selectAssetRecord({ kind: "audio", cueId });
       setWorkspaceMode("assets");
-      setAudioAuditionStatus(`Imported ${imported.sourcePath}.`);
-      setMessage(`Imported ${assetId} as an SFX cue. Save to write it to the project.`);
+      const gainLabel = imported.analysis.inputPeakDbfs === null
+          ? "(silent source; no gain applied)"
+          : `${imported.analysis.inputPeakDbfs.toFixed(1)} to ${imported.analysis.outputPeakDbfs?.toFixed(1) ?? "-inf"} dBFS (${imported.analysis.gainDb >= 0 ? "+" : ""}${imported.analysis.gainDb.toFixed(1)} dB)`;
+      setAudioAuditionStatus(`Imported ${imported.sourcePath} ${gainLabel}.`);
+      const trimmedMs = imported.analysis.originalDurationMs - imported.analysis.outputDurationMs;
+      setMessage(`Imported ${assetId}${trimmedMs >= 1 ? ` and removed ${Math.round(trimmedMs)} ms` : ""}. Save to write it to the project.`);
     } catch (error) {
       const text = errorText(error);
       setAudioAuditionStatus(`Import failed: ${text}`);
@@ -2340,6 +2450,25 @@ export default function App() {
       applyProjectResult(result);
       selectAssetRecord({ kind: "audio", cueId: cue.cue_id });
       setMessage("Audio cue renamed. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const updateAudioCueSettings = async (nextCue: AudioCueRecord) => {
+    if (bridge === undefined || project === null || busy !== null) return;
+    setBusy("Updating audio cue");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "audio_cue.upsert", audio_cue: nextCue }],
+      });
+      applyProjectResult(result);
+      selectAssetRecord({ kind: "audio", cueId: nextCue.cue_id });
+      setMessage("Audio cue settings updated. Save to write them to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -4188,6 +4317,60 @@ export default function App() {
     ? audioCues.find((cue) => cue.cue_id === assetSelection.cueId) ?? null
     : null;
   const selectedAudioAsset = selectedAudioCue === null ? null : audioAssetById.get(selectedAudioCue.asset_ref) ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    setSelectedAudioTrim(null);
+    setSelectedAudioTrimError(null);
+    if (bridge === undefined || projectPath === null || selectedAudioAsset === null) return () => { cancelled = true; };
+    void bridge.inspectProjectAudioWav(projectPath, selectedAudioAsset.source_path)
+      .then((selected) => {
+        if (!cancelled) setSelectedAudioTrim({ ...selected, trimStartMs: 0, trimEndMs: selected.durationMs });
+      })
+      .catch((error) => {
+        if (!cancelled) setSelectedAudioTrimError(errorText(error));
+      });
+    return () => { cancelled = true; };
+  }, [bridge, projectPath, selectedAudioAsset?.asset_id, selectedAudioAsset?.source_path]);
+
+  const applySelectedAudioTrim = async () => {
+    if (bridge === undefined || project === null || projectPath === null || selectedAudioCue === null
+      || selectedAudioAsset === null || selectedAudioTrim === null || busy !== null) return;
+    setBusy("Applying audio trim");
+    setPlaying(false);
+    stopAudioPlayback();
+    try {
+      const imported = await bridge.importAudioWav(projectPath, selectedAudioTrim.sourcePath, {
+        normalize: normalizeAudioImports,
+        targetPeakDbfs: audioImportPeakDbfs,
+        trimStartMs: selectedAudioTrim.trimStartMs,
+        trimEndMs: selectedAudioTrim.trimEndMs,
+      });
+      if (imported === null) throw new Error("Audio trim did not produce a project asset");
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{
+          kind: "audio_asset.upsert",
+          audio_asset: {
+            asset_id: selectedAudioAsset.asset_id,
+            asset_type: "sampled_sfx",
+            source_path: imported.sourcePath,
+            source_format: "wav",
+          },
+        }],
+      });
+      applyProjectResult(result);
+      selectAssetRecord({ kind: "audio", cueId: selectedAudioCue.cue_id });
+      const removedMs = imported.analysis.originalDurationMs - imported.analysis.outputDurationMs;
+      setAudioAuditionStatus(`Updated ${audioCueDisplayName(selectedAudioCue)} from ${imported.sourcePath}.`);
+      setMessage(`Applied trim${removedMs >= 1 ? ` and removed ${Math.round(removedMs)} ms` : ""}. Undo restores the previous source.`);
+    } catch (error) {
+      const text = errorText(error);
+      setSelectedAudioTrimError(text);
+      setMessage(text);
+    } finally {
+      setBusy(null);
+    }
+  };
   const selectedFontAsset = assetSelection?.kind === "font"
     ? fontAssets.find((font) => font.font_id === assetSelection.fontId) ?? null
     : null;
@@ -5844,6 +6027,60 @@ export default function App() {
       </div>
     );
   };
+  const renderAudioImportPanel = (canEditAssets: boolean) => {
+    if (pendingAudioImport === null) return null;
+    const updateTrim = (startMs: number, endMs: number) => {
+      const start = Math.max(0, Math.min(pendingAudioImport.durationMs - 1, startMs));
+      const end = Math.max(start + 1, Math.min(pendingAudioImport.durationMs, endMs));
+      setPendingAudioImport((current) => current === null ? null : { ...current, trimStartMs: start, trimEndMs: end });
+    };
+    const retainedMs = pendingAudioImport.trimEndMs - pendingAudioImport.trimStartMs;
+    return <section className="audio-import-panel" onClick={(event) => event.stopPropagation()}>
+      <div className="audio-import-heading">
+        <span><strong>{pendingAudioImport.sourceName}</strong><small>PCM WAV import</small></span>
+        <button className="icon-button" type="button" title="Cancel audio import" aria-label="Cancel audio import"
+          onClick={() => setPendingAudioImport(null)}><X size={16} aria-hidden="true" /></button>
+      </div>
+      <AudioImportWaveform
+        peaks={pendingAudioImport.waveformPeaks}
+        durationMs={pendingAudioImport.durationMs}
+        startMs={pendingAudioImport.trimStartMs}
+        endMs={pendingAudioImport.trimEndMs}
+        onChange={updateTrim}
+      />
+      <div className="audio-trim-controls">
+        <label>Start
+          <span><input type="number" min={0} max={Math.max(0, pendingAudioImport.trimEndMs - 1)} step={1}
+            value={Math.round(pendingAudioImport.trimStartMs)} disabled={!canEditAssets}
+            onChange={(event) => updateTrim(Number(event.target.value), pendingAudioImport.trimEndMs)} /> ms</span>
+        </label>
+        <label>End
+          <span><input type="number" min={pendingAudioImport.trimStartMs + 1} max={pendingAudioImport.durationMs} step={1}
+            value={Math.round(pendingAudioImport.trimEndMs)} disabled={!canEditAssets}
+            onChange={(event) => updateTrim(pendingAudioImport.trimStartMs, Number(event.target.value))} /> ms</span>
+        </label>
+        <button className="button secondary" type="button" disabled={!canEditAssets}
+          onClick={() => updateTrim(pendingAudioImport.suggestedTrimStartMs, pendingAudioImport.suggestedTrimEndMs)}>
+          Trim detected silence
+        </button>
+        <button className="button secondary" type="button" disabled={!canEditAssets || (pendingAudioImport.trimStartMs === 0 && pendingAudioImport.trimEndMs === pendingAudioImport.durationMs)}
+          onClick={() => updateTrim(0, pendingAudioImport.durationMs)}>
+          Reset trim
+        </button>
+      </div>
+      <dl className="audio-import-summary">
+        <div><dt>Source</dt><dd>{pendingAudioImport.channels === 1 ? "Mono" : "Stereo"}, {pendingAudioImport.bitsPerSample}-bit, {pendingAudioImport.sampleRateHz} Hz</dd></div>
+        <div><dt>Source peak</dt><dd>{pendingAudioImport.peakDbfs === null ? "Silent" : `${pendingAudioImport.peakDbfs.toFixed(1)} dBFS`}</dd></div>
+        <div><dt>Retained</dt><dd>{Math.round(retainedMs)} ms of {Math.round(pendingAudioImport.durationMs)} ms</dd></div>
+        <div><dt>Import peak</dt><dd>{normalizeAudioImports ? `${audioImportPeakDbfs} dBFS` : "Unchanged"}</dd></div>
+      </dl>
+      <div className="audio-import-actions">
+        <button className="button secondary" type="button" onClick={() => setPendingAudioImport(null)}>Cancel</button>
+        <button className="button primary" type="button" disabled={!canEditAssets || retainedMs < 1}
+          onClick={() => void importPendingAudioWav()}>Import SFX</button>
+      </div>
+    </section>;
+  };
   const renderAssetsWorkspace = () => {
     const canEditAssets = bridge !== undefined && project !== null && busy === null && service?.operations.includes("project.apply_commands") === true;
     const audioSupported = service?.state_scene_audio.host_package_support === true;
@@ -5982,7 +6219,9 @@ export default function App() {
             </div>
           </div>
           <div id="asset-library-panel" role="tabpanel" aria-labelledby={`asset-tab-${assetTab}`}>
-          {spriteImportActive ? (
+          {assetTab === "audio" && pendingAudioImport !== null ? (
+            renderAudioImportPanel(canEditAssets)
+          ) : spriteImportActive ? (
             renderSpriteImportPanel(canEditAssets)
           ) : (
             <>
@@ -6493,13 +6732,77 @@ export default function App() {
               />
             </label>
           </div>
+          <AudioCueSettings
+            cue={selectedAudioCue}
+            disabled={busy !== null || service?.state_scene_audio.cue_commands.includes("audio_cue.upsert") !== true}
+            onApply={(nextCue) => void updateAudioCueSettings(nextCue)}
+          />
           <div className="audio-inspector-controls">
-            <AudioWaveform
-              projectPath={projectPath}
-              sourcePath={selectedAudioAsset?.source_path}
-              revision={project?.project_revision}
-              progress={audioAuditionProgress?.cueId === selectedAudioCue.cue_id ? audioAuditionProgress.progress : null}
-            />
+            {selectedAudioTrim === null ? (
+              <AudioWaveform
+                projectPath={projectPath}
+                sourcePath={selectedAudioAsset?.source_path}
+                revision={project?.project_revision}
+                progress={audioAuditionProgress?.cueId === selectedAudioCue.cue_id ? audioAuditionProgress.progress : null}
+              />
+            ) : (
+              <>
+                <AudioImportWaveform
+                  compact
+                  peaks={selectedAudioTrim.waveformPeaks}
+                  durationMs={selectedAudioTrim.durationMs}
+                  startMs={selectedAudioTrim.trimStartMs}
+                  endMs={selectedAudioTrim.trimEndMs}
+                  progress={audioAuditionProgress?.cueId === selectedAudioCue.cue_id ? audioAuditionProgress.progress : null}
+                  onChange={(startMs, endMs) => setSelectedAudioTrim((current) => current === null ? null : {
+                    ...current,
+                    trimStartMs: Math.max(0, Math.min(current.durationMs - 1, startMs)),
+                    trimEndMs: Math.max(startMs + 1, Math.min(current.durationMs, endMs)),
+                  })}
+                />
+                <div className="audio-inspector-trim-controls">
+                  <label>Start
+                    <span><input type="number" min={0} max={Math.max(0, selectedAudioTrim.trimEndMs - 1)} step={1}
+                      value={Math.round(selectedAudioTrim.trimStartMs)} disabled={busy !== null}
+                      onChange={(event) => setSelectedAudioTrim((current) => current === null ? null : {
+                        ...current,
+                        trimStartMs: Math.max(0, Math.min(current.trimEndMs - 1, Number(event.target.value))),
+                      })} /> ms</span>
+                  </label>
+                  <label>End
+                    <span><input type="number" min={selectedAudioTrim.trimStartMs + 1} max={selectedAudioTrim.durationMs} step={1}
+                      value={Math.round(selectedAudioTrim.trimEndMs)} disabled={busy !== null}
+                      onChange={(event) => setSelectedAudioTrim((current) => current === null ? null : {
+                        ...current,
+                        trimEndMs: Math.max(current.trimStartMs + 1, Math.min(current.durationMs, Number(event.target.value))),
+                      })} /> ms</span>
+                  </label>
+                </div>
+                <div className="audio-inspector-trim-actions">
+                  <button className="button secondary" type="button" disabled={busy !== null}
+                    onClick={() => setSelectedAudioTrim((current) => current === null ? null : {
+                      ...current,
+                      trimStartMs: current.suggestedTrimStartMs,
+                      trimEndMs: current.suggestedTrimEndMs,
+                    })}>Trim detected silence</button>
+                  <button className="button secondary" type="button"
+                    disabled={busy !== null || (selectedAudioTrim.trimStartMs === 0 && selectedAudioTrim.trimEndMs === selectedAudioTrim.durationMs)}
+                    onClick={() => setSelectedAudioTrim((current) => current === null ? null : {
+                      ...current,
+                      trimStartMs: 0,
+                      trimEndMs: current.durationMs,
+                    })}>Reset</button>
+                  <button className="button primary" type="button"
+                    disabled={busy !== null
+                      || service?.state_scene_audio.asset_commands.includes("audio_asset.upsert") !== true
+                      || selectedAudioTrim.trimEndMs - selectedAudioTrim.trimStartMs < 1
+                      || (selectedAudioTrim.trimStartMs === 0 && selectedAudioTrim.trimEndMs === selectedAudioTrim.durationMs)}
+                    onClick={() => void applySelectedAudioTrim()}>Apply trim</button>
+                </div>
+                <span>{Math.round(selectedAudioTrim.trimEndMs - selectedAudioTrim.trimStartMs)} ms retained of {Math.round(selectedAudioTrim.durationMs)} ms</span>
+              </>
+            )}
+            {selectedAudioTrimError !== null && <span className="error-text">Trim unavailable: {selectedAudioTrimError}</span>}
             <button
               className="button primary"
               type="button"
@@ -6514,8 +6817,6 @@ export default function App() {
           <dl className="inspector-list">
             <div><dt>Cue ID</dt><dd>{selectedAudioCue.cue_id}</dd></div>
             <div><dt>Asset</dt><dd>{selectedAudioCue.asset_ref}</dd></div>
-            <div><dt>Priority</dt><dd>{selectedAudioCue.priority}</dd></div>
-            <div><dt>Volume</dt><dd>{selectedAudioCue.volume}</dd></div>
             {selectedAudioAsset !== null && (
               <>
                 <div><dt>Source</dt><dd title={selectedAudioAsset.source_path}>{selectedAudioAsset.source_path}</dd></div>
@@ -8092,6 +8393,39 @@ export default function App() {
           </>
         )}
       </section>
+      {project !== null && (
+        <section className="inspector-section project-settings-inspector">
+          <h3>Project settings</h3>
+          <div className="project-settings-group">
+            <div className="project-settings-group-heading">
+              <strong>Audio defaults</strong>
+              <span>Used when new SFX assets are imported into this project.</span>
+            </div>
+            <label className="toggle-field">
+              <input
+                type="checkbox"
+                checked={normalizeAudioImports}
+                disabled={busy !== null}
+                onChange={(event) => setNormalizeAudioImports(event.target.checked)}
+              />
+              <span>Normalize imported SFX</span>
+            </label>
+            <label className="select-field">
+              <span>SFX peak level</span>
+              <select
+                value={audioImportPeakDbfs}
+                disabled={!normalizeAudioImports || busy !== null}
+                onChange={(event) => setAudioImportPeakDbfs(Number(event.target.value))}
+              >
+                <option value={-6}>-6 dBFS (HW6 default)</option>
+                <option value={-9}>-9 dBFS</option>
+                <option value={-12}>-12 dBFS</option>
+              </select>
+            </label>
+            {!normalizeAudioImports && <p className="audio-import-warning">Unnormalized files may play unexpectedly loud.</p>}
+          </div>
+        </section>
+      )}
       <section className="inspector-section">
         <h3>Validation</h3>
         {project === null ? (

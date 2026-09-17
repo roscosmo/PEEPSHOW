@@ -1,0 +1,251 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/EmulatorPanel.tsx");const useEffect = __vite__cjsImport0_react["useEffect"]; const useId = __vite__cjsImport0_react["useId"]; const useState = __vite__cjsImport0_react["useState"];const _jsxDEV = __vite__cjsImport4_react_jsxDevRuntime["jsxDEV"]; const _Fragment = __vite__cjsImport4_react_jsxDevRuntime["Fragment"];import __vite__cjsImport0_react from "/node_modules/.vite/deps/react.js?v=eb3190c8";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight } from "/node_modules/.vite/deps/lucide-react.js?v=eb3190c8";
+import { FramebufferCanvas } from "/src/FramebufferCanvas.tsx";
+import "/src/EmulatorPanel.css";
+var _jsxFileName = "G:/PEEPSHOW-PeepStudio/tools/peep-studio/src/EmulatorPanel.tsx";
+import __vite__cjsImport4_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=eb3190c8";
+var _s = $RefreshSig$();
+const directions = [
+	{
+		source: "JOY_UP",
+		label: "Up",
+		Icon: ArrowUp,
+		position: "up"
+	},
+	{
+		source: "JOY_LEFT",
+		label: "Left",
+		Icon: ArrowLeft,
+		position: "left"
+	},
+	{
+		source: "JOY_RIGHT",
+		label: "Right",
+		Icon: ArrowRight,
+		position: "right"
+	},
+	{
+		source: "JOY_DOWN",
+		label: "Down",
+		Icon: ArrowDown,
+		position: "down"
+	}
+];
+export function EmulatorPanel({ preview, sceneName, playing, onReset, onTogglePlaying, onAdvance, onInput, onCollapsedChange, mode = "docked" }) {
+	_s();
+	const [collapsed, setCollapsed] = useState(false);
+	const id = useId();
+	const available = preview !== null;
+	useEffect(() => {
+		onCollapsedChange?.(collapsed);
+	}, [collapsed, onCollapsedChange]);
+	const transport = /* @__PURE__ */ _jsxDEV("div", {
+		className: "emulator-transport",
+		"aria-label": "Preview playback",
+		children: [
+			/* @__PURE__ */ _jsxDEV("button", {
+				className: "emulator-system-control control-reset",
+				type: "button",
+				onClick: onReset,
+				disabled: !available,
+				title: "Reset preview",
+				"aria-label": "Reset preview",
+				children: "RESET"
+			}, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 33,
+				columnNumber: 7
+			}, this),
+			/* @__PURE__ */ _jsxDEV("button", {
+				className: "emulator-system-control control-play",
+				type: "button",
+				onClick: onTogglePlaying,
+				disabled: !available,
+				title: playing ? "Pause preview" : "Play preview",
+				"aria-label": playing ? "Pause preview" : "Play preview",
+				children: playing ? "PAUSE" : "PLAY"
+			}, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 34,
+				columnNumber: 7
+			}, this),
+			/* @__PURE__ */ _jsxDEV("button", {
+				className: "emulator-system-control control-step",
+				type: "button",
+				onClick: onAdvance,
+				disabled: !available,
+				title: "Advance 250 ms",
+				"aria-label": "Advance 250 ms",
+				children: "STEP"
+			}, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 38,
+				columnNumber: 7
+			}, this)
+		]
+	}, void 0, true, {
+		fileName: _jsxFileName,
+		lineNumber: 32,
+		columnNumber: 5
+	}, this);
+	return /* @__PURE__ */ _jsxDEV("section", {
+		className: `emulator-panel ${collapsed ? "collapsed" : "expanded"} ${mode === "popout" ? "popout" : "docked"}`,
+		"aria-label": `Device emulator: ${sceneName}`,
+		children: [/* @__PURE__ */ _jsxDEV("div", {
+			className: "emulator-display",
+			children: /* @__PURE__ */ _jsxDEV(FramebufferCanvas, { framebuffer: preview?.framebuffer ?? null }, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 43,
+				columnNumber: 41
+			}, this)
+		}, void 0, false, {
+			fileName: _jsxFileName,
+			lineNumber: 43,
+			columnNumber: 7
+		}, this), /* @__PURE__ */ _jsxDEV("div", {
+			className: "emulator-controls",
+			id: `${id}-controls`,
+			children: [/* @__PURE__ */ _jsxDEV("button", {
+				className: "emulator-collapse",
+				type: "button",
+				"aria-expanded": !collapsed,
+				"aria-controls": `${id}-controls`,
+				title: collapsed ? "Expand emulator controls" : "Collapse emulator controls",
+				"aria-label": collapsed ? "Expand emulator controls" : "Collapse emulator controls",
+				onClick: () => setCollapsed((value) => !value),
+				children: collapsed ? /* @__PURE__ */ _jsxDEV(ChevronRight, { size: 18 }, void 0, false, {
+					fileName: _jsxFileName,
+					lineNumber: 50,
+					columnNumber: 24
+				}, this) : /* @__PURE__ */ _jsxDEV(ChevronDown, { size: 18 }, void 0, false, {
+					fileName: _jsxFileName,
+					lineNumber: 50,
+					columnNumber: 53
+				}, this)
+			}, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 45,
+				columnNumber: 9
+			}, this), collapsed ? /* @__PURE__ */ _jsxDEV("div", {
+				className: "emulator-compact-transport",
+				children: transport
+			}, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 53,
+				columnNumber: 11
+			}, this) : /* @__PURE__ */ _jsxDEV(_Fragment, { children: [
+				/* @__PURE__ */ _jsxDEV("div", {
+					className: "emulator-joystick",
+					"aria-label": "Joystick cardinal inputs",
+					children: directions.map(({ source, label, Icon, position }) => /* @__PURE__ */ _jsxDEV("button", {
+						type: "button",
+						className: `emulator-direction direction-${position}`,
+						title: `Joystick ${label.toLowerCase()}`,
+						"aria-label": `Joystick ${label.toLowerCase()}`,
+						disabled: !available,
+						onClick: () => onInput(source),
+						children: /* @__PURE__ */ _jsxDEV(Icon, { size: 16 }, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 62,
+							columnNumber: 73
+						}, this)
+					}, source, false, {
+						fileName: _jsxFileName,
+						lineNumber: 60,
+						columnNumber: 17
+					}, this))
+				}, void 0, false, {
+					fileName: _jsxFileName,
+					lineNumber: 58,
+					columnNumber: 13
+				}, this),
+				/* @__PURE__ */ _jsxDEV("div", {
+					className: "emulator-center",
+					children: [transport, /* @__PURE__ */ _jsxDEV("button", {
+						className: "emulator-start",
+						type: "button",
+						title: "Start",
+						"aria-label": "Start",
+						disabled: !available,
+						onClick: () => onInput("BUTTON_START"),
+						children: "START"
+					}, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 67,
+						columnNumber: 15
+					}, this)]
+				}, void 0, true, {
+					fileName: _jsxFileName,
+					lineNumber: 65,
+					columnNumber: 13
+				}, this),
+				/* @__PURE__ */ _jsxDEV("div", {
+					className: "emulator-buttons",
+					"aria-label": "Device buttons",
+					children: [
+						"L",
+						"R",
+						"B",
+						"A"
+					].map((label) => /* @__PURE__ */ _jsxDEV("button", {
+						type: "button",
+						className: `emulator-button button-${label.toLowerCase()}`,
+						title: `Button ${label}`,
+						"aria-label": `Button ${label}`,
+						disabled: !available,
+						onClick: () => onInput(`BUTTON_${label}`),
+						children: label
+					}, label, false, {
+						fileName: _jsxFileName,
+						lineNumber: 71,
+						columnNumber: 17
+					}, this))
+				}, void 0, false, {
+					fileName: _jsxFileName,
+					lineNumber: 69,
+					columnNumber: 13
+				}, this)
+			] }, void 0, true, {
+				fileName: _jsxFileName,
+				lineNumber: 57,
+				columnNumber: 11
+			}, this)]
+		}, void 0, true, {
+			fileName: _jsxFileName,
+			lineNumber: 44,
+			columnNumber: 7
+		}, this)]
+	}, void 0, true, {
+		fileName: _jsxFileName,
+		lineNumber: 42,
+		columnNumber: 5
+	}, this);
+}
+_s(EmulatorPanel, "mEr7jgxtRA0keCmtSGLrXxV9JHQ=");
+_c = EmulatorPanel;
+var _c;
+$RefreshReg$(_c, "EmulatorPanel");
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+import * as __vite_react_currentExports from "/src/EmulatorPanel.tsx";
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+
+  const currentExports = __vite_react_currentExports;
+  queueMicrotask(() => {
+    RefreshRuntime.registerExportsForReactRefresh("G:/PEEPSHOW-PeepStudio/tools/peep-studio/src/EmulatorPanel.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("G:/PEEPSHOW-PeepStudio/tools/peep-studio/src/EmulatorPanel.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+function $RefreshReg$(type, id) { return RefreshRuntime.register(type, "G:/PEEPSHOW-PeepStudio/tools/peep-studio/src/EmulatorPanel.tsx" + ' ' + id); }
+function $RefreshSig$() { return RefreshRuntime.createSignatureFunctionForTransform(); }
+
+//# sourceMappingURL=data:application/json;base64,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QUFEO01BQVEsV0FBVTtNQUFpQixNQUFLO01BQVMsT0FBTTtNQUFRLGNBQVc7TUFBUSxVQUFVLENBQUM7TUFBVyxlQUFlLFFBQVEsY0FBYztnQkFBRztLQUFhOzs7O2FBQzFKOzs7Ozs7SUFDTCx3QkFBQyxPQUFEO0tBQUssV0FBVTtLQUFtQixjQUFXO2VBQzFDO01BQUM7TUFBSztNQUFLO01BQUs7S0FBRyxDQUFDLENBQUMsS0FBSyxVQUN6Qix3QkFBQyxVQUFEO01BQVEsTUFBSztNQUFxQixXQUFXLDBCQUEwQixNQUFNLFlBQVk7TUFDdkYsT0FBTyxVQUFVO01BQVMsY0FBWSxVQUFVO01BQVMsVUFBVSxDQUFDO01BQ3BFLGVBQWUsUUFBUSxVQUFVLE9BQU87Z0JBQUk7S0FBYyxHQUZqQzs7OztZQUVpQyxDQUM3RDtJQUNFOzs7OztHQUNMOzs7O1dBRUQ7Ozs7O1VBQ0U7Ozs7OztBQUViIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIkVtdWxhdG9yUGFuZWwudHN4Il0sInZlcnNpb24iOjMsInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IHVzZUVmZmVjdCwgdXNlSWQsIHVzZVN0YXRlIH0gZnJvbSBcInJlYWN0XCI7XG5pbXBvcnQgeyBBcnJvd0Rvd24sIEFycm93TGVmdCwgQXJyb3dSaWdodCwgQXJyb3dVcCwgQ2hldnJvbkRvd24sIENoZXZyb25SaWdodCB9IGZyb20gXCJsdWNpZGUtcmVhY3RcIjtcbmltcG9ydCB7IEZyYW1lYnVmZmVyQ2FudmFzIH0gZnJvbSBcIi4vRnJhbWVidWZmZXJDYW52YXNcIjtcbmltcG9ydCB0eXBlIHsgUHJldmlld1NuYXBzaG90IH0gZnJvbSBcIi4vdHlwZXNcIjtcbmltcG9ydCBcIi4vRW11bGF0b3JQYW5lbC5jc3NcIjtcblxuY29uc3QgZGlyZWN0aW9ucyA9IFtcbiAgeyBzb3VyY2U6IFwiSk9ZX1VQXCIsIGxhYmVsOiBcIlVwXCIsIEljb246IEFycm93VXAsIHBvc2l0aW9uOiBcInVwXCIgfSxcbiAgeyBzb3VyY2U6IFwiSk9ZX0xFRlRcIiwgbGFiZWw6IFwiTGVmdFwiLCBJY29uOiBBcnJvd0xlZnQsIHBvc2l0aW9uOiBcImxlZnRcIiB9LFxuICB7IHNvdXJjZTogXCJKT1lfUklHSFRcIiwgbGFiZWw6IFwiUmlnaHRcIiwgSWNvbjogQXJyb3dSaWdodCwgcG9zaXRpb246IFwicmlnaHRcIiB9LFxuICB7IHNvdXJjZTogXCJKT1lfRE9XTlwiLCBsYWJlbDogXCJEb3duXCIsIEljb246IEFycm93RG93biwgcG9zaXRpb246IFwiZG93blwiIH0sXG5dO1xuXG5leHBvcnQgZnVuY3Rpb24gRW11bGF0b3JQYW5lbCh7IHByZXZpZXcsIHNjZW5lTmFtZSwgcGxheWluZywgb25SZXNldCwgb25Ub2dnbGVQbGF5aW5nLCBvbkFkdmFuY2UsIG9uSW5wdXQsIG9uQ29sbGFwc2VkQ2hhbmdlLCBtb2RlID0gXCJkb2NrZWRcIiB9OiB7XG4gIHByZXZpZXc6IFByZXZpZXdTbmFwc2hvdCB8IG51bGw7XG4gIHNjZW5lTmFtZTogc3RyaW5nO1xuICBwbGF5aW5nOiBib29sZWFuO1xuICBvblJlc2V0OiAoKSA9PiB2b2lkO1xuICBvblRvZ2dsZVBsYXlpbmc6ICgpID0+IHZvaWQ7XG4gIG9uQWR2YW5jZTogKCkgPT4gdm9pZDtcbiAgb25JbnB1dDogKHNvdXJjZTogc3RyaW5nKSA9PiB2b2lkO1xuICBvbkNvbGxhcHNlZENoYW5nZT86IChjb2xsYXBzZWQ6IGJvb2xlYW4pID0+IHZvaWQ7XG4gIG1vZGU/OiBcImRvY2tlZFwiIHwgXCJwb3BvdXRcIjtcbn0pIHtcbiAgY29uc3QgW2NvbGxhcHNlZCwgc2V0Q29sbGFwc2VkXSA9IHVzZVN0YXRlKGZhbHNlKTtcbiAgY29uc3QgaWQgPSB1c2VJZCgpO1xuICBjb25zdCBhdmFpbGFibGUgPSBwcmV2aWV3ICE9PSBudWxsO1xuICB1c2VFZmZlY3QoKCkgPT4ge1xuICAgIG9uQ29sbGFwc2VkQ2hhbmdlPy4oY29sbGFwc2VkKTtcbiAgfSwgW2NvbGxhcHNlZCwgb25Db2xsYXBzZWRDaGFuZ2VdKTtcbiAgY29uc3QgdHJhbnNwb3J0ID0gKFxuICAgIDxkaXYgY2xhc3NOYW1lPVwiZW11bGF0b3ItdHJhbnNwb3J0XCIgYXJpYS1sYWJlbD1cIlByZXZpZXcgcGxheWJhY2tcIj5cbiAgICAgIDxidXR0b24gY2xhc3NOYW1lPVwiZW11bGF0b3Itc3lzdGVtLWNvbnRyb2wgY29udHJvbC1yZXNldFwiIHR5cGU9XCJidXR0b25cIiBvbkNsaWNrPXtvblJlc2V0fSBkaXNhYmxlZD17IWF2YWlsYWJsZX0gdGl0bGU9XCJSZXNldCBwcmV2aWV3XCIgYXJpYS1sYWJlbD1cIlJlc2V0IHByZXZpZXdcIj5SRVNFVDwvYnV0dG9uPlxuICAgICAgPGJ1dHRvbiBjbGFzc05hbWU9XCJlbXVsYXRvci1zeXN0ZW0tY29udHJvbCBjb250cm9sLXBsYXlcIiB0eXBlPVwiYnV0dG9uXCIgb25DbGljaz17b25Ub2dnbGVQbGF5aW5nfSBkaXNhYmxlZD17IWF2YWlsYWJsZX1cbiAgICAgICAgdGl0bGU9e3BsYXlpbmcgPyBcIlBhdXNlIHByZXZpZXdcIiA6IFwiUGxheSBwcmV2aWV3XCJ9IGFyaWEtbGFiZWw9e3BsYXlpbmcgPyBcIlBhdXNlIHByZXZpZXdcIiA6IFwiUGxheSBwcmV2aWV3XCJ9PlxuICAgICAgICB7cGxheWluZyA/IFwiUEFVU0VcIiA6IFwiUExBWVwifVxuICAgICAgPC9idXR0b24+XG4gICAgICA8YnV0dG9uIGNsYXNzTmFtZT1cImVtdWxhdG9yLXN5c3RlbS1jb250cm9sIGNvbnRyb2wtc3RlcFwiIHR5cGU9XCJidXR0b25cIiBvbkNsaWNrPXtvbkFkdmFuY2V9IGRpc2FibGVkPXshYXZhaWxhYmxlfSB0aXRsZT1cIkFkdmFuY2UgMjUwIG1zXCIgYXJpYS1sYWJlbD1cIkFkdmFuY2UgMjUwIG1zXCI+U1RFUDwvYnV0dG9uPlxuICAgIDwvZGl2PlxuICApO1xuICByZXR1cm4gKFxuICAgIDxzZWN0aW9uIGNsYXNzTmFtZT17YGVtdWxhdG9yLXBhbmVsICR7Y29sbGFwc2VkID8gXCJjb2xsYXBzZWRcIiA6IFwiZXhwYW5kZWRcIn0gJHttb2RlID09PSBcInBvcG91dFwiID8gXCJwb3BvdXRcIiA6IFwiZG9ja2VkXCJ9YH0gYXJpYS1sYWJlbD17YERldmljZSBlbXVsYXRvcjogJHtzY2VuZU5hbWV9YH0+XG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cImVtdWxhdG9yLWRpc3BsYXlcIj48RnJhbWVidWZmZXJDYW52YXMgZnJhbWVidWZmZXI9e3ByZXZpZXc/LmZyYW1lYnVmZmVyID8/IG51bGx9IC8+PC9kaXY+XG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cImVtdWxhdG9yLWNvbnRyb2xzXCIgaWQ9e2Ake2lkfS1jb250cm9sc2B9PlxuICAgICAgICA8YnV0dG9uIGNsYXNzTmFtZT1cImVtdWxhdG9yLWNvbGxhcHNlXCIgdHlwZT1cImJ1dHRvblwiIGFyaWEtZXhwYW5kZWQ9eyFjb2xsYXBzZWR9XG4gICAgICAgICAgYXJpYS1jb250cm9scz17YCR7aWR9LWNvbnRyb2xzYH1cbiAgICAgICAgICB0aXRsZT17Y29sbGFwc2VkID8gXCJFeHBhbmQgZW11bGF0b3IgY29udHJvbHNcIiA6IFwiQ29sbGFwc2UgZW11bGF0b3IgY29udHJvbHNcIn1cbiAgICAgICAgICBhcmlhLWxhYmVsPXtjb2xsYXBzZWQgPyBcIkV4cGFuZCBlbXVsYXRvciBjb250cm9sc1wiIDogXCJDb2xsYXBzZSBlbXVsYXRvciBjb250cm9sc1wifVxuICAgICAgICAgIG9uQ2xpY2s9eygpID0+IHNldENvbGxhcHNlZCgodmFsdWUpID0+ICF2YWx1ZSl9PlxuICAgICAgICAgIHtjb2xsYXBzZWQgPyA8Q2hldnJvblJpZ2h0IHNpemU9ezE4fSAvPiA6IDxDaGV2cm9uRG93biBzaXplPXsxOH0gLz59XG4gICAgICAgIDwvYnV0dG9uPlxuICAgICAgICB7Y29sbGFwc2VkID8gKFxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZW11bGF0b3ItY29tcGFjdC10cmFuc3BvcnRcIj5cbiAgICAgICAgICAgIHt0cmFuc3BvcnR9XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgICkgOiAoXG4gICAgICAgICAgPD5cbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZW11bGF0b3Itam95c3RpY2tcIiBhcmlhLWxhYmVsPVwiSm95c3RpY2sgY2FyZGluYWwgaW5wdXRzXCI+XG4gICAgICAgICAgICAgIHtkaXJlY3Rpb25zLm1hcCgoeyBzb3VyY2UsIGxhYmVsLCBJY29uLCBwb3NpdGlvbiB9KSA9PiAoXG4gICAgICAgICAgICAgICAgPGJ1dHRvbiBrZXk9e3NvdXJjZX0gdHlwZT1cImJ1dHRvblwiIGNsYXNzTmFtZT17YGVtdWxhdG9yLWRpcmVjdGlvbiBkaXJlY3Rpb24tJHtwb3NpdGlvbn1gfVxuICAgICAgICAgICAgICAgICAgdGl0bGU9e2BKb3lzdGljayAke2xhYmVsLnRvTG93ZXJDYXNlKCl9YH0gYXJpYS1sYWJlbD17YEpveXN0aWNrICR7bGFiZWwudG9Mb3dlckNhc2UoKX1gfVxuICAgICAgICAgICAgICAgICAgZGlzYWJsZWQ9eyFhdmFpbGFibGV9IG9uQ2xpY2s9eygpID0+IG9uSW5wdXQoc291cmNlKX0+PEljb24gc2l6ZT17MTZ9IC8+PC9idXR0b24+XG4gICAgICAgICAgICAgICkpfVxuICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImVtdWxhdG9yLWNlbnRlclwiPlxuICAgICAgICAgICAgICB7dHJhbnNwb3J0fVxuICAgICAgICAgICAgICA8YnV0dG9uIGNsYXNzTmFtZT1cImVtdWxhdG9yLXN0YXJ0XCIgdHlwZT1cImJ1dHRvblwiIHRpdGxlPVwiU3RhcnRcIiBhcmlhLWxhYmVsPVwiU3RhcnRcIiBkaXNhYmxlZD17IWF2YWlsYWJsZX0gb25DbGljaz17KCkgPT4gb25JbnB1dChcIkJVVFRPTl9TVEFSVFwiKX0+U1RBUlQ8L2J1dHRvbj5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJlbXVsYXRvci1idXR0b25zXCIgYXJpYS1sYWJlbD1cIkRldmljZSBidXR0b25zXCI+XG4gICAgICAgICAgICAgIHtbXCJMXCIsIFwiUlwiLCBcIkJcIiwgXCJBXCJdLm1hcCgobGFiZWwpID0+IChcbiAgICAgICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBrZXk9e2xhYmVsfSBjbGFzc05hbWU9e2BlbXVsYXRvci1idXR0b24gYnV0dG9uLSR7bGFiZWwudG9Mb3dlckNhc2UoKX1gfVxuICAgICAgICAgICAgICAgICAgdGl0bGU9e2BCdXR0b24gJHtsYWJlbH1gfSBhcmlhLWxhYmVsPXtgQnV0dG9uICR7bGFiZWx9YH0gZGlzYWJsZWQ9eyFhdmFpbGFibGV9XG4gICAgICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBvbklucHV0KGBCVVRUT05fJHtsYWJlbH1gKX0+e2xhYmVsfTwvYnV0dG9uPlxuICAgICAgICAgICAgICApKX1cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDwvPlxuICAgICAgICApfVxuICAgICAgPC9kaXY+XG4gICAgPC9zZWN0aW9uPlxuICApO1xufVxuIl19

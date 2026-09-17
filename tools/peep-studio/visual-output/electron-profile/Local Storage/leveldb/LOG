@@ -1,2 +1,3 @@
-2026/09/04-08:25:11.717 bff4 Creating DB G:\PEEPSHOW-PeepStudio\tools\peep-studio\visual-output\electron-profile\Local Storage\leveldb since it was missing.
-2026/09/04-08:25:12.190 bff4 Reusing MANIFEST G:\PEEPSHOW-PeepStudio\tools\peep-studio\visual-output\electron-profile\Local Storage\leveldb/MANIFEST-000001
+2026/09/17-15:38:49.631 a738 Reusing MANIFEST G:\PEEPSHOW-PeepStudio\tools\peep-studio\visual-output\electron-profile\Local Storage\leveldb/MANIFEST-000001
+2026/09/17-15:38:49.644 a738 Recovering log #3
+2026/09/17-15:38:49.644 a738 Reusing old log G:\PEEPSHOW-PeepStudio\tools\peep-studio\visual-output\electron-profile\Local Storage\leveldb/000003.log 

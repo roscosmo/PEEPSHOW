@@ -35,7 +35,45 @@ interface PeepStudioBridge {
   upsertBakedTextSource?(projectPath: string, record: StudioBakedTextSourceRecord): Promise<StudioBakedTextSourceRecord>;
   writeGeneratedSpritePng?(projectPath: string, requestedAssetId: string, pngDataUrl: string): Promise<{ assetId: string; sourcePath: string; width: number; height: number }>;
   overwriteGeneratedSpritePng?(projectPath: string, sourcePath: string, pngDataUrl: string): Promise<{ sourcePath: string; width: number; height: number }>;
-  importAudioWav(projectPath: string): Promise<{ assetId: string; sourcePath: string } | null>;
+  chooseAudioWav(projectPath: string): Promise<{
+    sourcePath: string;
+    sourceName: string;
+    channels: number;
+    sampleRateHz: number;
+    bitsPerSample: number;
+    durationMs: number;
+    peakDbfs: number | null;
+    waveformPeaks: number[];
+    suggestedTrimStartMs: number;
+    suggestedTrimEndMs: number;
+  } | null>;
+  inspectProjectAudioWav(projectPath: string, sourcePath: string): Promise<{
+    sourcePath: string;
+    sourceName: string;
+    channels: number;
+    sampleRateHz: number;
+    bitsPerSample: number;
+    durationMs: number;
+    peakDbfs: number | null;
+    waveformPeaks: number[];
+    suggestedTrimStartMs: number;
+    suggestedTrimEndMs: number;
+  }>;
+  importAudioWav(projectPath: string, sourcePath: string, options: { normalize: boolean; targetPeakDbfs: number; trimStartMs: number; trimEndMs: number }): Promise<{
+    assetId: string;
+    sourcePath: string;
+    analysis: {
+      normalized: boolean;
+      inputPeakDbfs: number | null;
+      outputPeakDbfs: number | null;
+      gainDb: number;
+      channels: number;
+      sampleRateHz: number;
+      bitsPerSample: number;
+      originalDurationMs: number;
+      outputDurationMs: number;
+    };
+  } | null>;
   audioThumbnailSource?(projectPath: string, sourcePath: string): Promise<{ key: string; data: string }>;
   getEmulatorPopoutStatus?(): Promise<{ open: boolean }>;
   openEmulatorPopout?(): Promise<boolean>;

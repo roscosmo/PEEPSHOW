@@ -3330,7 +3330,8 @@ button:focus-visible {
   justify-self: start;
 }
 
-.audio-inspector-controls .audio-waveform {
+.audio-inspector-controls .audio-waveform,
+.audio-inspector-controls .audio-import-waveform {
   width: 100%;
   min-width: 0;
 }
@@ -3340,6 +3341,267 @@ button:focus-visible {
   font-size: 11px;
   font-weight: 650;
   line-height: 1.35;
+}
+
+.project-settings-group {
+  display: grid;
+  gap: 10px;
+}
+
+.project-settings-group-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.project-settings-group-heading strong {
+  font-size: 12px;
+}
+
+.project-settings-group-heading span,
+.audio-import-warning {
+  margin: 0;
+  color: #68736d;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.audio-import-warning {
+  color: #a13d28;
+  font-weight: 750;
+}
+
+.audio-cue-settings {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  background: #f7faf8;
+}
+
+.audio-cue-settings label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.audio-cue-settings label > span {
+  color: #445049;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.audio-volume-field > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.audio-volume-field output {
+  min-width: 28px;
+  color: #18221d;
+  text-align: right;
+}
+
+.audio-cue-settings input[type="range"] {
+  width: 100%;
+  accent-color: #d6812f;
+}
+
+.audio-priority-field input {
+  width: 84px;
+}
+
+.audio-cue-settings small {
+  color: #68736d;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.audio-import-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.audio-import-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.audio-import-heading > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.audio-import-heading strong,
+.audio-import-heading small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-import-heading small {
+  color: #68736d;
+  font-size: 10px;
+}
+
+.audio-import-waveform {
+  position: relative;
+  min-height: 220px;
+  overflow: hidden;
+  border: 1px solid #aebcb6;
+  border-radius: 6px;
+  background: #ff66ff;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.audio-import-waveform canvas {
+  display: block;
+  width: 100%;
+  height: 220px;
+}
+
+.audio-import-waveform.compact {
+  min-height: 92px;
+}
+
+.audio-import-waveform.compact canvas {
+  height: 92px;
+}
+
+.audio-import-waveform.compact .audio-trim-handle {
+  width: 10px;
+}
+
+.audio-trim-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  border: 2px solid #f08a24;
+  background: #fff4df;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.audio-trim-handle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 28px;
+  border-radius: 2px;
+  background: #7a3e08;
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.audio-trim-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+
+.audio-trim-controls label {
+  display: grid;
+  gap: 4px;
+  color: #56625c;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.audio-trim-controls label > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.audio-trim-controls input {
+  width: 110px;
+}
+
+.audio-inspector-trim-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.audio-inspector-trim-controls label {
+  display: grid;
+  gap: 4px;
+  color: #56625c;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.audio-inspector-trim-controls label > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.audio-inspector-trim-controls input {
+  width: 100%;
+  min-width: 0;
+}
+
+.audio-inspector-trim-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.audio-import-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.audio-import-summary > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #d7ded9;
+  border-radius: 6px;
+  background: #f7faf8;
+}
+
+.audio-import-summary dt {
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.audio-import-summary dd {
+  margin: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-import-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 960px) {
+  .audio-import-summary { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
 }
 
 .asset-name-editor {
@@ -7514,7 +7776,9 @@ button:focus-visible {
 .studio-shell[data-theme="dark"] .baked-text-source-summary,
 .studio-shell[data-theme="dark"] .baked-text-source-editor,
 .studio-shell[data-theme="dark"] .asset-text-editor,
+.studio-shell[data-theme="dark"] .audio-cue-settings,
 .studio-shell[data-theme="dark"] .audio-inspector-controls,
+.studio-shell[data-theme="dark"] .audio-import-summary > div,
 .studio-shell[data-theme="dark"] .native-object-row,
 .studio-shell[data-theme="dark"] .scene-object-property {
   border-color: #34423b;

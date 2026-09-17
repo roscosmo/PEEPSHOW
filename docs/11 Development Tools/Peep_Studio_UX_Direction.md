@@ -603,8 +603,31 @@ Agreed delivery order:
    Waveforms are visual identification only, not playback or seeking controls.
    Peak scaling affects only the thumbnail, never source normalization, encoded
    audio or playback volume. No project fields or backend commands changed.
-   Electron tests cover mono/stereo/silence, cache reuse/invalidation, missing
-   files, path confinement and compact card layout.
+   WAV import is staged separately from those library thumbnails. Choosing a
+   source opens a full-width waveform editor with draggable start/end boundaries,
+   exact millisecond fields, detected-silence trimming, reset, source format and
+   retained-duration summaries. Import applies the project normalization default
+   after frame-aligned trimming, writes a new project WAV without modifying the
+   selected original, then creates the existing asset/cue records. Electron tests
+   cover mono/stereo/silence, 8/16/24/32-bit normalization, frame-aligned RIFF
+   trimming, cache reuse/invalidation, missing files, path confinement and compact
+   card layout.
+   Existing sampled SFX expose the same trim boundaries directly on the waveform
+   in the inspector; there is no separate edit workspace. Applying a trim writes
+   a versioned project WAV and updates the existing audio asset, preserving its
+   cue ID, authored volume/priority and all references. Service Undo restores the
+   previous source. WAV parsing accepts both standard RIFF odd-chunk padding and
+   real-world metadata chunks that omit the optional pad byte.
+5. Project settings and per-asset controls are separate authoring scopes. The
+   project-root inspector owns defaults and package-wide policy such as the SFX
+   import normalization target and, when supported, inactivity policy. An audio
+   asset inspector owns only that cue's authored `0..255` volume and priority.
+   Application preferences such as theme and preview appearance remain under
+   the permanent toolbar Settings button. Project settings must eventually be
+   persisted through an advertised shared-authoring command; Studio must not
+   write private project fields or bypass service undo/save behavior. Until that
+   increment exists, the normalization target is a session authoring default and
+   the fixed safe default remains `-6 dBFS` whenever Studio starts.
 
 Additional Settings groups will appear as real preferences are implemented;
 the settings surface is consistent rather than dependent on object selection.

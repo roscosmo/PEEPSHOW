@@ -1,0 +1,548 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/AnimationClipEditor.tsx");const useState = __vite__cjsImport0_react["useState"];const _jsxDEV = __vite__cjsImport3_react_jsxDevRuntime["jsxDEV"];import __vite__cjsImport0_react from "/node_modules/.vite/deps/react.js?v=eb3190c8";
+import { ArrowDown, ArrowUp, Copy, Pencil, Trash2 } from "/node_modules/.vite/deps/lucide-react.js?v=eb3190c8";
+import { FramePreviewCanvas } from "/src/FramebufferCanvas.tsx";
+var _jsxFileName = "G:/PEEPSHOW-PeepStudio/tools/peep-studio/src/AnimationClipEditor.tsx";
+import __vite__cjsImport3_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=eb3190c8";
+var _s = $RefreshSig$();
+export function AnimationClipEditor({ clip, frames, assets, scenes, disabled, onApply, displayName, initiallyOpen = false, creating = false, loopPolicies, onCancel, onDuplicate, onDelete }) {
+	_s();
+	const [open, setOpen] = useState(initiallyOpen);
+	const initialName = () => clip.display_name ?? displayName ?? clip.animation_id;
+	const [name, setName] = useState(initialName);
+	const [loopPolicy, setLoopPolicy] = useState(clip.loop_policy);
+	const initial = () => clip.frame_refs.map((frame) => ({ frame }));
+	const initialCadence = () => String(clip.frame_duration_ms[0] ?? 400);
+	const clipHasMixedCadence = clip.frame_duration_ms.some((duration) => duration !== clip.frame_duration_ms[0]);
+	const [cadence, setCadence] = useState(initialCadence);
+	const [steps, setSteps] = useState(initial);
+	const byId = new Map(frames.map((frame) => [frame.frame_id, frame]));
+	const firstFrame = byId.get(steps[0]?.frame);
+	const cadenceNumber = Number(cadence);
+	const frameRefs = steps.map((step) => step.frame);
+	const trimmedName = name.trim();
+	const valid = steps.length > 0 && steps.length <= 256 && steps.every((step) => byId.has(step.frame) && byId.get(step.frame)?.width === firstFrame?.width && byId.get(step.frame)?.height === firstFrame?.height) && cadence.trim() !== "" && Number.isInteger(cadenceNumber) && cadenceNumber >= 1 && cadenceNumber <= 6e4 && trimmedName.length > 0 && trimmedName.length <= 64 && (!loopPolicies || loopPolicies.includes(loopPolicy));
+	const changed = creating || clipHasMixedCadence || loopPolicy !== clip.loop_policy || trimmedName !== initialName() || cadenceNumber !== (clip.frame_duration_ms[0] ?? 400) || JSON.stringify(frameRefs) !== JSON.stringify(clip.frame_refs);
+	const frameLabel = (id) => {
+		const asset = assets.find((item) => item.frames.some((frame) => frame.frame_id === id));
+		const frame = asset?.frames.find((item) => item.frame_id === id);
+		return asset ? `${asset.display_name ?? asset.text ?? "Sprite"} / ${frame?.display_name ?? `Frame ${asset.frames.findIndex((item) => item.frame_id === id) + 1}`}` : "Unavailable frame";
+	};
+	const users = scenes.flatMap((scene) => (scene.objects ?? []).filter((object) => object.animation_ref === clip.animation_id).map((object) => `${scene.display_name} / ${object.object_id}`));
+	const move = (index, delta) => setSteps((current) => {
+		const next = [...current];
+		[next[index], next[index + delta]] = [next[index + delta], next[index]];
+		return next;
+	});
+	if (!open) return /* @__PURE__ */ _jsxDEV("button", {
+		className: "button secondary",
+		type: "button",
+		disabled,
+		onClick: () => {
+			setName(initialName());
+			setSteps(initial());
+			setCadence(initialCadence());
+			setOpen(true);
+		},
+		children: [/* @__PURE__ */ _jsxDEV(Pencil, { size: 14 }, void 0, false, {
+			fileName: _jsxFileName,
+			lineNumber: 51,
+			columnNumber: 115
+		}, this), "Edit clip"]
+	}, void 0, true, {
+		fileName: _jsxFileName,
+		lineNumber: 50,
+		columnNumber: 21
+	}, this);
+	const deleteDisabled = disabled || creating || onDelete === undefined || users.length > 0;
+	return /* @__PURE__ */ _jsxDEV("section", {
+		className: "clip-editor",
+		"aria-label": "Animation clip editor",
+		onKeyDown: (event) => {
+			if (event.key === "Escape") {
+				event.stopPropagation();
+				setOpen(false);
+				onCancel?.();
+			}
+		},
+		children: [
+			/* @__PURE__ */ _jsxDEV("div", {
+				className: "clip-editor-heading",
+				children: [/* @__PURE__ */ _jsxDEV("div", { children: [/* @__PURE__ */ _jsxDEV("h4", { children: displayName ?? clip.animation_id }, void 0, false, {
+					fileName: _jsxFileName,
+					lineNumber: 58,
+					columnNumber: 9
+				}, this), !creating && /* @__PURE__ */ _jsxDEV("p", {
+					className: "muted",
+					children: "Changes apply everywhere this animation is used."
+				}, void 0, false, {
+					fileName: _jsxFileName,
+					lineNumber: 59,
+					columnNumber: 23
+				}, this)] }, void 0, true, {
+					fileName: _jsxFileName,
+					lineNumber: 57,
+					columnNumber: 7
+				}, this), !creating && /* @__PURE__ */ _jsxDEV("div", {
+					className: "clip-editor-record-actions",
+					children: [/* @__PURE__ */ _jsxDEV("button", {
+						className: "button secondary",
+						type: "button",
+						disabled: disabled || onDuplicate === undefined,
+						onClick: () => {
+							void onDuplicate?.();
+						},
+						children: [/* @__PURE__ */ _jsxDEV(Copy, { size: 14 }, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 63,
+							columnNumber: 53
+						}, this), "Duplicate"]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 62,
+						columnNumber: 9
+					}, this), /* @__PURE__ */ _jsxDEV("button", {
+						className: "button danger",
+						type: "button",
+						disabled: deleteDisabled,
+						title: users.length > 0 ? "Clear this animation from scene objects before deleting it." : "Delete this animation",
+						onClick: () => {
+							void onDelete?.();
+						},
+						children: [/* @__PURE__ */ _jsxDEV(Trash2, { size: 14 }, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 66,
+							columnNumber: 50
+						}, this), "Delete animation"]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 64,
+						columnNumber: 9
+					}, this)]
+				}, void 0, true, {
+					fileName: _jsxFileName,
+					lineNumber: 61,
+					columnNumber: 21
+				}, this)]
+			}, void 0, true, {
+				fileName: _jsxFileName,
+				lineNumber: 56,
+				columnNumber: 5
+			}, this),
+			/* @__PURE__ */ _jsxDEV("dl", {
+				className: "clip-editor-summary",
+				children: [
+					/* @__PURE__ */ _jsxDEV("div", { children: [/* @__PURE__ */ _jsxDEV("dt", { children: "Frames" }, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 70,
+						columnNumber: 12
+					}, this), /* @__PURE__ */ _jsxDEV("dd", { children: steps.length }, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 70,
+						columnNumber: 27
+					}, this)] }, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 70,
+						columnNumber: 7
+					}, this),
+					/* @__PURE__ */ _jsxDEV("div", { children: [/* @__PURE__ */ _jsxDEV("dt", { children: "Cadence" }, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 71,
+						columnNumber: 12
+					}, this), /* @__PURE__ */ _jsxDEV("dd", { children: [cadence, " ms"] }, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 71,
+						columnNumber: 28
+					}, this)] }, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 71,
+						columnNumber: 7
+					}, this),
+					/* @__PURE__ */ _jsxDEV("div", { children: [/* @__PURE__ */ _jsxDEV("dt", { children: "Playback" }, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 72,
+						columnNumber: 12
+					}, this), /* @__PURE__ */ _jsxDEV("dd", { children: loopPolicy === "loop" ? "Loop" : loopPolicy === "once" ? "Play once" : loopPolicy }, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 72,
+						columnNumber: 29
+					}, this)] }, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 72,
+						columnNumber: 7
+					}, this),
+					/* @__PURE__ */ _jsxDEV("div", { children: [/* @__PURE__ */ _jsxDEV("dt", { children: "ID" }, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 73,
+						columnNumber: 12
+					}, this), /* @__PURE__ */ _jsxDEV("dd", { children: clip.animation_id }, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 73,
+						columnNumber: 23
+					}, this)] }, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 73,
+						columnNumber: 7
+					}, this)
+				]
+			}, void 0, true, {
+				fileName: _jsxFileName,
+				lineNumber: 69,
+				columnNumber: 5
+			}, this),
+			/* @__PURE__ */ _jsxDEV("details", { children: [/* @__PURE__ */ _jsxDEV("summary", { children: [
+				"Used by ",
+				users.length,
+				" scene object",
+				users.length === 1 ? "" : "s"
+			] }, void 0, true, {
+				fileName: _jsxFileName,
+				lineNumber: 75,
+				columnNumber: 14
+			}, this), /* @__PURE__ */ _jsxDEV("ul", { children: users.map((user, i) => /* @__PURE__ */ _jsxDEV("li", { children: user }, i, false, {
+				fileName: _jsxFileName,
+				lineNumber: 76,
+				columnNumber: 35
+			}, this)) }, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 76,
+				columnNumber: 7
+			}, this)] }, void 0, true, {
+				fileName: _jsxFileName,
+				lineNumber: 75,
+				columnNumber: 5
+			}, this),
+			/* @__PURE__ */ _jsxDEV("fieldset", {
+				disabled,
+				children: [
+					/* @__PURE__ */ _jsxDEV("section", {
+						className: "clip-editor-panel",
+						children: [/* @__PURE__ */ _jsxDEV("h5", { children: "Details" }, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 80,
+							columnNumber: 9
+						}, this), /* @__PURE__ */ _jsxDEV("label", {
+							className: "clip-editor-name",
+							children: ["Name", /* @__PURE__ */ _jsxDEV("input", {
+								type: "text",
+								maxLength: 64,
+								"aria-label": "Animation name",
+								value: name,
+								onChange: (event) => setName(event.target.value)
+							}, void 0, false, {
+								fileName: _jsxFileName,
+								lineNumber: 81,
+								columnNumber: 49
+							}, this)]
+						}, void 0, true, {
+							fileName: _jsxFileName,
+							lineNumber: 81,
+							columnNumber: 9
+						}, this)]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 79,
+						columnNumber: 7
+					}, this),
+					/* @__PURE__ */ _jsxDEV("section", {
+						className: "clip-editor-panel",
+						children: [/* @__PURE__ */ _jsxDEV("h5", { children: "Playback" }, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 85,
+							columnNumber: 9
+						}, this), /* @__PURE__ */ _jsxDEV("div", {
+							className: "clip-editor-settings",
+							children: [loopPolicies && /* @__PURE__ */ _jsxDEV("label", { children: ["Mode", /* @__PURE__ */ _jsxDEV("select", {
+								"aria-label": "Animation playback",
+								value: loopPolicy,
+								onChange: (event) => setLoopPolicy(event.target.value),
+								children: loopPolicies.map((policy) => /* @__PURE__ */ _jsxDEV("option", {
+									value: policy,
+									children: policy === "loop" ? "Loop" : policy === "once" ? "Play once" : policy
+								}, policy, false, {
+									fileName: _jsxFileName,
+									lineNumber: 88,
+									columnNumber: 41
+								}, this))
+							}, void 0, false, {
+								fileName: _jsxFileName,
+								lineNumber: 87,
+								columnNumber: 39
+							}, this)] }, void 0, true, {
+								fileName: _jsxFileName,
+								lineNumber: 87,
+								columnNumber: 28
+							}, this), /* @__PURE__ */ _jsxDEV("label", { children: ["Cadence (ms)", /* @__PURE__ */ _jsxDEV("input", {
+								type: "number",
+								min: 1,
+								max: 6e4,
+								step: 1,
+								"aria-label": "Animation cadence",
+								value: cadence,
+								onChange: (event) => setCadence(event.target.value)
+							}, void 0, false, {
+								fileName: _jsxFileName,
+								lineNumber: 90,
+								columnNumber: 30
+							}, this)] }, void 0, true, {
+								fileName: _jsxFileName,
+								lineNumber: 90,
+								columnNumber: 11
+							}, this)]
+						}, void 0, true, {
+							fileName: _jsxFileName,
+							lineNumber: 86,
+							columnNumber: 9
+						}, this)]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 84,
+						columnNumber: 7
+					}, this),
+					clipHasMixedCadence && /* @__PURE__ */ _jsxDEV("p", {
+						className: "muted",
+						children: "This clip has older mixed frame timings. Applying it will use one cadence for every frame."
+					}, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 94,
+						columnNumber: 31
+					}, this),
+					/* @__PURE__ */ _jsxDEV("section", {
+						className: "clip-editor-panel",
+						children: [/* @__PURE__ */ _jsxDEV("div", {
+							className: "clip-editor-panel-heading",
+							children: [/* @__PURE__ */ _jsxDEV("h5", { children: "Frame order" }, void 0, false, {
+								fileName: _jsxFileName,
+								lineNumber: 97,
+								columnNumber: 11
+							}, this), /* @__PURE__ */ _jsxDEV("span", { children: [
+								steps.length,
+								" frame",
+								steps.length === 1 ? "" : "s"
+							] }, void 0, true, {
+								fileName: _jsxFileName,
+								lineNumber: 98,
+								columnNumber: 11
+							}, this)]
+						}, void 0, true, {
+							fileName: _jsxFileName,
+							lineNumber: 96,
+							columnNumber: 9
+						}, this), steps.map((step, index) => /* @__PURE__ */ _jsxDEV("div", {
+							className: "clip-step",
+							children: [
+								/* @__PURE__ */ _jsxDEV("span", {
+									className: "clip-step-preview",
+									children: byId.get(step.frame) && /* @__PURE__ */ _jsxDEV(FramePreviewCanvas, { frame: byId.get(step.frame) }, void 0, false, {
+										fileName: _jsxFileName,
+										lineNumber: 101,
+										columnNumber: 72
+									}, this)
+								}, void 0, false, {
+									fileName: _jsxFileName,
+									lineNumber: 101,
+									columnNumber: 11
+								}, this),
+								/* @__PURE__ */ _jsxDEV("div", {
+									className: "clip-step-frame",
+									children: [
+										/* @__PURE__ */ _jsxDEV("span", { children: ["Frame ", index + 1] }, void 0, true, {
+											fileName: _jsxFileName,
+											lineNumber: 103,
+											columnNumber: 13
+										}, this),
+										/* @__PURE__ */ _jsxDEV("strong", { children: frameLabel(step.frame) }, void 0, false, {
+											fileName: _jsxFileName,
+											lineNumber: 104,
+											columnNumber: 13
+										}, this),
+										/* @__PURE__ */ _jsxDEV("small", { children: byId.has(step.frame) ? `${byId.get(step.frame).width}x${byId.get(step.frame).height}` : "Unavailable" }, void 0, false, {
+											fileName: _jsxFileName,
+											lineNumber: 105,
+											columnNumber: 13
+										}, this)
+									]
+								}, void 0, true, {
+									fileName: _jsxFileName,
+									lineNumber: 102,
+									columnNumber: 11
+								}, this),
+								/* @__PURE__ */ _jsxDEV("div", {
+									className: "clip-step-actions",
+									children: [
+										/* @__PURE__ */ _jsxDEV("button", {
+											type: "button",
+											className: "icon-button",
+											title: `Move step ${index + 1} up`,
+											disabled: index === 0,
+											onClick: () => move(index, -1),
+											children: /* @__PURE__ */ _jsxDEV(ArrowUp, { size: 14 }, void 0, false, {
+												fileName: _jsxFileName,
+												lineNumber: 108,
+												columnNumber: 150
+											}, this)
+										}, void 0, false, {
+											fileName: _jsxFileName,
+											lineNumber: 108,
+											columnNumber: 13
+										}, this),
+										/* @__PURE__ */ _jsxDEV("button", {
+											type: "button",
+											className: "icon-button",
+											title: `Move step ${index + 1} down`,
+											disabled: index === steps.length - 1,
+											onClick: () => move(index, 1),
+											children: /* @__PURE__ */ _jsxDEV(ArrowDown, { size: 14 }, void 0, false, {
+												fileName: _jsxFileName,
+												lineNumber: 109,
+												columnNumber: 166
+											}, this)
+										}, void 0, false, {
+											fileName: _jsxFileName,
+											lineNumber: 109,
+											columnNumber: 13
+										}, this),
+										/* @__PURE__ */ _jsxDEV("button", {
+											type: "button",
+											className: "icon-button",
+											title: `Duplicate step ${index + 1}`,
+											disabled: steps.length >= 256,
+											onClick: () => setSteps((current) => [
+												...current.slice(0, index + 1),
+												{ ...step },
+												...current.slice(index + 1)
+											]),
+											children: /* @__PURE__ */ _jsxDEV(Copy, { size: 14 }, void 0, false, {
+												fileName: _jsxFileName,
+												lineNumber: 111,
+												columnNumber: 127
+											}, this)
+										}, void 0, false, {
+											fileName: _jsxFileName,
+											lineNumber: 110,
+											columnNumber: 13
+										}, this),
+										/* @__PURE__ */ _jsxDEV("button", {
+											type: "button",
+											className: "icon-button",
+											title: `Remove step ${index + 1}`,
+											disabled: steps.length <= 1,
+											onClick: () => setSteps((current) => current.filter((_, i) => i !== index)),
+											children: /* @__PURE__ */ _jsxDEV(Trash2, { size: 14 }, void 0, false, {
+												fileName: _jsxFileName,
+												lineNumber: 113,
+												columnNumber: 90
+											}, this)
+										}, void 0, false, {
+											fileName: _jsxFileName,
+											lineNumber: 112,
+											columnNumber: 13
+										}, this)
+									]
+								}, void 0, true, {
+									fileName: _jsxFileName,
+									lineNumber: 107,
+									columnNumber: 11
+								}, this)
+							]
+						}, index, true, {
+							fileName: _jsxFileName,
+							lineNumber: 100,
+							columnNumber: 37
+						}, this))]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 95,
+						columnNumber: 7
+					}, this),
+					!valid && /* @__PURE__ */ _jsxDEV("p", {
+						role: "status",
+						children: "Use a name from 1 to 64 characters. Frames must be available and the same size, with one whole cadence from 1 to 60000 ms and supported playback."
+					}, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 117,
+						columnNumber: 18
+					}, this),
+					/* @__PURE__ */ _jsxDEV("div", {
+						className: "clip-editor-actions",
+						children: [/* @__PURE__ */ _jsxDEV("button", {
+							className: "button primary",
+							type: "button",
+							disabled: !valid || !changed,
+							onClick: async () => {
+								if (await onApply([{
+									kind: "animation.upsert",
+									animation: {
+										...clip,
+										display_name: trimmedName,
+										loop_policy: loopPolicy,
+										frame_refs: frameRefs,
+										frame_duration_ms: frameRefs.map(() => cadenceNumber)
+									}
+								}])) {
+									if (!initiallyOpen) setOpen(false);
+								}
+							},
+							children: creating ? "Create animation" : "Apply clip"
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 119,
+							columnNumber: 9
+						}, this), /* @__PURE__ */ _jsxDEV("button", {
+							className: "button secondary",
+							type: "button",
+							onClick: () => {
+								setOpen(false);
+								onCancel?.();
+							},
+							children: "Cancel"
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 123,
+							columnNumber: 9
+						}, this)]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 118,
+						columnNumber: 7
+					}, this)
+				]
+			}, void 0, true, {
+				fileName: _jsxFileName,
+				lineNumber: 78,
+				columnNumber: 5
+			}, this)
+		]
+	}, void 0, true, {
+		fileName: _jsxFileName,
+		lineNumber: 53,
+		columnNumber: 10
+	}, this);
+}
+_s(AnimationClipEditor, "LFj6rNCyhXEKFZMVhC9JuzE8Zeo=");
+_c = AnimationClipEditor;
+var _c;
+$RefreshReg$(_c, "AnimationClipEditor");
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+import * as __vite_react_currentExports from "/src/AnimationClipEditor.tsx";
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+
+  const currentExports = __vite_react_currentExports;
+  queueMicrotask(() => {
+    RefreshRuntime.registerExportsForReactRefresh("G:/PEEPSHOW-PeepStudio/tools/peep-studio/src/AnimationClipEditor.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("G:/PEEPSHOW-PeepStudio/tools/peep-studio/src/AnimationClipEditor.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+function $RefreshReg$(type, id) { return RefreshRuntime.register(type, "G:/PEEPSHOW-PeepStudio/tools/peep-studio/src/AnimationClipEditor.tsx" + ' ' + id); }
+function $RefreshSig$() { return RefreshRuntime.createSignatureFunctionForTransform(); }
+
+//# sourceMappingURL=data:application/json;base64,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LFlBQVcsUUFBUSxRQUFRLEdBQUcsTUFBTSxNQUFNLEtBQUssQ0FBQztxQkFBRyx3QkFBQyxRQUFELEVBQVEsTUFBTSxHQUFLOzs7OztVQUFTOzs7OztTQUN0Rzs7Ozs7O09BQ0Y7U0FmdUQ7Ozs7YUFldkQsQ0FBQyxDQUNDOzs7Ozs7S0FDUixDQUFDLFNBQVMsd0JBQUMsS0FBRDtNQUFHLE1BQUs7Z0JBQVM7S0FBb0o7Ozs7O0tBQ2hMLHdCQUFDLE9BQUQ7TUFBSyxXQUFVO2dCQUFmLENBQ0Usd0JBQUMsVUFBRDtPQUFRLFdBQVU7T0FBaUIsTUFBSztPQUFTLFVBQVUsQ0FBQyxTQUFTLENBQUM7T0FBUyxTQUFTLFlBQVk7UUFDbEcsSUFBSSxNQUFNLFFBQVEsQ0FBQztTQUFFLE1BQU07U0FBb0IsV0FBVztVQUFFLEdBQUc7VUFDN0QsY0FBYztVQUFhLGFBQWE7VUFBWSxZQUFZO1VBQVcsbUJBQW1CLFVBQVUsVUFBVSxhQUFhO1NBQUU7UUFBRSxDQUFDLENBQUMsR0FBRztTQUFFLElBQUksQ0FBQyxlQUFlLFFBQVEsS0FBSztRQUFHO09BQ2xMO2lCQUFJLFdBQVcscUJBQXFCO01BQXFCOzs7O2dCQUN6RCx3QkFBQyxVQUFEO09BQVEsV0FBVTtPQUFtQixNQUFLO09BQVMsZUFBZTtRQUFFLFFBQVEsS0FBSztRQUFHLFdBQVc7T0FBRztpQkFBRztNQUFjOzs7O2NBQ2hIOzs7Ozs7SUFDRzs7Ozs7O0VBQ0g7Ozs7OztBQUNYIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIkFuaW1hdGlvbkNsaXBFZGl0b3IudHN4Il0sInZlcnNpb24iOjMsInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IHVzZVN0YXRlIH0gZnJvbSBcInJlYWN0XCI7XG5pbXBvcnQgeyBBcnJvd0Rvd24sIEFycm93VXAsIENvcHksIFBlbmNpbCwgVHJhc2gyIH0gZnJvbSBcImx1Y2lkZS1yZWFjdFwiO1xuaW1wb3J0IHsgRnJhbWVQcmV2aWV3Q2FudmFzIH0gZnJvbSBcIi4vRnJhbWVidWZmZXJDYW52YXNcIjtcbmltcG9ydCB0eXBlIHsgQXNzZXRSZWNvcmQsIEF1dGhvcmVkQ2xpcCwgQ29tcGlsZWRBc3NldEZyYW1lLCBTY2VuZURvY3VtZW50IH0gZnJvbSBcIi4vdHlwZXNcIjtcblxuZXhwb3J0IGZ1bmN0aW9uIEFuaW1hdGlvbkNsaXBFZGl0b3IoeyBjbGlwLCBmcmFtZXMsIGFzc2V0cywgc2NlbmVzLCBkaXNhYmxlZCwgb25BcHBseSwgZGlzcGxheU5hbWUsIGluaXRpYWxseU9wZW4gPSBmYWxzZSxcbiAgY3JlYXRpbmcgPSBmYWxzZSwgbG9vcFBvbGljaWVzLCBvbkNhbmNlbCwgb25EdXBsaWNhdGUsIG9uRGVsZXRlIH06IHtcbiAgY2xpcDogQXV0aG9yZWRDbGlwOyBmcmFtZXM6IENvbXBpbGVkQXNzZXRGcmFtZVtdOyBhc3NldHM6IEFzc2V0UmVjb3JkW107IHNjZW5lczogU2NlbmVEb2N1bWVudFtdO1xuICBkaXNhYmxlZDogYm9vbGVhbjsgb25BcHBseTogKGNvbW1hbmRzOiBSZWNvcmQ8c3RyaW5nLCB1bmtub3duPltdKSA9PiBQcm9taXNlPGJvb2xlYW4+O1xuICBkaXNwbGF5TmFtZT86IHN0cmluZztcbiAgaW5pdGlhbGx5T3Blbj86IGJvb2xlYW47IGNyZWF0aW5nPzogYm9vbGVhbjsgbG9vcFBvbGljaWVzPzogc3RyaW5nW107IG9uQ2FuY2VsPzogKCkgPT4gdm9pZDtcbiAgb25EdXBsaWNhdGU/OiAoKSA9PiBQcm9taXNlPHZvaWQ+O1xuICBvbkRlbGV0ZT86ICgpID0+IFByb21pc2U8dm9pZD47XG59KSB7XG4gIGNvbnN0IFtvcGVuLCBzZXRPcGVuXSA9IHVzZVN0YXRlKGluaXRpYWxseU9wZW4pO1xuICBjb25zdCBpbml0aWFsTmFtZSA9ICgpID0+IGNsaXAuZGlzcGxheV9uYW1lID8/IGRpc3BsYXlOYW1lID8/IGNsaXAuYW5pbWF0aW9uX2lkO1xuICBjb25zdCBbbmFtZSwgc2V0TmFtZV0gPSB1c2VTdGF0ZShpbml0aWFsTmFtZSk7XG4gIGNvbnN0IFtsb29wUG9saWN5LCBzZXRMb29wUG9saWN5XSA9IHVzZVN0YXRlKGNsaXAubG9vcF9wb2xpY3kpO1xuICBjb25zdCBpbml0aWFsID0gKCkgPT4gY2xpcC5mcmFtZV9yZWZzLm1hcCgoZnJhbWUpID0+ICh7IGZyYW1lIH0pKTtcbiAgY29uc3QgaW5pdGlhbENhZGVuY2UgPSAoKSA9PiBTdHJpbmcoY2xpcC5mcmFtZV9kdXJhdGlvbl9tc1swXSA/PyA0MDApO1xuICBjb25zdCBjbGlwSGFzTWl4ZWRDYWRlbmNlID0gY2xpcC5mcmFtZV9kdXJhdGlvbl9tcy5zb21lKChkdXJhdGlvbikgPT4gZHVyYXRpb24gIT09IGNsaXAuZnJhbWVfZHVyYXRpb25fbXNbMF0pO1xuICBjb25zdCBbY2FkZW5jZSwgc2V0Q2FkZW5jZV0gPSB1c2VTdGF0ZShpbml0aWFsQ2FkZW5jZSk7XG4gIGNvbnN0IFtzdGVwcywgc2V0U3RlcHNdID0gdXNlU3RhdGUoaW5pdGlhbCk7XG4gIGNvbnN0IGJ5SWQgPSBuZXcgTWFwKGZyYW1lcy5tYXAoZnJhbWUgPT4gW2ZyYW1lLmZyYW1lX2lkLCBmcmFtZV0pKTtcbiAgY29uc3QgZmlyc3RGcmFtZSA9IGJ5SWQuZ2V0KHN0ZXBzWzBdPy5mcmFtZSk7XG4gIGNvbnN0IGNhZGVuY2VOdW1iZXIgPSBOdW1iZXIoY2FkZW5jZSk7XG4gIGNvbnN0IGZyYW1lUmVmcyA9IHN0ZXBzLm1hcChzdGVwID0+IHN0ZXAuZnJhbWUpO1xuICBjb25zdCB0cmltbWVkTmFtZSA9IG5hbWUudHJpbSgpO1xuICBjb25zdCB2YWxpZCA9IHN0ZXBzLmxlbmd0aCA+IDAgJiYgc3RlcHMubGVuZ3RoIDw9IDI1NiAmJiBzdGVwcy5ldmVyeShzdGVwID0+XG4gICAgYnlJZC5oYXMoc3RlcC5mcmFtZSkgJiYgYnlJZC5nZXQoc3RlcC5mcmFtZSk/LndpZHRoID09PSBmaXJzdEZyYW1lPy53aWR0aCAmJiBieUlkLmdldChzdGVwLmZyYW1lKT8uaGVpZ2h0ID09PSBmaXJzdEZyYW1lPy5oZWlnaHQpXG4gICAgJiYgY2FkZW5jZS50cmltKCkgIT09IFwiXCIgJiYgTnVtYmVyLmlzSW50ZWdlcihjYWRlbmNlTnVtYmVyKSAmJiBjYWRlbmNlTnVtYmVyID49IDEgJiYgY2FkZW5jZU51bWJlciA8PSA2MDAwMFxuICAgICYmIHRyaW1tZWROYW1lLmxlbmd0aCA+IDAgJiYgdHJpbW1lZE5hbWUubGVuZ3RoIDw9IDY0XG4gICAgJiYgKCFsb29wUG9saWNpZXMgfHwgbG9vcFBvbGljaWVzLmluY2x1ZGVzKGxvb3BQb2xpY3kpKTtcbiAgY29uc3QgY2hhbmdlZCA9IGNyZWF0aW5nIHx8IGNsaXBIYXNNaXhlZENhZGVuY2UgfHwgbG9vcFBvbGljeSAhPT0gY2xpcC5sb29wX3BvbGljeVxuICAgIHx8IHRyaW1tZWROYW1lICE9PSBpbml0aWFsTmFtZSgpXG4gICAgfHwgY2FkZW5jZU51bWJlciAhPT0gKGNsaXAuZnJhbWVfZHVyYXRpb25fbXNbMF0gPz8gNDAwKVxuICAgIHx8IEpTT04uc3RyaW5naWZ5KGZyYW1lUmVmcykgIT09IEpTT04uc3RyaW5naWZ5KGNsaXAuZnJhbWVfcmVmcyk7XG4gIGNvbnN0IGZyYW1lTGFiZWwgPSAoaWQ6IHN0cmluZykgPT4ge1xuICAgIGNvbnN0IGFzc2V0ID0gYXNzZXRzLmZpbmQoaXRlbSA9PiBpdGVtLmZyYW1lcy5zb21lKGZyYW1lID0+IGZyYW1lLmZyYW1lX2lkID09PSBpZCkpO1xuICAgIGNvbnN0IGZyYW1lID0gYXNzZXQ/LmZyYW1lcy5maW5kKGl0ZW0gPT4gaXRlbS5mcmFtZV9pZCA9PT0gaWQpO1xuICAgIHJldHVybiBhc3NldCA/IGAke2Fzc2V0LmRpc3BsYXlfbmFtZSA/PyBhc3NldC50ZXh0ID8/IFwiU3ByaXRlXCJ9IC8gJHtmcmFtZT8uZGlzcGxheV9uYW1lID8/IGBGcmFtZSAke2Fzc2V0LmZyYW1lcy5maW5kSW5kZXgoaXRlbSA9PiBpdGVtLmZyYW1lX2lkID09PSBpZCkgKyAxfWB9YCA6IFwiVW5hdmFpbGFibGUgZnJhbWVcIjtcbiAgfTtcbiAgY29uc3QgdXNlcnMgPSBzY2VuZXMuZmxhdE1hcChzY2VuZSA9PiAoc2NlbmUub2JqZWN0cyA/PyBbXSkuZmlsdGVyKG9iamVjdCA9PiBvYmplY3QuYW5pbWF0aW9uX3JlZiA9PT0gY2xpcC5hbmltYXRpb25faWQpXG4gICAgLm1hcChvYmplY3QgPT4gYCR7c2NlbmUuZGlzcGxheV9uYW1lfSAvICR7b2JqZWN0Lm9iamVjdF9pZH1gKSk7XG4gIGNvbnN0IG1vdmUgPSAoaW5kZXg6IG51bWJlciwgZGVsdGE6IG51bWJlcikgPT4gc2V0U3RlcHMoY3VycmVudCA9PiB7XG4gICAgY29uc3QgbmV4dCA9IFsuLi5jdXJyZW50XTtcbiAgICBbbmV4dFtpbmRleF0sIG5leHRbaW5kZXggKyBkZWx0YV1dID0gW25leHRbaW5kZXggKyBkZWx0YV0sIG5leHRbaW5kZXhdXTtcbiAgICByZXR1cm4gbmV4dDtcbiAgfSk7XG4gIGlmICghb3BlbikgcmV0dXJuIDxidXR0b24gY2xhc3NOYW1lPVwiYnV0dG9uIHNlY29uZGFyeVwiIHR5cGU9XCJidXR0b25cIiBkaXNhYmxlZD17ZGlzYWJsZWR9XG4gICAgb25DbGljaz17KCkgPT4geyBzZXROYW1lKGluaXRpYWxOYW1lKCkpOyBzZXRTdGVwcyhpbml0aWFsKCkpOyBzZXRDYWRlbmNlKGluaXRpYWxDYWRlbmNlKCkpOyBzZXRPcGVuKHRydWUpOyB9fT48UGVuY2lsIHNpemU9ezE0fSAvPkVkaXQgY2xpcDwvYnV0dG9uPjtcbiAgY29uc3QgZGVsZXRlRGlzYWJsZWQgPSBkaXNhYmxlZCB8fCBjcmVhdGluZyB8fCBvbkRlbGV0ZSA9PT0gdW5kZWZpbmVkIHx8IHVzZXJzLmxlbmd0aCA+IDA7XG4gIHJldHVybiA8c2VjdGlvbiBjbGFzc05hbWU9XCJjbGlwLWVkaXRvclwiIGFyaWEtbGFiZWw9XCJBbmltYXRpb24gY2xpcCBlZGl0b3JcIiBvbktleURvd249e2V2ZW50ID0+IHtcbiAgICAgIGlmIChldmVudC5rZXkgPT09IFwiRXNjYXBlXCIpIHsgZXZlbnQuc3RvcFByb3BhZ2F0aW9uKCk7IHNldE9wZW4oZmFsc2UpOyBvbkNhbmNlbD8uKCk7IH1cbiAgfX0+XG4gICAgPGRpdiBjbGFzc05hbWU9XCJjbGlwLWVkaXRvci1oZWFkaW5nXCI+XG4gICAgICA8ZGl2PlxuICAgICAgICA8aDQ+e2Rpc3BsYXlOYW1lID8/IGNsaXAuYW5pbWF0aW9uX2lkfTwvaDQ+XG4gICAgICAgIHshY3JlYXRpbmcgJiYgPHAgY2xhc3NOYW1lPVwibXV0ZWRcIj5DaGFuZ2VzIGFwcGx5IGV2ZXJ5d2hlcmUgdGhpcyBhbmltYXRpb24gaXMgdXNlZC48L3A+fVxuICAgICAgPC9kaXY+XG4gICAgICB7IWNyZWF0aW5nICYmIDxkaXYgY2xhc3NOYW1lPVwiY2xpcC1lZGl0b3ItcmVjb3JkLWFjdGlvbnNcIj5cbiAgICAgICAgPGJ1dHRvbiBjbGFzc05hbWU9XCJidXR0b24gc2Vjb25kYXJ5XCIgdHlwZT1cImJ1dHRvblwiIGRpc2FibGVkPXtkaXNhYmxlZCB8fCBvbkR1cGxpY2F0ZSA9PT0gdW5kZWZpbmVkfVxuICAgICAgICAgIG9uQ2xpY2s9eygpID0+IHsgdm9pZCBvbkR1cGxpY2F0ZT8uKCk7IH19PjxDb3B5IHNpemU9ezE0fSAvPkR1cGxpY2F0ZTwvYnV0dG9uPlxuICAgICAgICA8YnV0dG9uIGNsYXNzTmFtZT1cImJ1dHRvbiBkYW5nZXJcIiB0eXBlPVwiYnV0dG9uXCIgZGlzYWJsZWQ9e2RlbGV0ZURpc2FibGVkfVxuICAgICAgICAgIHRpdGxlPXt1c2Vycy5sZW5ndGggPiAwID8gXCJDbGVhciB0aGlzIGFuaW1hdGlvbiBmcm9tIHNjZW5lIG9iamVjdHMgYmVmb3JlIGRlbGV0aW5nIGl0LlwiIDogXCJEZWxldGUgdGhpcyBhbmltYXRpb25cIn1cbiAgICAgICAgICBvbkNsaWNrPXsoKSA9PiB7IHZvaWQgb25EZWxldGU/LigpOyB9fT48VHJhc2gyIHNpemU9ezE0fSAvPkRlbGV0ZSBhbmltYXRpb248L2J1dHRvbj5cbiAgICAgIDwvZGl2Pn1cbiAgICA8L2Rpdj5cbiAgICA8ZGwgY2xhc3NOYW1lPVwiY2xpcC1lZGl0b3Itc3VtbWFyeVwiPlxuICAgICAgPGRpdj48ZHQ+RnJhbWVzPC9kdD48ZGQ+e3N0ZXBzLmxlbmd0aH08L2RkPjwvZGl2PlxuICAgICAgPGRpdj48ZHQ+Q2FkZW5jZTwvZHQ+PGRkPntjYWRlbmNlfSBtczwvZGQ+PC9kaXY+XG4gICAgICA8ZGl2PjxkdD5QbGF5YmFjazwvZHQ+PGRkPntsb29wUG9saWN5ID09PSBcImxvb3BcIiA/IFwiTG9vcFwiIDogbG9vcFBvbGljeSA9PT0gXCJvbmNlXCIgPyBcIlBsYXkgb25jZVwiIDogbG9vcFBvbGljeX08L2RkPjwvZGl2PlxuICAgICAgPGRpdj48ZHQ+SUQ8L2R0PjxkZD57Y2xpcC5hbmltYXRpb25faWR9PC9kZD48L2Rpdj5cbiAgICA8L2RsPlxuICAgIDxkZXRhaWxzPjxzdW1tYXJ5PlVzZWQgYnkge3VzZXJzLmxlbmd0aH0gc2NlbmUgb2JqZWN0e3VzZXJzLmxlbmd0aCA9PT0gMSA/IFwiXCIgOiBcInNcIn08L3N1bW1hcnk+XG4gICAgICA8dWw+e3VzZXJzLm1hcCgodXNlciwgaSkgPT4gPGxpIGtleT17aX0+e3VzZXJ9PC9saT4pfTwvdWw+XG4gICAgPC9kZXRhaWxzPlxuICAgIDxmaWVsZHNldCBkaXNhYmxlZD17ZGlzYWJsZWR9PlxuICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwiY2xpcC1lZGl0b3ItcGFuZWxcIj5cbiAgICAgICAgPGg1PkRldGFpbHM8L2g1PlxuICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiY2xpcC1lZGl0b3ItbmFtZVwiPk5hbWU8aW5wdXQgdHlwZT1cInRleHRcIiBtYXhMZW5ndGg9ezY0fSBhcmlhLWxhYmVsPVwiQW5pbWF0aW9uIG5hbWVcIlxuICAgICAgICAgIHZhbHVlPXtuYW1lfSBvbkNoYW5nZT17ZXZlbnQgPT4gc2V0TmFtZShldmVudC50YXJnZXQudmFsdWUpfSAvPjwvbGFiZWw+XG4gICAgICA8L3NlY3Rpb24+XG4gICAgICA8c2VjdGlvbiBjbGFzc05hbWU9XCJjbGlwLWVkaXRvci1wYW5lbFwiPlxuICAgICAgICA8aDU+UGxheWJhY2s8L2g1PlxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImNsaXAtZWRpdG9yLXNldHRpbmdzXCI+XG4gICAgICAgICAge2xvb3BQb2xpY2llcyAmJiA8bGFiZWw+TW9kZTxzZWxlY3QgYXJpYS1sYWJlbD1cIkFuaW1hdGlvbiBwbGF5YmFja1wiIHZhbHVlPXtsb29wUG9saWN5fSBvbkNoYW5nZT17ZXZlbnQgPT4gc2V0TG9vcFBvbGljeShldmVudC50YXJnZXQudmFsdWUpfT5cbiAgICAgICAgICAgIHtsb29wUG9saWNpZXMubWFwKHBvbGljeSA9PiA8b3B0aW9uIGtleT17cG9saWN5fSB2YWx1ZT17cG9saWN5fT57cG9saWN5ID09PSBcImxvb3BcIiA/IFwiTG9vcFwiIDogcG9saWN5ID09PSBcIm9uY2VcIiA/IFwiUGxheSBvbmNlXCIgOiBwb2xpY3l9PC9vcHRpb24+KX1cbiAgICAgICAgICA8L3NlbGVjdD48L2xhYmVsPn1cbiAgICAgICAgICA8bGFiZWw+Q2FkZW5jZSAobXMpPGlucHV0IHR5cGU9XCJudW1iZXJcIiBtaW49ezF9IG1heD17NjAwMDB9IHN0ZXA9ezF9IGFyaWEtbGFiZWw9XCJBbmltYXRpb24gY2FkZW5jZVwiXG4gICAgICAgICAgICB2YWx1ZT17Y2FkZW5jZX0gb25DaGFuZ2U9e2V2ZW50ID0+IHNldENhZGVuY2UoZXZlbnQudGFyZ2V0LnZhbHVlKX0gLz48L2xhYmVsPlxuICAgICAgICA8L2Rpdj5cbiAgICAgIDwvc2VjdGlvbj5cbiAgICAgIHtjbGlwSGFzTWl4ZWRDYWRlbmNlICYmIDxwIGNsYXNzTmFtZT1cIm11dGVkXCI+VGhpcyBjbGlwIGhhcyBvbGRlciBtaXhlZCBmcmFtZSB0aW1pbmdzLiBBcHBseWluZyBpdCB3aWxsIHVzZSBvbmUgY2FkZW5jZSBmb3IgZXZlcnkgZnJhbWUuPC9wPn1cbiAgICAgIDxzZWN0aW9uIGNsYXNzTmFtZT1cImNsaXAtZWRpdG9yLXBhbmVsXCI+XG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiY2xpcC1lZGl0b3ItcGFuZWwtaGVhZGluZ1wiPlxuICAgICAgICAgIDxoNT5GcmFtZSBvcmRlcjwvaDU+XG4gICAgICAgICAgPHNwYW4+e3N0ZXBzLmxlbmd0aH0gZnJhbWV7c3RlcHMubGVuZ3RoID09PSAxID8gXCJcIiA6IFwic1wifTwvc3Bhbj5cbiAgICAgICAgPC9kaXY+XG4gICAgICAgIHtzdGVwcy5tYXAoKHN0ZXAsIGluZGV4KSA9PiA8ZGl2IGNsYXNzTmFtZT1cImNsaXAtc3RlcFwiIGtleT17aW5kZXh9PlxuICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImNsaXAtc3RlcC1wcmV2aWV3XCI+e2J5SWQuZ2V0KHN0ZXAuZnJhbWUpICYmIDxGcmFtZVByZXZpZXdDYW52YXMgZnJhbWU9e2J5SWQuZ2V0KHN0ZXAuZnJhbWUpIX0gLz59PC9zcGFuPlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiY2xpcC1zdGVwLWZyYW1lXCI+XG4gICAgICAgICAgICA8c3Bhbj5GcmFtZSB7aW5kZXggKyAxfTwvc3Bhbj5cbiAgICAgICAgICAgIDxzdHJvbmc+e2ZyYW1lTGFiZWwoc3RlcC5mcmFtZSl9PC9zdHJvbmc+XG4gICAgICAgICAgICA8c21hbGw+e2J5SWQuaGFzKHN0ZXAuZnJhbWUpID8gYCR7YnlJZC5nZXQoc3RlcC5mcmFtZSkhLndpZHRofXgke2J5SWQuZ2V0KHN0ZXAuZnJhbWUpIS5oZWlnaHR9YCA6IFwiVW5hdmFpbGFibGVcIn08L3NtYWxsPlxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiY2xpcC1zdGVwLWFjdGlvbnNcIj5cbiAgICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGNsYXNzTmFtZT1cImljb24tYnV0dG9uXCIgdGl0bGU9e2BNb3ZlIHN0ZXAgJHtpbmRleCArIDF9IHVwYH0gZGlzYWJsZWQ9e2luZGV4ID09PSAwfSBvbkNsaWNrPXsoKSA9PiBtb3ZlKGluZGV4LCAtMSl9PjxBcnJvd1VwIHNpemU9ezE0fSAvPjwvYnV0dG9uPlxuICAgICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwiaWNvbi1idXR0b25cIiB0aXRsZT17YE1vdmUgc3RlcCAke2luZGV4ICsgMX0gZG93bmB9IGRpc2FibGVkPXtpbmRleCA9PT0gc3RlcHMubGVuZ3RoIC0gMX0gb25DbGljaz17KCkgPT4gbW92ZShpbmRleCwgMSl9PjxBcnJvd0Rvd24gc2l6ZT17MTR9IC8+PC9idXR0b24+XG4gICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBjbGFzc05hbWU9XCJpY29uLWJ1dHRvblwiIHRpdGxlPXtgRHVwbGljYXRlIHN0ZXAgJHtpbmRleCArIDF9YH0gZGlzYWJsZWQ9e3N0ZXBzLmxlbmd0aCA+PSAyNTZ9XG4gICAgICAgICAgICAgIG9uQ2xpY2s9eygpID0+IHNldFN0ZXBzKGN1cnJlbnQgPT4gWy4uLmN1cnJlbnQuc2xpY2UoMCwgaW5kZXggKyAxKSwgeyAuLi5zdGVwIH0sIC4uLmN1cnJlbnQuc2xpY2UoaW5kZXggKyAxKV0pfT48Q29weSBzaXplPXsxNH0gLz48L2J1dHRvbj5cbiAgICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGNsYXNzTmFtZT1cImljb24tYnV0dG9uXCIgdGl0bGU9e2BSZW1vdmUgc3RlcCAke2luZGV4ICsgMX1gfSBkaXNhYmxlZD17c3RlcHMubGVuZ3RoIDw9IDF9XG4gICAgICAgICAgICAgIG9uQ2xpY2s9eygpID0+IHNldFN0ZXBzKGN1cnJlbnQgPT4gY3VycmVudC5maWx0ZXIoKF8sIGkpID0+IGkgIT09IGluZGV4KSl9PjxUcmFzaDIgc2l6ZT17MTR9IC8+PC9idXR0b24+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgIDwvZGl2Pil9XG4gICAgICA8L3NlY3Rpb24+XG4gICAgICB7IXZhbGlkICYmIDxwIHJvbGU9XCJzdGF0dXNcIj5Vc2UgYSBuYW1lIGZyb20gMSB0byA2NCBjaGFyYWN0ZXJzLiBGcmFtZXMgbXVzdCBiZSBhdmFpbGFibGUgYW5kIHRoZSBzYW1lIHNpemUsIHdpdGggb25lIHdob2xlIGNhZGVuY2UgZnJvbSAxIHRvIDYwMDAwIG1zIGFuZCBzdXBwb3J0ZWQgcGxheWJhY2suPC9wPn1cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwiY2xpcC1lZGl0b3ItYWN0aW9uc1wiPlxuICAgICAgICA8YnV0dG9uIGNsYXNzTmFtZT1cImJ1dHRvbiBwcmltYXJ5XCIgdHlwZT1cImJ1dHRvblwiIGRpc2FibGVkPXshdmFsaWQgfHwgIWNoYW5nZWR9IG9uQ2xpY2s9e2FzeW5jICgpID0+IHtcbiAgICAgICAgICBpZiAoYXdhaXQgb25BcHBseShbeyBraW5kOiBcImFuaW1hdGlvbi51cHNlcnRcIiwgYW5pbWF0aW9uOiB7IC4uLmNsaXAsXG4gICAgICAgICAgICBkaXNwbGF5X25hbWU6IHRyaW1tZWROYW1lLCBsb29wX3BvbGljeTogbG9vcFBvbGljeSwgZnJhbWVfcmVmczogZnJhbWVSZWZzLCBmcmFtZV9kdXJhdGlvbl9tczogZnJhbWVSZWZzLm1hcCgoKSA9PiBjYWRlbmNlTnVtYmVyKSB9IH1dKSkgeyBpZiAoIWluaXRpYWxseU9wZW4pIHNldE9wZW4oZmFsc2UpOyB9XG4gICAgICAgIH19PntjcmVhdGluZyA/IFwiQ3JlYXRlIGFuaW1hdGlvblwiIDogXCJBcHBseSBjbGlwXCJ9PC9idXR0b24+XG4gICAgICAgIDxidXR0b24gY2xhc3NOYW1lPVwiYnV0dG9uIHNlY29uZGFyeVwiIHR5cGU9XCJidXR0b25cIiBvbkNsaWNrPXsoKSA9PiB7IHNldE9wZW4oZmFsc2UpOyBvbkNhbmNlbD8uKCk7IH19PkNhbmNlbDwvYnV0dG9uPlxuICAgICAgPC9kaXY+XG4gICAgPC9maWVsZHNldD5cbiAgPC9zZWN0aW9uPjtcbn1cbiJdfQ==

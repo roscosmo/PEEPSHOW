@@ -21,7 +21,11 @@ contextBridge.exposeInMainWorld("peepStudio", {
     ipcRenderer.invoke("peep:write-generated-sprite-png", projectPath, requestedAssetId, pngDataUrl),
   overwriteGeneratedSpritePng: (projectPath: string, sourcePath: string, pngDataUrl: string) =>
     ipcRenderer.invoke("peep:overwrite-generated-sprite-png", projectPath, sourcePath, pngDataUrl),
-  importAudioWav: (projectPath: string) => ipcRenderer.invoke("peep:import-audio-wav", projectPath),
+  chooseAudioWav: (projectPath: string) => ipcRenderer.invoke("peep:choose-audio-wav", projectPath),
+  inspectProjectAudioWav: (projectPath: string, sourcePath: string) =>
+    ipcRenderer.invoke("peep:inspect-project-audio-wav", projectPath, sourcePath),
+  importAudioWav: (projectPath: string, sourcePath: string, options: { normalize: boolean; targetPeakDbfs: number; trimStartMs: number; trimEndMs: number }) =>
+    ipcRenderer.invoke("peep:import-audio-wav", projectPath, sourcePath, options),
   audioThumbnailSource: (projectPath: string, sourcePath: string) => ipcRenderer.invoke("peep:audio-thumbnail-source", projectPath, sourcePath),
   getEmulatorPopoutStatus: () => ipcRenderer.invoke("peep:emulator-popout-status"),
   openEmulatorPopout: () => ipcRenderer.invoke("peep:emulator-popout-open"),

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { readThumbnailAudio } from "./audioThumbnail.js";
+import { inspectPcmWave, preparePcmWave } from "./audioNormalization.js";
 
 const PROTOCOL_VERSION = 1;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -896,7 +897,7 @@ ipcMain.handle("peep:overwrite-generated-sprite-png", async (_event, projectPath
   };
 });
 
-ipcMain.handle("peep:import-audio-wav", async (_event, projectPath: unknown) => {
+ipcMain.handle("peep:choose-audio-wav", async (_event, projectPath: unknown) => {
   if (typeof projectPath !== "string") {
     throw new Error("Invalid audio import request from renderer");
   }
@@ -914,11 +915,72 @@ ipcMain.handle("peep:import-audio-wav", async (_event, projectPath: unknown) => 
     return null;
   }
   const sourcePath = path.resolve(result.filePaths[0]);
+  const inspection = inspectPcmWave(await readFile(sourcePath));
+  return {
+    sourcePath,
+    sourceName: path.basename(sourcePath),
+    ...inspection,
+  };
+});
+
+ipcMain.handle("peep:inspect-project-audio-wav", async (_event, projectPath: unknown, sourcePathValue: unknown) => {
+  if (typeof projectPath !== "string" || typeof sourcePathValue !== "string") {
+    throw new Error("Invalid project audio request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj") || path.extname(sourcePathValue).toLowerCase() !== ".wav") {
+    throw new Error("Project audio source must be a WAV inside a .peepproj directory");
+  }
+  const sourcePath = resolveProjectRelativePath(projectRoot, sourcePathValue);
+  const inspection = inspectPcmWave(await readFile(sourcePath));
+  return {
+    sourcePath,
+    sourceName: path.basename(sourcePathValue),
+    ...inspection,
+  };
+});
+
+ipcMain.handle("peep:import-audio-wav", async (_event, projectPath: unknown, sourcePathValue: unknown, options: unknown) => {
+  if (typeof projectPath !== "string" || typeof sourcePathValue !== "string") {
+    throw new Error("Invalid audio import request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Audio import target must be a .peepproj directory");
+  }
+  const sourcePath = path.resolve(sourcePathValue);
+  if (path.extname(sourcePath).toLowerCase() !== ".wav") {
+    throw new Error("Audio import source must be a WAV file");
+  }
   const destination = await uniqueAssetPath(projectRoot, sourcePath, "audio");
-  await cp(sourcePath, destination.destinationPath);
+  const requested = options !== null && typeof options === "object"
+    ? options as { normalize?: unknown; targetPeakDbfs?: unknown; trimStartMs?: unknown; trimEndMs?: unknown }
+    : {};
+  const shouldNormalize = requested.normalize !== false;
+  const targetPeakDbfs = typeof requested.targetPeakDbfs === "number" ? requested.targetPeakDbfs : -6;
+  const source = await readFile(sourcePath);
+  const inspection = inspectPcmWave(source, 1);
+  const prepared = preparePcmWave(source, {
+    normalize: shouldNormalize,
+    targetPeakDbfs,
+    trimStartMs: typeof requested.trimStartMs === "number" ? requested.trimStartMs : 0,
+    trimEndMs: typeof requested.trimEndMs === "number" ? requested.trimEndMs : inspection.durationMs,
+  });
+  await writeFile(destination.destinationPath, prepared.wav);
   return {
     assetId: destination.assetId,
     sourcePath: destination.relativePath,
+    analysis: {
+      normalized: prepared.normalized,
+      inputPeakDbfs: prepared.inputPeakDbfs,
+      outputPeakDbfs: prepared.outputPeakDbfs,
+      gainDb: prepared.gainDb,
+      channels: prepared.channels,
+      sampleRateHz: prepared.sampleRateHz,
+      bitsPerSample: prepared.bitsPerSample,
+      originalDurationMs: prepared.originalDurationMs,
+      outputDurationMs: prepared.outputDurationMs,
+    },
   };
 });
 
