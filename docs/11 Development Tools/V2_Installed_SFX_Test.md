@@ -395,3 +395,139 @@ one hardware sample does not establish typical/worst-case latency, physical
 button-to-panel delay, isolated CPU time or power savings. The operator confirmed
 unchanged selection, animation, timer and audio behavior ("yes all as before").
 This closes the exercised hardware regression check for prepared scene reuse.
+
+### Panel Substage Capture (API 3)
+
+The 57.10 ms panel-stage measurement is an aggregate, not the SPI wire duration.
+The existing capture brackets only 0.35 ms of model validation inside it; it
+cannot otherwise separate composition, framebuffer bookkeeping and transfer.
+API 3 adds capture-scoped 0x5177 markers without changing drawing, transfer,
+clock or sleep behavior. `thDisplay` opens this scope only for the captured
+render token and closes it on return, including failed returns. An inactive,
+completed or re-armed capture cannot inherit the old scope. Candidate packing
+and unrelated rendering do not emit these panel records.
+
+Records carry phase, begin=0/end=1, capture sequence and value:
+
+| Phase | Work | Begin value | End value |
+|---|---|---|---|
+| 1 | Total scoped presentation | NOT_RUN | HAL status |
+| 2 | Model copy | bytes | 0 |
+| 3 | Clear framebuffer/bookkeeping | bytes | 0 |
+| 4 | Compose scene | elements | accumulated black count |
+| 5 | Copy cursor/base frame | bytes | 0 |
+| 6 | Compare dirty rows | 0 | dirty rows |
+| 7 | Fill statistics, including framebuffer hash | 0 | 0 |
+| 8 | Present dirty rows | rows | HAL status |
+| 9 | Build a Sharp wire transaction | rows | HAL status |
+| 10 | Start DMA | wire bytes | HAL status |
+| 11 | Wait for DMA | timeout ms | HAL status |
+| 12 | Commit presented frame/bookkeeping | bytes | 0 |
+
+TOTAL contains the other stages; TRANSFER contains each chunk's WIRE/START/WAIT;
+COMPOSE contains the existing raster VALIDATE pair. Do not sum these nested
+durations. Transfer is absent for a no-dirty-row presentation. Failed wire/start
+work prevents later phases; a failed transfer never commits the framebuffer.
+DMA launch and wait are software call boundaries, not exact electrical transfer
+boundaries. Markers are outside polling loops and interrupt callbacks. The
+existing bounded busy-wait remains unchanged; no CPU/energy improvement is
+claimed from adding instrumentation.
+
+Use normal Debug firmware and the same installed real-audio GUI egg. In quiet
+Lobby, halt and source `__fw0_object_trace_enable.gdb` (now requires API 3).
+Resume, wait one second, press A once, and allow the Garden timer sound to end
+before halting. Source `__fw0_object_trace_prints.gdb` and
+`__fw0_tracex_dump.gdb`. Require retained RECEIVE/DONE and TOTAL pairs, matched
+per-phase records, zero marker errors, successful panel status, and unchanged
+visible/audio behavior. Confirm clock records before converting cycles. The
+first hardware substage result is recorded below.
+
+Verification: 38 focused native/host tests passed across trace lifecycle and
+transfer failure/chunk/commit paths, awake rendering, display admission, shape
+parity, candidate queue ownership and installed SFX. Debug build passed with
+RAM 553648 bytes and SRAM4 15480 bytes (both unchanged), ROM 887248 bytes.
+The build retains the two existing unused-function warnings in the owner state
+machines. Diff whitespace checks passed. No flash/install action was performed
+by the agent.
+
+### First Panel Substage Result
+
+Capture `__fw0_tracex_snapshot_20260918_073627.trx` retains matching sequence-1
+RECEIVE/DONE and panel TOTAL markers, every panel phase pair, zero wraps and
+marker errors, successful event/panel results, and 24 MHz stage/clock samples
+without retune triples. Lobby 2 changes to Garden 1. The panel-stage interval
+is 57.37 ms (scoped TOTAL 57.34 ms), receipt-to-panel is 198.76 ms, and
+receipt-to-DONE is 201.99 ms. The coarse tick print reports 200/210 ms.
+
+| Non-overlapping panel work | Elapsed |
+|---|---:|
+| Copy model (520 bytes) | 0.14 ms |
+| Clear framebuffer/bookkeeping | 1.05 ms |
+| Compose 11 elements | 19.53 ms |
+| Copy base frame | 0.77 ms |
+| Compare/register 128 dirty rows | 8.66 ms |
+| Statistics/hash | 3.45 ms |
+| Prepare/launch/wait for all transfers | 21.95 ms |
+| Commit frame/bookkeeping | 0.78 ms |
+
+The transfer interval contains three chunks of 48/48/32 rows, with wire lengths
+962/962/642 bytes. Within it, wire construction totals 1.09 ms, DMA launch calls
+0.13 ms and DMA wait calls 20.61 ms; all statuses are HAL_OK. These nested values
+must not be added again to the table. Software wait boundaries are not exact
+electrical SPI duration. The remaining roughly 1 ms of scoped TOTAL is outside
+these substage pairs. No marked PMIC operation interrupted this transaction;
+the lower total than the previous capture is not an instrumentation speedup.
+
+Investigation found an avoidable ordered-list search in
+`DisplayRenderer_MarkPanelRowDirty`: `ComputeDirtyRowsFromCommitted` resets the
+list and scans rows in ascending order, yet each newly dirty row searches the
+list from its beginning before insertion. For the measured 128 dirty rows this
+executes 8128 row-order comparisons, despite every row belonging at the end.
+The 8.66 ms interval includes reset and memcmp as well as insertion; it is not
+all proven recoverable. There are no intervening recorded events in that
+interval, though unmarked ISRs and observer overhead remain possible.
+
+Implemented after approval: fast append when the new row sorts after the
+current last row, keeping duplicate/bounds/capacity checks and the existing
+sorted insertion for out-of-order callers. The empty list also appends directly.
+No clock, transfer speed, DMA wait or power policy changed.
+
+The native dirty-row harness extracts the four production row functions and
+checks ascending, descending and mixed insertion after every operation,
+duplicates, invalid rows, full capacity, reset, sparse committed-frame changes,
+identical frames and an invalid committed baseline. It checks ordered unique
+one-based rows and matching marks, and verifies neither framebuffer is modified.
+Existing renderer pixel-parity and panel wire/chunk/error tests also pass.
+Together, 39 focused tests passed. Debug build passed: RAM 553648 bytes and
+SRAM4 15480 bytes unchanged; ROM 887280 bytes, 32 bytes above instrumentation
+alone. Hardware savings and unchanged behavior remain to be confirmed.
+
+Reflash normal Debug firmware, retain the installed real-audio GUI egg, and
+repeat the quiet Lobby-to-Garden API 3 trace sequence above. Compare DIRTY_ROWS
+against 8.66 ms with the same 128 dirty rows and 24 MHz clock, while checking
+the complete transaction and unchanged visuals/audio. Do not attribute changes
+in other phases or interruptions to the append optimization.
+
+### Dirty-Row Append Hardware Result
+
+Capture `__fw0_tracex_snapshot_20260918_092206.trx` retains matching sequence-1
+RECEIVE/DONE and all panel phase pairs, zero wraps/marker errors, and successful
+event/panel results. Runtime stage and clock records remain at 24 MHz, without
+retune triples or marked owner operations inside the transaction.
+
+| Work | Before | After |
+|---|---:|---:|
+| Compare/register 128 dirty rows | 8.66 ms | 1.53 ms |
+| Scoped panel TOTAL | 57.34 ms | 50.26 ms |
+| Runtime receipt to panel completion | 198.76 ms | 191.43 ms |
+| Runtime receipt to DONE | 201.99 ms | 194.73 ms |
+
+Dirty-row work saves 7.13 ms (about 82%). Composition remains 19.53 ms for
+11 elements and black count 2467; transfer remains 21.94 ms with the same
+48/48/32 row chunks, 962/962/642 wire bytes and successful HAL statuses.
+Candidate work remains one full/four reused frames with 18 elements drawn.
+The total improvement is consistent with the targeted change, not a change
+in display workload or clock rate. These are instrumented elapsed intervals,
+not isolated CPU time or physical button-to-panel latency. Trace success and
+matching work counts do not replace operator confirmation of intact visuals
+and audio; that confirmation remains pending for this build.

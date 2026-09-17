@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_TRACE_API_VERSION     (2UL)
-#define PS_HW6_OBJECT_TRACE_API_VERSION (2UL)
+#define PS_HW6_OBJECT_TRACE_API_VERSION (3UL)
 #define PS_HW6_TRACE_STATUS_NOT_RUN  (0xFFFFFFFFUL)
 #define PS_HW6_TRACE_STATUS_DISABLED (0xFFFFFFFEUL)
 #define PS_HW6_TRACE_STATUS_NOT_READY (0xFFFFFFFDUL)
@@ -29,6 +29,23 @@ extern "C" {
 #define PS_HW6_TRACE_EVENT_SYSTICK_REGISTERS (0x5174UL)
 #define PS_HW6_TRACE_EVENT_SYSTICK_BEFORE    (0x5175UL)
 #define PS_HW6_TRACE_EVENT_SYSTICK_AFTER     (0x5176UL)
+#define PS_HW6_TRACE_EVENT_OBJECT_PANEL      (0x5177UL)
+
+enum
+{
+  PS_TRACE_PANEL_TOTAL = 1,
+  PS_TRACE_PANEL_MODEL_COPY,
+  PS_TRACE_PANEL_CLEAR,
+  PS_TRACE_PANEL_COMPOSE,
+  PS_TRACE_PANEL_BASE_COPY,
+  PS_TRACE_PANEL_DIRTY_ROWS,
+  PS_TRACE_PANEL_STATS,
+  PS_TRACE_PANEL_TRANSFER,
+  PS_TRACE_PANEL_WIRE,
+  PS_TRACE_PANEL_DMA_START,
+  PS_TRACE_PANEL_DMA_WAIT,
+  PS_TRACE_PANEL_COMMIT
+};
 
 typedef struct
 {
@@ -83,6 +100,10 @@ uint32_t PS_HW6_TraceObjectArm(uint32_t allowed);
 void PS_HW6_TraceObjectBegin(uint32_t sequence);
 void PS_HW6_TraceObjectStage(uint32_t stage, uint32_t token, uint32_t hclk);
 void PS_HW6_TraceObjectRaster(uint32_t stage, uint32_t end);
+/* thDisplay only, scoped to the captured render token; no ISR/loop markers. */
+void PS_HW6_TraceObjectPanelBegin(void);
+void PS_HW6_TraceObjectPanel(uint32_t stage, uint32_t end, uint32_t value);
+void PS_HW6_TraceObjectPanelEnd(uint32_t status);
 uint32_t PS_HW6_TraceObjectOwnerBegin(uint32_t stage);
 void PS_HW6_TraceObjectOwnerEnd(uint32_t stage, uint32_t sequence, uint32_t status);
 void PS_HW6_TraceObjectEnd(uint32_t status);

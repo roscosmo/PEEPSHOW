@@ -40,6 +40,7 @@ static uint32_t counter_runs = 1;
 #define __NOP() (dwt.CYCCNT += counter_runs)
 #define __DMB() ((void)0)
 volatile ps_hw6_object_trace_probe_t g_ps_object_trace_probe;
+static uint32_t ps_object_panel_sequence;
 volatile UINT g_ps_hw6_tracex_enable_status;
 volatile ULONG g_ps_hw6_tracex_runtime_enabled, g_ps_hw6_tracex_buffer_address;
 volatile ULONG g_ps_hw6_tracex_buffer_bytes = 32768, g_ps_hw6_tracex_registry_entries = 64;
@@ -111,7 +112,7 @@ static void test_runtime_arm_eligibility(void)
     g_ps_object_lpbam_probe.enabled = autonomous;
     g_ps_object_trace_probe.request = 1;
     PS_HW6_RTOS_ObjectTraceService();
-    assert(g_ps_object_trace_probe.api_version == 2);
+    assert(g_ps_object_trace_probe.api_version == 3);
     assert(g_ps_object_trace_probe.armed && g_ps_object_latency_probe.request);
     assert(g_ps_object_lpbam_probe.enabled == autonomous);
     uint32_t saved_events = events;
@@ -146,6 +147,10 @@ int main(void)
   assert(PS_HW6_TraceObjectOwnerBegin(PS_TRACE_OWNER_PMIC_SNAPSHOT) == 0);
   PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_PMIC_SNAPSHOT, 0, 0);
   assert(events == 0);
+  PS_HW6_TraceObjectPanelBegin();
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMPOSE, 0, 12);
+  PS_HW6_TraceObjectPanelEnd(0);
+  assert(events == 0 && ps_object_panel_sequence == 0);
   g_ps_object_trace_probe.request = 1;
   assert(!PS_HW6_TraceObjectArm(0) && events == 0);
   counter_runs = 0; g_ps_object_trace_probe.request = 1;
@@ -229,6 +234,30 @@ int main(void)
   assert(last_event == PS_HW6_TRACE_EVENT_OBJECT_STAGE && last_a == 10);
   PS_HW6_TraceObjectRaster(3, 0);
   assert(last_event == PS_HW6_TRACE_EVENT_OBJECT_RASTER && last_a == 3);
+  start = events;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_CLEAR, 0, 3024);
+  assert(events == start); /* Candidate work is outside the panel scope. */
+  PS_HW6_TraceObjectPanelBegin();
+  assert(last_event == PS_HW6_TRACE_EVENT_OBJECT_PANEL && last_a == PS_TRACE_PANEL_TOTAL);
+  assert(last_b == 0 && last_c == 9 && last_d == UINT32_MAX);
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DMA_START, 0, 582);
+  assert(last_a == PS_TRACE_PANEL_DMA_START && last_b == 0 && last_d == 582);
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DMA_START, 1, 2);
+  assert(last_a == PS_TRACE_PANEL_DMA_START && last_b == 1 && last_d == 2);
+  PS_HW6_TraceObjectPanelEnd(2);
+  assert(last_a == PS_TRACE_PANEL_TOTAL && last_b == 1 && last_d == 2);
+  assert(ps_object_panel_sequence == 0);
+  start = events;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMMIT, 0, 3024);
+  PS_HW6_TraceObjectPanelEnd(0);
+  assert(events == start);
+  PS_HW6_TraceObjectPanelBegin();
+  insert_fail = 8;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_CLEAR, 0, 3024);
+  assert(g_ps_object_trace_probe.marker_errors == 1);
+  insert_fail = 0;
+  PS_HW6_TraceObjectPanelEnd(0);
+  g_ps_object_trace_probe.marker_errors = 0;
   for (uint32_t stage = PS_TRACE_OWNER_PMIC_SNAPSHOT; stage <= PS_TRACE_OWNER_JOYSTICK_SUSPEND; ++stage)
   {
     uint32_t token = PS_HW6_TraceObjectOwnerBegin(stage);
@@ -247,11 +276,16 @@ int main(void)
   PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_JOYSTICK_READ, 9, 0);
   assert(g_ps_object_trace_probe.marker_errors == 2);
   insert_fail = 0;
+  PS_HW6_TraceObjectPanelBegin(); /* Runtime may time out during a presentation. */
   PS_HW6_TraceObjectEnd(0);
+  assert(ps_object_panel_sequence == 0);
   assert(g_ps_object_trace_probe.complete && !g_ps_object_trace_probe.active && !running);
   assert(g_ps_object_trace_probe.freeze_status == 0 && !g_ps_hw6_tracex_runtime_enabled);
   assert(last_event == PS_HW6_TRACE_EVENT_OBJECT_CAPTURE && last_a == 3);
   uint32_t saved = events;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMPOSE, 1, 100);
+  PS_HW6_TraceObjectPanelEnd(0);
+  assert(saved == events);
   PS_HW6_TraceObjectRaster(1, 0); PS_HW6_TraceObjectStage(1, 2, 3); PS_HW6_TraceObjectEnd(1);
   assert(saved == events && freezes == 1);
   PS_HW6_TraceSysTickAfter(&snapshot);
@@ -263,6 +297,9 @@ int main(void)
   assert(!g_ps_object_trace_probe.marker_errors && !g_ps_object_trace_probe.wraps);
   PS_HW6_TraceObjectBegin(10);
   saved = events;
+  PS_HW6_TraceObjectPanelEnd(0); /* Late end must not enter the next capture. */
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMPOSE, 1, 100);
+  assert(saved == events);
   PS_HW6_TraceSysTickAfter(&snapshot);
   assert(saved == events);
   PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_JOYSTICK_READ, 9, 0);

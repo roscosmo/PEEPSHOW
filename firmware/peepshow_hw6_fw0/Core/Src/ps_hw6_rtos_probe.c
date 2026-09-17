@@ -12227,8 +12227,12 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
                 PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES) == TX_SUCCESS)
           {
             if (g_ps_object_latency_probe.render_token == (uint32_t)message[2])
-            { PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_PANEL_START); }
+            {
+              PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_PANEL_START);
+              PS_HW6_TraceObjectPanelBegin();
+            }
             result = PS_HW6_DisplayOwner_RenderDevelopmentObjects(&ps_object_display_lease);
+            PS_HW6_TraceObjectPanelEnd((uint32_t)result);
             if ((g_ps_object_latency_probe.active != 0UL) &&
                 (g_ps_object_latency_probe.render_token == (uint32_t)message[2]))
             {

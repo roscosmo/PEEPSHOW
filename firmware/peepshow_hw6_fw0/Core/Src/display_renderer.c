@@ -112,11 +112,17 @@ static void DisplayRenderer_MarkPanelRowDirty(uint16_t panel_y)
   }
 
   panel_row = (uint16_t)(panel_y + 1U);
-  insert_at = 0U;
-  while ((insert_at < s_display_dirty_row_count) &&
-         (s_display_dirty_rows[insert_at] < panel_row))
+  insert_at = s_display_dirty_row_count;
+  /* Frame comparison visits rows in order, so normally only append. */
+  if ((insert_at != 0U) &&
+      (s_display_dirty_rows[insert_at - 1U] > panel_row))
   {
-    ++insert_at;
+    insert_at = 0U;
+    while ((insert_at < s_display_dirty_row_count) &&
+           (s_display_dirty_rows[insert_at] < panel_row))
+    {
+      ++insert_at;
+    }
   }
   for (i = s_display_dirty_row_count; i > insert_at; --i)
   {
@@ -142,10 +148,12 @@ static void DisplayRenderer_ComputeDirtyRowsFromCommitted(void)
   uint16_t row;
   uint32_t row_offset;
 
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DIRTY_ROWS, 0UL, 0UL);
   DisplayRenderer_ResetDirtyRows();
   if (s_display_committed_valid == 0UL)
   {
     DisplayRenderer_MarkAllRowsDirty();
+    PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DIRTY_ROWS, 1UL, s_display_dirty_row_count);
     return;
   }
 
@@ -159,6 +167,7 @@ static void DisplayRenderer_ComputeDirtyRowsFromCommitted(void)
       DisplayRenderer_MarkPanelRowDirty(row);
     }
   }
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DIRTY_ROWS, 1UL, s_display_dirty_row_count);
 }
 
 static uint32_t DisplayRenderer_CountBlackPixels(void)
@@ -542,10 +551,12 @@ static void DisplayRenderer_ClearListCursor(uint32_t row)
 
 static void DisplayRenderer_RecordCursorBaseFrame(void)
 {
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_BASE_COPY, 0UL, sizeof(s_display_cursor_base_framebuffer));
   (void)memcpy(s_display_cursor_base_framebuffer,
                s_display_framebuffer,
                sizeof(s_display_cursor_base_framebuffer));
   s_display_cursor_base_valid = 1UL;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_BASE_COPY, 1UL, 0UL);
 }
 
 static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
@@ -559,6 +570,7 @@ static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
     return;
   }
 
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_STATS, 0UL, 0UL);
   stats->width = DISPLAY_WIDTH;
   stats->height = DISPLAY_HEIGHT;
   stats->framebuffer_hash = DisplayRenderer_FramebufferHash();
@@ -571,10 +583,12 @@ static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
   stats->primitive_id = primitive_id;
   stats->previous_focus_row = previous_focus_row;
   stats->current_focus_row = current_focus_row;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_STATS, 1UL, 0UL);
 }
 
 void DisplayRenderer_ClearWhite(void)
 {
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_CLEAR, 0UL, sizeof(s_display_framebuffer));
   DisplayRenderer_ResetDirtyRows();
   (void)memset(s_display_framebuffer, 0xFF,
                sizeof(s_display_framebuffer));
@@ -584,6 +598,7 @@ void DisplayRenderer_ClearWhite(void)
   s_display_pending_list_invalidates = 1UL;
   s_display_pending_focus_valid = 0UL;
   s_display_pending_focus_invalidates = 1UL;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_CLEAR, 1UL, 0UL);
 }
 
 const uint8_t *DisplayRenderer_GetBuffer(void)
@@ -602,6 +617,7 @@ uint32_t DisplayRenderer_GetDirtyRows(const uint16_t **rows)
 
 void DisplayRenderer_CommitPresentedFrame(void)
 {
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMMIT, 0UL, sizeof(s_display_committed_framebuffer));
   (void)memcpy(s_display_committed_framebuffer,
                s_display_framebuffer,
                sizeof(s_display_committed_framebuffer));
@@ -632,6 +648,7 @@ void DisplayRenderer_CommitPresentedFrame(void)
   }
   s_display_pending_focus_valid = 0UL;
   s_display_pending_focus_invalidates = 0UL;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMMIT, 1UL, 0UL);
 }
 
 static uint32_t DisplayRenderer_ApplyCursorBlinkPhase(
@@ -4038,7 +4055,9 @@ void DisplayRenderer_PrepareUIPage(
   {
     DisplayRenderer_ClearWhite();
     s_rotate_ccw = 1UL;
+    PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMPOSE, 0UL, scene_model->element_count);
     black_pixels = DisplayRenderer_DrawSceneModel(scene_model);
+    PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMPOSE, 1UL, black_pixels);
     if (page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_CUE)
     {
       DisplayRenderer_WhiteRect(27U, 62U, 106U, 36U);

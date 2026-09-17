@@ -1,5 +1,5 @@
 set pagination off
-if (g_ps_object_trace_probe.api_version != 2) || (g_ps_object_latency_probe.api_version != 3)
+if (g_ps_object_trace_probe.api_version != 3) || (g_ps_object_latency_probe.api_version != 3)
   printf "NOT armed: reflash the object TraceX build and use its ELF.\n"
 else
   if (s_ps_scene_runtime_development_objects == 0) || (g_ps_ui_router_probe.current_page != 6) || (g_ps_hw6_rtos_probe.runtime_lifecycle != 2) || (g_ps_object_trace_probe.request != 0) || (g_ps_object_trace_probe.active != 0) || (g_ps_object_trace_probe.armed != 0) || (g_ps_object_latency_probe.active != 0) || (g_ps_object_latency_probe.request != 0) || (g_ps_object_candidate_probe.leased != 0) || (g_ps_object_development_probe.lease_fault != 0) || (g_ps_object_development_probe.render_request != g_ps_object_development_probe.render_complete)

@@ -341,12 +341,14 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PresentRendererRows(
     }
     else
     {
+      PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_TRANSFER, 0UL, dirty_row_count);
       present_result = LCD_PresentRows_DMA(
         &ps_hw6_display,
         DisplayRenderer_GetBuffer(),
         dirty_rows,
         (uint16_t)dirty_row_count,
         PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS);
+      PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_TRANSFER, 1UL, (uint32_t)present_result);
     }
   }
   if (present_status != NULL)
@@ -1963,7 +1965,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderDevelopmentObjects(
   if ((model == NULL) || (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL) ||
       (model->timeline_revision != PS_SceneRuntime_SceneActivation()))
   { return HAL_ERROR; }
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_MODEL_COPY, 0UL, sizeof(ps_hw6_development_display_model));
   ps_hw6_development_display_model = *model;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_MODEL_COPY, 1UL, 0UL);
   return PS_HW6_DisplayOwner_RenderUI(PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
     PS_UI_ROUTER_CAL_NONE, 0UL, PS_UI_ROUTER_SHUTDOWN_NONE, 0UL);
 }
