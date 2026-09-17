@@ -1,0 +1,104 @@
+{
+  "schema_id": "peepshow.authoring.assets",
+  "schema_version": 1,
+  "assets": [
+    {
+      "asset_id": "lobby_title", "display_name": "LOBBY", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "LOBBY", "scale": 2,
+      "frames": [{ "frame_id": "lobby_title.frame", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "lobby_navigation", "display_name": "A: ENTER GARDEN", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "A: ENTER GARDEN", "scale": 1,
+      "frames": [{ "frame_id": "lobby_navigation.frame", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "garden_title", "display_name": "GARDEN", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "GARDEN", "scale": 2,
+      "frames": [{ "frame_id": "garden_title.frame", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "selection_hint", "display_name": "L/R: SELECT", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "L/R: SELECT", "scale": 1,
+      "frames": [{ "frame_id": "selection_hint.frame", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "left_label", "display_name": "LEFT", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "LEFT", "scale": 1,
+      "frames": [{ "frame_id": "left_label.frame", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "right_label", "display_name": "RIGHT", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "RIGHT", "scale": 1,
+      "frames": [{ "frame_id": "right_label.frame", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "timer_label", "display_name": "TIMER", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "TIMER", "scale": 1,
+      "frames": [{ "frame_id": "timer_label.frame", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "back_hint", "display_name": "B: LOBBY", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "B: LOBBY", "scale": 1,
+      "frames": [{ "frame_id": "back_hint.frame", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "sequence_1", "display_name": "Sequence 1", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "1", "scale": 3,
+      "frames": [{ "frame_id": "sequence.1", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "sequence_2", "display_name": "Sequence 2", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "2", "scale": 3,
+      "frames": [{ "frame_id": "sequence.2", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "sequence_3", "display_name": "Sequence 3", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "3", "scale": 3,
+      "frames": [{ "frame_id": "sequence.3", "pivot_x": 0, "pivot_y": 0 }]
+    },
+    {
+      "asset_id": "sequence_4", "display_name": "Sequence 4", "asset_type": "masked_1bpp",
+      "source_format": "system_font_text", "font_id": "peepshow.system.8x8.basic.v1", "text": "4", "scale": 3,
+      "frames": [{ "frame_id": "sequence.4", "pivot_x": 0, "pivot_y": 0 }]
+    }
+  ],
+  "animations": [
+    {
+      "animation_id": "number_sequence",
+      "frame_refs": ["sequence.1", "sequence.2", "sequence.3", "sequence.4"],
+      "frame_duration_ms": [400, 400, 400, 400],
+      "loop_policy": "loop"
+    }
+  ],
+  "audio_assets": [
+    {
+      "asset_id": "garden_select",
+      "asset_type": "sampled_sfx",
+      "source_path": "assets/garden_select.wav",
+      "source_format": "wav"
+    },
+    {
+      "asset_id": "garden_timer_tone",
+      "asset_type": "sampled_sfx",
+      "source_path": "assets/garden_timer_tone.wav",
+      "source_format": "wav"
+    }
+  ],
+  "audio_cues": [
+    {
+      "cue_id": "garden_select.cue",
+      "display_name": "Garden selection",
+      "asset_ref": "garden_select",
+      "priority": 96,
+      "volume": 224
+    },
+    {
+      "cue_id": "garden_timer_tone.cue",
+      "display_name": "Garden timer tone",
+      "asset_ref": "garden_timer_tone",
+      "priority": 112,
+      "volume": 192
+    }
+  ]
+}

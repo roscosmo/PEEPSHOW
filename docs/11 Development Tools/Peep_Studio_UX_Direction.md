@@ -1200,6 +1200,25 @@ Studio enables each increment only from its dedicated hello/per-scene
 capabilities and supported-command lists. A service API-version increase alone
 never enables these controls or export.
 
+### API 45 Resident V2 Audio Export (2026-09-17)
+
+Studio discovers sampled-SFX export through the package `v2_profile.audio_profile`,
+the shared `scene_object_authoring.audio_export` descriptor and every V2 scene's
+`audio_export` capability. A V2 project containing audio builds only when those
+descriptors agree and the backend reports whole-project `export_ready`; Studio
+does not calculate audio or package budgets itself. Audio-free projects retain
+their existing capability-gated export path.
+
+The separate source fixture
+`examples/authoring/native_v2_lobby_garden_audio.peepproj` preserves the passed
+audio-free Lobby/Garden fixture unchanged. Matched Garden L/R state changes play
+a short cue without restarting the numbered animation. The targetless two-second
+scene-timer handler reveals TIMER and starts an approximately six-second cue.
+Lobby/Garden scene-exit actions remain empty. The repeatable host check at
+`tools/peep-studio/tests/native-lobby-garden-audio-fixture.cjs` verifies those
+semantics, fresh Garden entry, capability agreement and normal public service
+export without using the development encoder.
+
 ### Countdown Node Design (2026-09-12)
 
 See [[Peep_Studio_Time_Node_Design_Handoff]] and the live [[Peep Studio Design]].

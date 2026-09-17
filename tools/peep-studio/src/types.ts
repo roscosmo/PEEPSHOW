@@ -7,6 +7,30 @@ export type ValidationIssue = {
   message: string;
 };
 
+export type V2AudioExportCapability = {
+  supported: boolean;
+  capability: string;
+  action_kinds: string[];
+  action_contexts: string[];
+  compiled_format: string;
+  sample_rate_hz: number;
+  channels: number;
+  block_samples: number;
+  maximum_assets: number;
+  maximum_cues: number;
+  voice_limit: number;
+  cue_volume: boolean;
+  cue_priority: boolean;
+  residency: string;
+  shared_package_limit_bytes: number;
+  survives_local_state_change: boolean;
+  survives_same_package_scene_replacement: boolean;
+  package_suspend: string;
+  package_resume: string;
+  package_exit_or_replacement: string;
+  unsupported: string[];
+};
+
 export type ProjectSummary = {
   project_id: string;
   project_name: string;
@@ -21,6 +45,7 @@ export type ProjectSummary = {
 };
 
 export type SceneCapabilities = {
+  audio_export?: V2AudioExportCapability | null;
   local_graph_commands?: string[];
   scene_connection_commands?: boolean;
   connection_commands?: string[];
@@ -529,7 +554,12 @@ export type ServiceHello = {
   package_export?: {
     operation: string;
     container_versions: number[];
-    v2_profile?: { profile_id: string };
+    v2_profile?: {
+      profile_id: string;
+      profile_revision?: number;
+      audio?: boolean;
+      audio_profile?: V2AudioExportCapability;
+    };
   };
   target_profiles?: { available: Array<{ profile_id: string; state_scene_events?: {
     sources: Array<{ event_type: string; status: string; configuration_schema: {
@@ -541,6 +571,7 @@ export type ServiceHello = {
     version_parameter: string; supported_versions: number[]; default_version: number;
   };
   scene_object_authoring?: {
+    audio_export?: V2AudioExportCapability;
     clip_loop_policies?: string[];
     local_graph_commands?: string[];
     scene_connection_commands?: boolean;

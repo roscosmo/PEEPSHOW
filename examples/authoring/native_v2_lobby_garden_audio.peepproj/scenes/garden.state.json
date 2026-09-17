@@ -1,0 +1,138 @@
+{
+  "schema_id": "peepshow.authoring.state_scene",
+  "schema_version": 2,
+  "scene_id": "garden",
+  "display_name": "Garden",
+  "scene_type": "STATE_SCENE",
+  "entry_state": "left",
+  "variables": [],
+  "input_actions": [
+    { "action_id": "button_l_press", "logical_source": "BUTTON_L", "event_kind": "press" },
+    { "action_id": "button_r_press", "logical_source": "BUTTON_R", "event_kind": "press" },
+    { "action_id": "button_b_press", "logical_source": "BUTTON_B", "event_kind": "press" }
+  ],
+  "scene_exits": [
+    { "scene_exit_id": "to_lobby", "display_name": "Lobby", "target_scene": "lobby" }
+  ],
+  "routes": [
+    {
+      "route_id": "left_button_r_press",
+      "action_ref": "button_r_press",
+      "from_states": ["left"],
+      "guards": [],
+      "actions": [
+        { "kind": "play_sfx", "cue_ref": "garden_select.cue" }
+      ],
+      "target_state": "right"
+    },
+    {
+      "route_id": "right_button_l_press",
+      "action_ref": "button_l_press",
+      "from_states": ["right"],
+      "guards": [],
+      "actions": [
+        { "kind": "play_sfx", "cue_ref": "garden_select.cue" }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "garden_button_b_press",
+      "action_ref": "button_b_press",
+      "from_states": ["left", "right"],
+      "guards": [],
+      "actions": [],
+      "scene_exit_ref": "to_lobby",
+      "target_scene": "lobby"
+    }
+  ],
+  "reactive_wait_default": {
+    "policy_id": "garden_wait_policy",
+    "hold_fallback_allowed": true,
+    "event_interests": ["button_l_press", "button_r_press", "button_b_press", "reveal_timer"]
+  },
+  "interaction_policy": {
+    "policy_id": "garden_interaction",
+    "mode": "continuous",
+    "meaningful_activity_actions": ["button_l_press", "button_r_press", "button_b_press"]
+  },
+  "objects": [
+    {
+      "object_id": "border", "kind": "outline_rect", "width": 160, "height": 136,
+      "z_order": 0, "layer": "SCENE", "defaults": { "x": 4, "y": 4, "visible": true }
+    },
+    {
+      "object_id": "title", "kind": "sprite", "width": 96, "height": 16,
+      "z_order": 1, "layer": "SCENE",
+      "defaults": { "x": 36, "y": 8, "visible": true, "visual_ref": "garden_title.frame" }
+    },
+    {
+      "object_id": "sequence", "kind": "sprite", "width": 24, "height": 24,
+      "z_order": 1, "layer": "SCENE",
+      "defaults": { "x": 72, "y": 32, "visible": true, "visual_ref": "sequence.1" },
+      "animation_ref": "number_sequence"
+    },
+    {
+      "object_id": "selection_hint", "kind": "sprite", "width": 88, "height": 8,
+      "z_order": 1, "layer": "SCENE",
+      "defaults": { "x": 40, "y": 60, "visible": true, "visual_ref": "selection_hint.frame" }
+    },
+    {
+      "object_id": "left_label", "kind": "sprite", "width": 32, "height": 8,
+      "z_order": 1, "layer": "SCENE",
+      "defaults": { "x": 16, "y": 76, "visible": true, "visual_ref": "left_label.frame" }
+    },
+    {
+      "object_id": "right_label", "kind": "sprite", "width": 40, "height": 8,
+      "z_order": 1, "layer": "SCENE",
+      "defaults": { "x": 112, "y": 76, "visible": true, "visual_ref": "right_label.frame" }
+    },
+    {
+      "object_id": "selection_marker", "kind": "filled_rect", "width": 12, "height": 12,
+      "z_order": 2, "layer": "SCENE", "defaults": { "x": 26, "y": 88, "visible": true }
+    },
+    {
+      "object_id": "timer_label", "kind": "sprite", "width": 40, "height": 8,
+      "z_order": 1, "layer": "SCENE",
+      "defaults": { "x": 48, "y": 108, "visible": true, "visual_ref": "timer_label.frame" }
+    },
+    {
+      "object_id": "timer_outline", "kind": "outline_rect", "width": 18, "height": 16,
+      "z_order": 1, "layer": "SCENE", "defaults": { "x": 96, "y": 104, "visible": true }
+    },
+    {
+      "object_id": "timer_fill", "kind": "filled_rect", "width": 12, "height": 10,
+      "z_order": 2, "layer": "SCENE", "defaults": { "x": 99, "y": 107, "visible": false }
+    },
+    {
+      "object_id": "back_hint", "kind": "sprite", "width": 64, "height": 8,
+      "z_order": 1, "layer": "SCENE",
+      "defaults": { "x": 52, "y": 128, "visible": true, "visual_ref": "back_hint.frame" }
+    }
+  ],
+  "states": [
+    { "state_id": "left", "display_name": "Left Slot", "object_overrides": [] },
+    {
+      "state_id": "right",
+      "display_name": "Right Slot",
+      "object_overrides": [{ "object_ref": "selection_marker", "x": 126 }]
+    }
+  ],
+  "event_bindings": [
+    {
+      "binding_id": "reveal_timer",
+      "event_type": "time.scene_elapsed",
+      "configuration": { "delay_ms": 2000, "start_policy": "scene_entry" }
+    }
+  ],
+  "event_handlers": [
+    {
+      "handler_id": "reveal_timer_expired",
+      "event_ref": "reveal_timer",
+      "guards": [],
+      "actions": [
+        { "kind": "object.set_visibility", "object_ref": "timer_fill", "visible": true },
+        { "kind": "play_sfx", "cue_ref": "garden_timer_tone.cue" }
+      ]
+    }
+  ]
+}
