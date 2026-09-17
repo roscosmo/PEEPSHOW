@@ -300,13 +300,17 @@ behavior and service capabilities are unchanged.
 
 ## Next OS Work
 
-1. Close remaining targeted timer hardware cases: active Start preservation,
-   explicit Restart/Cancel, false-guard expiry consumption and precise shell
-   pause/resume. Do not infer these from the no-timer Lobby/Garden fixture.
-2. Complete bounded multi-scene shared export/readiness and capability work,
+The separate 3356-byte TIMER 10S fixture now has observed hardware results for
+idle action policy, active Start preservation, Restart, Cancel, false-guard
+consumption and shell pause/resume (647 saved ticks, approximately six seconds
+observed after Resume). Evidence and remaining coverage limits are recorded in
+[[V2_Timer_Controls_Installed_Test]]. The 19 focused native tests pass. These
+results are not inferred from the no-timer Lobby/Garden fixture.
+
+1. Complete bounded multi-scene shared export/readiness and capability work,
    preserving the proven subset and the distinction between timer semantics
    with native coverage and individually hardware-qualified behavior.
-3. Test Studio build/export -> USB install -> PLAY -> deliberate reboot. The
+2. Test Studio build/export -> USB install -> PLAY -> deliberate reboot. The
    development encoder used for the passed fixtures is not public export proof.
    No Studio-side compiler workaround. Functional installed-scene evidence is in
    [[V2_Studio_Scene_Connections_Test]]; responsiveness evidence remains in

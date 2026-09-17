@@ -120,6 +120,12 @@ static uint32_t timer_scene_admission(const uint8_t *blob, uint32_t size,
   return reject_destination && scene_id == 2;
 }
 
+static uint32_t timer_object_admission(const uint8_t *blob, uint32_t size,
+  const ps_scene_objects_t *objects)
+{
+  return timer_scene_admission(blob, size, 1, objects);
+}
+
 static void replacement_timers(uint32_t mode)
 {
   uint32_t timer = binding(PS_SCENE_RUNTIME_TIMER_SCENE);
@@ -214,6 +220,86 @@ static void scene_exit_hardware_fixture(FILE *output)
   assert(g_ps_hw6_rtos_probe.runtime_state_timer_error_count == 0 && failures == 0);
 }
 
+static void timer_controls_hardware_fixture(FILE *output)
+{
+  uint32_t timer = binding(PS_SCENE_RUNTIME_TIMER_SCENE);
+  uint32_t epoch;
+  admission_delay = 0;
+  assert(timer == 4 && s_ps_object_snapshot.count == 10);
+  assert(ps_runtime_state_timers[timer].active == 0);
+  assert(s_ps_object_snapshot.objects[0].effective.flags & 1U);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  frame(output);
+  service(1300); /* Action-start does not arm on scene entry. */
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 0);
+  now = 1400; input(1);
+  assert(ps_runtime_state_timers[timer].deadline_tick == 2400);
+  now = 1600; input(1);
+  assert(ps_runtime_state_timers[timer].deadline_tick == 2400);
+  now = 1800; input(4);
+  now = 1900; input(4);
+  assert(ps_runtime_state_timers[timer].deadline_tick == 2400);
+  assert(s_ps_object_graph.variables[0] == 1);
+  epoch = PS_SceneRuntime_StateActivation();
+  service(2399);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  service(2400);
+  assert(s_ps_object_snapshot.objects[1].effective.flags & 1U);
+  assert(PS_SceneRuntime_StateActivation() == epoch);
+  frame(output);
+  now = 2500; input(2);
+  assert(ps_runtime_state_timers[timer].deadline_tick == 3500);
+  now = 2800; input(2);
+  assert(ps_runtime_state_timers[timer].deadline_tick == 3800);
+  service(3500);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 1);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  service(3800);
+  assert(s_ps_object_snapshot.objects[1].effective.flags & 1U);
+  now = 3900; input(2);
+  now = 4000; input(3);
+  service(5100);
+  assert(ps_runtime_state_timers[timer].active == 0);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 2);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  now = 5200; input(4);
+  assert(s_ps_object_graph.variables[0] == 0);
+  assert((s_ps_object_snapshot.objects[0].effective.flags & 1U) == 0);
+  now = 5300; input(1);
+  service(6300);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_ignored_count == 1);
+  assert(ps_runtime_state_timers[timer].active == 0);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  frame(output);
+  now = 6400; input(4);
+  assert(s_ps_object_graph.variables[0] == 1);
+  service(7600);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 3);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  frame(output);
+  now = 7700; input(2);
+  now = 8000;
+  PS_HW6_RTOS_RuntimeStateTimersPause(now);
+  assert(PS_HW6_RTOS_ObjectAdvance(now) == 0);
+  assert(ps_runtime_state_timers[timer].paused_remaining_ticks == 700);
+  g_ps_hw6_rtos_probe.runtime_lifecycle = 3;
+  service(10000);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 3);
+  PS_HW6_RTOS_RuntimeStateTimersResume(now);
+  ps_object_last_tick = now;
+  g_ps_hw6_rtos_probe.runtime_lifecycle = PS_HW6_RUNTIME_LIFECYCLE_RUNNING;
+  assert(ps_runtime_state_timers[timer].deadline_tick == 10700);
+  epoch = PS_SceneRuntime_StateActivation();
+  service(10699);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 3);
+  service(10700);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_applied_count == 3);
+  assert(PS_SceneRuntime_StateActivation() == epoch);
+  assert(s_ps_object_snapshot.objects[1].effective.flags & 1U);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_error_count == 0 && failures == 0);
+  frame(output);
+}
+
 int main(int argc, char **argv)
 {
   uint32_t size, timer, state_timer, state_epoch, scene_epoch, mode, next;
@@ -222,6 +308,16 @@ int main(int argc, char **argv)
   size = read_blob(argv[1], candidate);
   set_hash(argv[1], candidate, size);
   mode = (uint32_t)atoi(argv[3]);
+  if (mode == 20)
+  {
+    uint32_t status = timer_scene_admission(candidate, size, 1, NULL);
+    assert(size == 3356);
+    if (status != 0)
+    { fprintf(stderr, "Timer fixture preflight failed: status=%u loader reason=%u states=%u routes=%u\n",
+        status, g_ps_egg_validation_probe.reason, g_ps_egg_validation_probe.state_count, g_ps_egg_validation_probe.route_count); }
+    assert(status == 0);
+    PS_SceneRuntime_SetObjectAdmission(timer_object_admission);
+  }
   if (mode >= 16)
   {
     PS_SceneRuntime_SetObjectSceneAdmission(timer_scene_admission);
@@ -243,7 +339,8 @@ int main(int argc, char **argv)
   if (mode >= 16)
   {
     output = fopen(argv[2], "wb"); assert(output != NULL);
-    if (mode == 19) { scene_exit_hardware_fixture(output); }
+    if (mode == 20) { timer_controls_hardware_fixture(output); }
+    else if (mode == 19) { scene_exit_hardware_fixture(output); }
     else { replacement_timers(mode); frame(output); }
     fclose(output);
     return 0;

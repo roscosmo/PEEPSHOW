@@ -17,6 +17,37 @@ from peepshow_authoring.project import load_project
 
 
 class ObjectTimerTests(unittest.TestCase):
+    def test_timer_controls_fixture_installed_and_development(self):
+        from build_timer_controls_fixture import timer_controls_bundle
+        bundle = timer_controls_bundle()
+        frames = {frame.frame_id: frame for frame in bundle.frames}
+        expected = bytearray()
+        for guard, done in ((True, False), (True, True), (False, False),
+                            (True, False), (True, True)):
+            logical = bytearray(3024)
+            for obj in bundle.scenes[0]["objects"]:
+                defaults = obj["defaults"]
+                visible = {"guard": guard, "done": done}.get(obj["object_id"], defaults["visible"])
+                if not visible:
+                    continue
+                frame = frames.get(defaults.get("visual_ref"))
+                self.assertLessEqual(defaults["x"] + obj["width"], 168)
+                self.assertLessEqual(defaults["y"] + obj["height"], 144)
+                for y in range(obj["height"]):
+                    for x in range(obj["width"]):
+                        if frame is not None:
+                            offset = y * frame.row_stride_bytes + x // 8
+                            black = bool(frame.pixels[offset] & frame.mask[offset] & (128 >> (x % 8)))
+                        else:
+                            black = obj["kind"] == "filled_rect" or x in (0, obj["width"] - 1) or y in (0, obj["height"] - 1)
+                        if black:
+                            left, top = defaults["x"] + x, defaults["y"] + y
+                            logical[top * 21 + left // 8] |= 128 >> (left % 8)
+            expected.extend(panel_pixels(logical))
+        for installed in (False, True):
+            with self.subTest(installed=installed):
+                self.assertEqual(expected, self.run_timer(20, bundle=bundle, installed=installed))
+
     def test_labelled_scene_exit_fixture_timing_and_panel_pixels(self):
         from build_object_development import scene_exit_fixture_bundle
         bundle = scene_exit_fixture_bundle()
