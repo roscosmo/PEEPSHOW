@@ -323,3 +323,75 @@ confirmed unchanged borders, labels, L/R movement, animation, timer and audio
 behavior ("yes everything acts as before"). This closes the exercised hardware
 regression check for clipped candidate composition. It does not establish
 physical-button latency, current/energy savings, or final responsiveness targets.
+
+### Prepared Runtime Scene Admission
+
+The next optimization removes the second destination-scene decode from runtime
+display admission. Runtime still decodes and initializes a fresh destination
+once, then passes its validated descriptor and staged object bank to the
+same-thread admission callback. Local changes pass their existing descriptor.
+Admission builds the bounded, pointer-free waiting program from that bank
+without initializing another unused graph.
+
+The loader checks active-package lifetime, byte identity and scene ownership,
+and rebases the sprite catalog into the existing private candidate bytes.
+The display queue receives neither the prepared scene nor its object bank.
+Timeouts retain the private bytes/catalog until matching completion, including
+when the source scene exits. Raster and payload capacity checks remain in place.
+Runtime catalog-only cache entries are distinguished from fully decoded public
+preflight entries. Install/preflight still performs full validation, and a
+revoked active source cannot take the prepared path even on a cache hit.
+
+Native checks cover exactly one decode per replacement, no additional decode
+for prepared local admission, private catalog spans, byte mismatch and wrong
+scene rejection, full public preflight after a runtime cache hit, timeout/late
+completion after source release, and revocation/reload. The existing audio,
+timer, scene rollback and shell recovery tests remain applicable. Debug build
+passed: RAM 553648 bytes (+8), SRAM4 15480 bytes (unchanged); no clock, power,
+rendering or audio behavior change is intended. The 42 focused tests passed;
+hardware timing is recorded below.
+
+Keep the current real-audio GUI egg installed and flash normal Debug firmware
+only. In quiet Lobby, arm `__fw0_object_trace_enable.gdb`, resume, wait one
+second and press A once. Allow the Garden timer cue to finish before halting;
+print `__fw0_object_trace_prints.gdb` and dump with `__fw0_tracex_dump.gdb`.
+Compare matching RECEIVE/DONE intervals against the 20260917_205119 capture,
+especially candidate decode, graph/schedule and total receipt-to-panel time.
+The decode-labelled interval still includes byte identity and descriptor/profile
+checks; it is not expected to become zero. Confirm unchanged selection,
+animation, timer, scene-exit audio continuity and shell discard/resume behavior.
+
+### Hardware Timing After Prepared Scene Reuse
+
+Capture `__fw0_tracex_snapshot_20260917_212446.trx` contains matching sequence-1
+RECEIVE/DONE markers, no ring wraps or marker errors, and successful event/panel
+results for Lobby 2 to Garden 1. All transaction stage and clock-policy samples
+remain at 24 MHz with no SysTick retune triples. Only the RECEIVE/DONE window
+is converted; the preceding arm/wake history is excluded.
+
+| Elapsed work | Before reuse | After reuse |
+|---|---:|---:|
+| Candidate decode/checks | 49.23 ms | 28.92 ms |
+| Graph/schedule | 5.47 ms | 3.84 ms |
+| Candidate raster/packing | 61.54 ms | 61.59 ms |
+| Display clock release stage | 0.47 ms | 12.41 ms |
+| Panel render/transfer stage | 59.65 ms | 57.10 ms |
+| RECEIVE to panel completion | 222.84 ms | 210.37 ms |
+| RECEIVE to DONE | 226.10 ms | 213.61 ms |
+
+The decode/check and graph/schedule stages together decreased by approximately
+21.93 ms. This run also contains an 11.73 ms PMIC snapshot, bracketed by successful
+0x5173 operation-1 markers in thPower, after its clock-release acknowledgement
+and before thDisplay resumes. That owner work accounts for most of the longer
+clock-release interval; this is not evidence of a slow clock-tree change.
+Net receipt-to-panel improvement is 12.47 ms (5.6 percent) in this pair of runs.
+Do not subtract the PMIC interval and present the remainder as measured latency.
+
+One full/four reused frames and eighteen element draws remain unchanged. Full
+candidate package loads remain five. The trace proves real completed preparation
+and panel work, not merely thread scheduling. Native regressions separately
+establish the single destination decode and admission lifetime behavior. This
+one hardware sample does not establish typical/worst-case latency, physical
+button-to-panel delay, isolated CPU time or power savings. The operator confirmed
+unchanged selection, animation, timer and audio behavior ("yes all as before").
+This closes the exercised hardware regression check for prepared scene reuse.

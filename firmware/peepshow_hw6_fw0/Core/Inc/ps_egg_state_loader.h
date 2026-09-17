@@ -197,6 +197,12 @@ uint32_t PS_EggStateLoader_DecodeV2SceneCandidate(const uint8_t *blob, uint32_t 
  * New/untrusted packages must still use the full candidate entry points above.
  */
 #define PS_EGG_STATE_LOADER_NOT_ACTIVE (2UL)
+uint32_t PS_EggStateLoader_IsActiveV2Source(const uint8_t *blob, uint32_t size);
+/* Same-thread runtime admission only: reuse a validated scene, but give the
+ * display a catalog backed exclusively by the byte-identical private copy. */
+uint32_t PS_EggStateLoader_PrepareActiveV2Display(const uint8_t *blob, uint32_t size,
+  const ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
+  ps_egg_v2_profile_result_t *result);
 uint32_t PS_EggStateLoader_DecodeActiveV2Scene(const uint8_t *blob, uint32_t size,
   uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,
   ps_egg_sprite_catalog_t *catalog, ps_egg_v2_profile_result_t *result);

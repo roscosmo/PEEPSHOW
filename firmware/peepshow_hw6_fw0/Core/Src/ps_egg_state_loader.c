@@ -3268,6 +3268,44 @@ void PS_EggStateLoader_ReleaseActiveV2(void)
   s_ps_egg_active_v2_size = 0UL;
 }
 
+uint32_t PS_EggStateLoader_IsActiveV2Source(const uint8_t *blob, uint32_t size)
+{
+  return ((blob != NULL) && (size != 0UL) &&
+    (blob == s_ps_egg_runtime_context.blob) &&
+    (size == s_ps_egg_active_v2_size)) ? 1UL : 0UL;
+}
+
+uint32_t PS_EggStateLoader_PrepareActiveV2Display(const uint8_t *blob, uint32_t size,
+  const ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
+  ps_egg_v2_profile_result_t *result)
+{
+  ps_egg_context_t *context = &s_ps_egg_runtime_context;
+  const uint8_t *active = context->blob;
+  const ps_egg_scene_catalog_entry_t *entry;
+  if (catalog != NULL) { (void)memset(catalog, 0, sizeof(*catalog)); }
+  if (result == NULL) { return 1UL; }
+  (void)memset(result, 0, sizeof(*result));
+  result->item_index = PS_SCENE_RUNTIME_INDEX_INVALID;
+  result->reason = PS_EGG_V2_PROFILE_ARGUMENT;
+  if ((blob == NULL) || (scene == NULL) || (catalog == NULL)) { return 1UL; }
+  if ((PS_EggStateLoader_IsActiveV2Source(active, size) == 0UL) ||
+      (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES) ||
+      ((blob != active) && (memcmp(blob, active, size) != 0)))
+  { return PS_EGG_STATE_LOADER_NOT_ACTIVE; }
+  if ((scene->scene_id == 0UL) || (scene->scene_id > context->scene_count)) { return 1UL; }
+  entry = &context->scene_catalog[scene->scene_id - 1UL];
+  if ((scene->object_definition.objects.data != active + context->chunks[entry->render_chunk_index].offset) ||
+      (scene->object_definition.controls.data != active + context->chunks[entry->waiting_chunk_index].offset) ||
+      (PS_SceneRuntime_ValidateDescriptor(scene, context->scene_count) != 0UL) ||
+      (PS_EggCheckV2Profile(context, scene, 1UL, result) != 0UL)) { return 1UL; }
+  *catalog = context->sprite_catalog;
+  if (catalog->records != NULL) { catalog->records = blob + (catalog->records - active); }
+  if (catalog->sprite_payload != NULL)
+  { catalog->sprite_payload = blob + (catalog->sprite_payload - active); }
+  result->scene_count = context->scene_count;
+  return 0UL;
+}
+
 uint32_t PS_EggStateLoader_DecodeActiveV2Scene(const uint8_t *blob, uint32_t size,
   uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,
   ps_egg_sprite_catalog_t *catalog, ps_egg_v2_profile_result_t *result)

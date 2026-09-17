@@ -543,7 +543,8 @@ static void PS_HW6_RTOS_ObjectTraceService(void);
 static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
   uint32_t size, const ps_scene_objects_t *objects);
 static uint32_t PS_HW6_RTOS_ObjectSceneCheck(const uint8_t *blob,
-  uint32_t size, uint32_t scene_id, const ps_scene_objects_t *objects);
+  uint32_t size, uint32_t scene_id, const ps_scene_objects_t *objects,
+  const ps_scene_runtime_state_scene_t *prepared_scene);
 static UINT PS_HW6_RTOS_InstalledObjectLaunch(void);
 
 volatile uint32_t g_ps_object_development_request;
@@ -634,6 +635,7 @@ static uint32_t ps_candidate_cache_valid;
 static uint32_t ps_candidate_cache_size;
 static uint32_t ps_candidate_cache_mode;
 static uint32_t ps_candidate_cache_scene;
+static uint32_t ps_candidate_cache_runtime;
 static ps_egg_v2_profile_result_t ps_candidate_cache_profile;
 static uint32_t ps_candidate_cache_hits;
 static uint32_t ps_candidate_cache_misses;
@@ -8872,7 +8874,8 @@ static void PS_HW6_RTOS_CandidateSend(void)
 }
 
 static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
-  uint32_t mode, uint32_t scene_id, const ps_scene_objects_t *objects)
+  uint32_t mode, uint32_t scene_id, const ps_scene_objects_t *objects,
+  const ps_scene_runtime_state_scene_t *prepared_scene)
 {
   ps_egg_v2_profile_result_t profile;
   uint32_t token = g_ps_object_candidate_probe.request_id;
@@ -8927,7 +8930,8 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
     PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_CLOCK_READY);
     if ((ps_candidate_cache_valid != 0UL) &&
         (blob == ps_candidate_owned_bytes) && (size == ps_candidate_cache_size) &&
-        (mode == ps_candidate_cache_mode) && (scene_id == ps_candidate_cache_scene))
+        (mode == ps_candidate_cache_mode) && (scene_id == ps_candidate_cache_scene) &&
+        (ps_candidate_cache_runtime == ((prepared_scene != NULL) ? 1UL : 0UL)))
     {
       profile = ps_candidate_cache_profile;
       g_ps_object_candidate_probe.profile_status = 0UL;
@@ -8938,7 +8942,12 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
     {
       ps_candidate_cache_valid = 0UL;
       ps_candidate_cache_misses++;
-      if (mode == 3UL)
+      if (prepared_scene != NULL)
+      {
+        g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_PrepareActiveV2Display(
+          ps_candidate_blob, ps_candidate_size, prepared_scene, &ps_candidate_catalog, &profile);
+      }
+      else if (mode == 3UL)
       {
         g_ps_object_candidate_probe.profile_status = PS_EGG_STATE_LOADER_NOT_ACTIVE;
         if (objects != NULL)
@@ -8965,6 +8974,7 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
         ps_candidate_cache_size = size;
         ps_candidate_cache_mode = mode;
         ps_candidate_cache_scene = scene_id;
+        ps_candidate_cache_runtime = (prepared_scene != NULL) ? 1UL : 0UL;
         ps_candidate_cache_profile = profile;
         ps_candidate_cache_valid = 1UL;
       }
@@ -8976,12 +8986,14 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
     g_ps_object_candidate_probe.scene_count = profile.scene_count;
     if (g_ps_object_candidate_probe.profile_status == 0UL)
     {
-      g_ps_object_candidate_probe.graph_status = PS_SceneObjectGraph_Init(
-        &ps_candidate_graph, &ps_candidate_scene, profile.scene_count, token + 1UL);
+      /* The supplied bank has already been initialized/staged by runtime. */
+      g_ps_object_candidate_probe.graph_status = (prepared_scene != NULL) ? 0UL :
+        PS_SceneObjectGraph_Init(&ps_candidate_graph, &ps_candidate_scene,
+          profile.scene_count, token + 1UL);
       if (g_ps_object_candidate_probe.graph_status == 0UL)
       {
         g_ps_object_candidate_probe.schedule_status = PS_ObjectWaiting_Build(
-          (objects != NULL) ? objects : &ps_candidate_graph.objects, ps_candidate_scene.scene_id,
+          (objects != NULL) ? objects : &ps_candidate_graph.objects, profile.scene_id,
           &ps_candidate_program, &ps_candidate_waiting_workspace);
         g_ps_object_candidate_probe.steps = ps_candidate_program.step_count;
         g_ps_object_candidate_probe.quantum_ms = ps_candidate_program.quantum_ms;
@@ -9008,11 +9020,12 @@ static void PS_HW6_RTOS_CandidateBegin(const uint8_t *blob, uint32_t size, uint3
   /* The existing debugger request only supports its two single-scene modes. */
   if ((mode != 1UL) && (mode != 2UL))
   { g_ps_object_candidate_probe.refused++; return; }
-  PS_HW6_RTOS_CandidateCheck(blob, size, mode, 0UL, NULL);
+  PS_HW6_RTOS_CandidateCheck(blob, size, mode, 0UL, NULL, NULL);
 }
 
 static uint32_t PS_HW6_RTOS_CandidateOwnedCheck(const uint8_t *blob,
-  uint32_t size, uint32_t mode, uint32_t scene_id, const ps_scene_objects_t *objects)
+  uint32_t size, uint32_t mode, uint32_t scene_id, const ps_scene_objects_t *objects,
+  const ps_scene_runtime_state_scene_t *prepared_scene)
 {
   uint32_t token;
   uint32_t status;
@@ -9020,6 +9033,13 @@ static uint32_t PS_HW6_RTOS_CandidateOwnedCheck(const uint8_t *blob,
   PS_HW6_RTOS_CandidateReap();
   if ((ps_candidate_busy != 0UL) || (blob == NULL) || (size == 0UL) ||
       (size > sizeof(ps_candidate_owned_bytes))) { return 1UL; }
+  /* Check the live lifetime even on a metadata cache hit. Public preflight never
+   * supplies a prepared scene and cannot reuse its catalog-only cache entry. */
+  if ((prepared_scene != NULL) &&
+      ((mode != 3UL) || (objects == NULL) || (prepared_scene->scene_id != scene_id) ||
+       (PS_EggStateLoader_IsActiveV2Source(blob, size) == 0UL) ||
+       (memcmp(&objects->definition, &prepared_scene->object_definition,
+         sizeof(objects->definition)) != 0))) { return 1UL; }
   token = g_ps_object_candidate_probe.request_id;
   PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_COPY_BEGIN);
   /* The display may finish after our bounded wait. It borrows only this private
@@ -9032,7 +9052,7 @@ static uint32_t PS_HW6_RTOS_CandidateOwnedCheck(const uint8_t *blob,
     (void)memcpy(ps_candidate_owned_bytes, blob, size);
   }
   PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_COPY_DONE);
-  PS_HW6_RTOS_CandidateCheck(ps_candidate_owned_bytes, size, mode, scene_id, objects);
+  PS_HW6_RTOS_CandidateCheck(ps_candidate_owned_bytes, size, mode, scene_id, objects, prepared_scene);
   status = ((g_ps_object_candidate_probe.request_id != token) &&
     (ps_candidate_busy == 0UL) && (g_ps_object_candidate_probe.status == 0UL) &&
     (g_ps_object_candidate_probe.wait_status == TX_SUCCESS)) ? 0UL : 1UL;
@@ -9048,19 +9068,20 @@ static uint32_t PS_HW6_RTOS_CandidateOwnedCheck(const uint8_t *blob,
 static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
   uint32_t size, const ps_scene_objects_t *objects)
 {
-  return PS_HW6_RTOS_CandidateOwnedCheck(blob, size, 1UL, 0UL, objects);
+  return PS_HW6_RTOS_CandidateOwnedCheck(blob, size, 1UL, 0UL, objects, NULL);
 }
 
 static uint32_t PS_HW6_RTOS_ObjectSceneCheck(const uint8_t *blob,
-  uint32_t size, uint32_t scene_id, const ps_scene_objects_t *objects)
+  uint32_t size, uint32_t scene_id, const ps_scene_objects_t *objects,
+  const ps_scene_runtime_state_scene_t *prepared_scene)
 {
-  return PS_HW6_RTOS_CandidateOwnedCheck(blob, size, 3UL, scene_id, objects);
+  return PS_HW6_RTOS_CandidateOwnedCheck(blob, size, 3UL, scene_id, objects, prepared_scene);
 }
 
 uint32_t PS_HW6_ObjectCandidate_CheckScene(const uint8_t *blob, uint32_t size,
   uint32_t scene_id)
 {
-  return PS_HW6_RTOS_CandidateOwnedCheck(blob, size, 3UL, scene_id, NULL);
+  return PS_HW6_RTOS_CandidateOwnedCheck(blob, size, 3UL, scene_id, NULL, NULL);
 }
 
 uint32_t PS_HW6_ObjectCandidate_CheckSceneSet(const uint8_t *blob, uint32_t size,

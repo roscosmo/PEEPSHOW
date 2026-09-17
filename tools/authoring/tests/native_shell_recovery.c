@@ -40,8 +40,9 @@ static UINT PS_HW6_RTOS_InstalledObjectLaunch(void) { return render_status; }
 void PS_SceneRuntime_SetObjectAdmission(ps_scene_object_admission_fn_t admission)
 { assert(admission != NULL); }
 static uint32_t PS_HW6_RTOS_ObjectSceneCheck(const uint8_t *blob,
-  uint32_t size, uint32_t scene, const ps_scene_objects_t *objects)
-{ (void)blob; (void)size; (void)scene; (void)objects; return 0; }
+  uint32_t size, uint32_t scene, const ps_scene_objects_t *objects,
+  const ps_scene_runtime_state_scene_t *prepared_scene)
+{ (void)blob; (void)size; (void)scene; (void)objects; (void)prepared_scene; return 0; }
 void PS_SceneRuntime_SetObjectSceneAdmission(ps_scene_object_scene_admission_fn_t admission)
 { assert(admission != NULL); }
 uint32_t PS_SceneRuntime_InstalledObjectsActive(void) { return 0; }
