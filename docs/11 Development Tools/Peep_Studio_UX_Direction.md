@@ -1126,7 +1126,18 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   deleting the binding/handler pair. Source-only host fixture:
   `examples/authoring/native_v2_scene_connections.peepproj` (Lobby A -> Garden,
   Garden B -> Lobby). Host round trips and GUI drag/create/detach, undo/redo and
-  save/reopen pass. Multi-scene export remains blocked; no hardware result.
+  save/reopen pass. API 43 left multi-scene export blocked.
+- API 44 enables multi-scene V2 Build/Export only when both hello and every
+  scene advertise `multi_scene_export`, every scene reports whole-project
+  `export_ready`, and `build_issues` is empty. Single-scene V2 gating remains
+  backward compatible. Studio does not infer support from API number or perform
+  local budget calculations. The unchanged accepted fixture at commit
+  `79ecdd758c58aff33bac1ee90f6fa4528dcb7091` built through the normal public
+  `project.build_package` operation to
+  `tools/peep-studio/dist/api44-multiscene-export/native_v2_lobby_garden_integration.egg`:
+  3944 bytes, SHA-256
+  `ce710a24e1c1dbb7e4a48f6c6b55cf0f5d20d00aa37181d1379d0bb24f6ad691`.
+  Hardware installation and runtime verification remain OS-owned.
 - Asset tags remain a separate metadata request: reusable sprite/audio assets
   need saved multi-tag assignments for grouping across reopen/Save As. Current
   asset records advertise no tag field or command. This does not block native

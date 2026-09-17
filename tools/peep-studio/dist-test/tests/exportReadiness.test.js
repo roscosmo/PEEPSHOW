@@ -26,6 +26,24 @@ for (const patch of [{ egg_export: false }, { export_ready: false }, { export_re
 }
 (0, strict_1.default)(!(0, exportReadiness_js_1.canBuildProject)(service, { ...project, build_issues: [{ code: "V2_TEST", message: "Blocked", path: "project" }] }));
 (0, strict_1.default)(!(0, exportReadiness_js_1.canBuildProject)(service, { ...project, scene_capabilities: {} }));
+const multiSceneService = {
+    ...service,
+    scene_object_authoring: { ...service.scene_object_authoring, multi_scene_export: true },
+};
+const multiSceneProject = {
+    ...project,
+    document: { ...project.document, scenes: [...project.document.scenes, { scene_id: "garden", schema_version: 2 }] },
+    scene_capabilities: {
+        main: { ...project.scene_capabilities.main, multi_scene_export: true },
+        garden: { ...project.scene_capabilities.main, multi_scene_export: true },
+    },
+};
+(0, strict_1.default)((0, exportReadiness_js_1.canBuildProject)(multiSceneService, multiSceneProject));
+(0, strict_1.default)(!(0, exportReadiness_js_1.canBuildProject)(service, multiSceneProject));
+(0, strict_1.default)(!(0, exportReadiness_js_1.canBuildProject)(multiSceneService, {
+    ...multiSceneProject,
+    scene_capabilities: { ...multiSceneProject.scene_capabilities, garden: { ...multiSceneProject.scene_capabilities.garden, multi_scene_export: false } },
+}));
 const legacy = { ...project, document: { ...project.document, scenes: [{ ...project.document.scenes[0], schema_version: 1 }] } };
 (0, strict_1.default)((0, exportReadiness_js_1.canBuildProject)({ ...service, package_export: undefined }, legacy));
 console.log("Export capability and whole-project readiness checks passed");

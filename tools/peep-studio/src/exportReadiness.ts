@@ -5,8 +5,10 @@ export function canBuildProject(service: ServiceHello | null, project: ProjectLo
   const scenes = project.document?.scenes ?? [];
   if (!scenes.some(scene => scene.schema_version === 2)) return true;
   const advertised = service.package_export;
+  const multiScene = scenes.length > 1;
   return service.scene_object_authoring?.egg_export === true
     && service.scene_object_authoring.export_requires_project_readiness === true
+    && (!multiScene || service.scene_object_authoring.multi_scene_export === true)
     && advertised?.operation === "project.build_package"
     && advertised.container_versions.includes(2)
     && !!advertised.v2_profile?.profile_id
@@ -14,6 +16,7 @@ export function canBuildProject(service: ServiceHello | null, project: ProjectLo
     && scenes.every(scene => {
       const capability = project.scene_capabilities?.[scene.scene_id];
       return capability?.egg_export === true && capability.export_ready === true
+        && (!multiScene || capability.multi_scene_export === true)
         && capability.export_readiness_scope === "whole_project"
         && capability.export_profile_id === advertised.v2_profile?.profile_id;
     });
