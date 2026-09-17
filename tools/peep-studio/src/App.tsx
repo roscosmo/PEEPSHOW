@@ -1583,6 +1583,7 @@ export default function App() {
     result: ProjectHistoryResult | ProjectCommandResult | ProjectSaveResult,
     options: ApplyProjectResultOptions = {},
   ) => {
+    projectRevisionRef.current = result.project_revision;
     setProject((current) => (
       current === null
         ? null
@@ -3176,7 +3177,7 @@ export default function App() {
         ],
       });
       projectRevisionRef.current = result.project_revision;
-      applyProjectResult(result);
+      applyProjectResult(result, { preserveDerivedViews: true });
       const applied = result.applied_commands[0];
       setSceneFlowLayoutStatus(
         `saved ${String(applied?.scene_id ?? sceneId)} @ ${String(applied?.x ?? x)}, ${String(applied?.y ?? y)} rev ${result.project_revision}`,
@@ -3218,7 +3219,7 @@ export default function App() {
         }],
       });
       projectRevisionRef.current = result.project_revision;
-      applyProjectResult(result);
+      applyProjectResult(result, { preserveDerivedViews: true });
       setSceneFlowLayoutStatus(`saved ${sceneId}.${endpointKey}: ${action} rev ${result.project_revision}`);
       setMessage(rails.length === 0
         ? "Scene transition returned to automatic routing. Save to write it to the project."
@@ -3245,7 +3246,7 @@ export default function App() {
         commands: [{ kind: "editor.scene_flow.set_package_entry_position", x, y }],
       });
       projectRevisionRef.current = result.project_revision;
-      applyProjectResult(result);
+      applyProjectResult(result, { preserveDerivedViews: true });
       setSceneFlowLayoutStatus(`saved package-entry @ ${Math.round(x)}, ${Math.round(y)} rev ${result.project_revision}`);
       setMessage("Graph layout updated. Save to write it to the project.");
     }).catch((error) => {
@@ -3275,7 +3276,7 @@ export default function App() {
         }],
       });
       projectRevisionRef.current = result.project_revision;
-      applyProjectResult(result);
+      applyProjectResult(result, { preserveDerivedViews: true });
       setSceneFlowLayoutStatus(`saved ${referenceId} @ ${Math.round(x)}, ${Math.round(y)} rev ${result.project_revision}`);
       setMessage("Graph layout updated. Save to write it to the project.");
     }).catch((error) => {
@@ -3376,7 +3377,7 @@ export default function App() {
         ],
       });
       projectRevisionRef.current = result.project_revision;
-      applyProjectResult(result);
+      applyProjectResult(result, { preserveDerivedViews: true });
       const applied = result.applied_commands[0];
       setStateGraphLayoutStatus(
         `saved ${String(applied?.scene_id ?? sceneId)}.${String(applied?.node_id ?? nodeId)} @ ${String(applied?.x ?? x)}, ${String(applied?.y ?? y)} rev ${result.project_revision}`,
@@ -3425,7 +3426,7 @@ export default function App() {
         ],
       });
       projectRevisionRef.current = result.project_revision;
-      applyProjectResult(result);
+      applyProjectResult(result, { preserveDerivedViews: true });
       setStateGraphLayoutStatus(`saved ${sceneId}.${routeId}.${sourceState}: ${action} rev ${result.project_revision}`);
       setMessage(rails.length === 0 && targetHandle === null
         ? "Transition returned to automatic routing. Save to write it to the project."

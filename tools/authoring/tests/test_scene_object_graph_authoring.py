@@ -244,6 +244,34 @@ class SceneObjectGraphAuthoringTests(unittest.TestCase):
         self.assertFalse(self.call("project.preview_input", logical_source="BUTTON_R")["input"]["accepted"])
         self.assertTrue(self.call("project.preview_input", logical_source="BUTTON_R", event_kind="release")["input"]["accepted"])
 
+    def test_timer_node_layout_persists(self):
+        self.timer()
+        moved = self.edit(self.command(
+            "editor.state_graph.set_node_position",
+            node_id="timer-tick",
+            x=321,
+            y=-87,
+        ))
+        self.assertEqual(
+            {"x": 321, "y": -87},
+            moved["document"]["project"]["editor"]["state_graph"]["scenes"]["main"]["nodes"]["timer-tick"],
+        )
+        self.call("project.save")
+        reloaded = load_project(self.root)
+        self.assertTrue(reloaded.valid, reloaded.issues)
+        self.assertEqual(
+            {"x": 321, "y": -87},
+            reloaded.normalized()["project"]["editor"]["state_graph"]["scenes"]["main"]["nodes"]["timer-tick"],
+        )
+        deleted = self.edit(
+            self.command("event_handler.delete", handler_id="tick_handler"),
+            self.command("event_binding.delete", binding_id="tick"),
+        )
+        self.assertNotIn(
+            "timer-tick",
+            deleted["document"]["project"]["editor"]["state_graph"]["scenes"]["main"]["nodes"],
+        )
+
     def test_scope_and_unavailable_events_are_rejected(self):
         self.graph()
         self.reject(self.command("event_binding.add", event_binding=self.binding()))

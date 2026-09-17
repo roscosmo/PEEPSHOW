@@ -2654,6 +2654,7 @@ export function StateGraphView({
   const graph = useMemo(() => buildStateGraphModel(scene, editor), [editor, scene]);
   const flowRef = useRef<ReactFlowInstance | null>(null);
   const didInitialFit = useRef(false);
+  const [initialFitComplete, setInitialFitComplete] = useState(false);
   const previousSceneId = useRef<string | null>(scene?.scene_id ?? null);
   const [pendingPhysicalConnection, setPendingPhysicalConnection] = useState<PendingPhysicalTriggerConnection | null>(null);
   const [peepOSTriggerStateId, setPeepOSTriggerStateId] = useState<string | null>(null);
@@ -3250,7 +3251,7 @@ export function StateGraphView({
 
   return (
     <ReactFlow
-      className="state-graph-flow"
+      className={`state-graph-flow${initialFitComplete ? "" : " graph-initializing"}`}
       nodes={flowNodes}
       edges={edges}
       edgeTypes={STATE_EDGE_TYPES}
@@ -3262,6 +3263,7 @@ export function StateGraphView({
           didInitialFit.current = true;
           window.requestAnimationFrame(() => {
             instance.fitView({ padding: 0.22, maxZoom: 1 });
+            window.requestAnimationFrame(() => setInitialFitComplete(true));
           });
         }
       }}
@@ -3611,6 +3613,7 @@ export function SceneFlowView({
   const graph = useMemo(() => buildSceneFlowGraphModel(scenes, entrySceneId, editor), [editor, entrySceneId, scenes]);
   const flowRef = useRef<ReactFlowInstance | null>(null);
   const didInitialFit = useRef(false);
+  const [initialFitComplete, setInitialFitComplete] = useState(false);
   const [viewportText, setViewportText] = useState("viewport not ready");
   const [lastDragText, setLastDragText] = useState("No drag yet");
   const [lastConnectText, setLastConnectText] = useState("No connect yet");
@@ -3904,6 +3907,7 @@ export function SceneFlowView({
 
   return (
     <ReactFlow
+      className={initialFitComplete ? undefined : "graph-initializing"}
       nodes={nodes}
       edges={edges}
       edgeTypes={SCENE_EDGE_TYPES}
@@ -3916,6 +3920,7 @@ export function SceneFlowView({
           window.requestAnimationFrame(() => {
             instance.fitView({ padding: 0.28, maxZoom: 1 });
             updateViewportText();
+            window.requestAnimationFrame(() => setInitialFitComplete(true));
           });
         }
       }}

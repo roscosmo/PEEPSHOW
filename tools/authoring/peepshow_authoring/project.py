@@ -1129,6 +1129,7 @@ def _apply_route_rebind_trigger(
 
 
 def _apply_event_binding_delete(
+    project: dict[str, Any],
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
 ) -> dict[str, Any]:
@@ -1164,6 +1165,13 @@ def _apply_event_binding_delete(
     for index, binding in enumerate(bindings):
         if isinstance(binding, dict) and binding.get("binding_id") == binding_id:
             bindings.pop(index)
+            editor = project.get("editor")
+            state_graph = editor.get("state_graph") if isinstance(editor, dict) else None
+            graph_scenes = state_graph.get("scenes") if isinstance(state_graph, dict) else None
+            scene_layout = graph_scenes.get(scene.get("scene_id")) if isinstance(graph_scenes, dict) else None
+            nodes = scene_layout.get("nodes") if isinstance(scene_layout, dict) else None
+            if isinstance(nodes, dict):
+                nodes.pop(f"timer-{binding_id}", None)
             return {
                 "kind": "event_binding.delete",
                 "scene_id": scene.get("scene_id"),
@@ -3698,6 +3706,29 @@ def _apply_scene_flow_route_layout(
     }
 
 
+def _state_graph_node_ids(scene: dict[str, Any]) -> set[str]:
+    node_ids = {
+        state.get("state_id")
+        for state in scene.get("states", [])
+        if isinstance(state, dict) and isinstance(state.get("state_id"), str)
+    }
+    node_ids.add("scene-entry")
+    node_ids.add(STATE_GRAPH_SYSTEM_EXIT_NODE_ID)
+    node_ids.update(
+        f"scene-exit-{scene_exit.get('scene_exit_id')}"
+        for scene_exit in scene.get("scene_exits", [])
+        if isinstance(scene_exit, dict) and isinstance(scene_exit.get("scene_exit_id"), str)
+    )
+    node_ids.update(
+        f"timer-{binding.get('binding_id')}"
+        for binding in scene.get("event_bindings", [])
+        if isinstance(binding, dict)
+        and isinstance(binding.get("binding_id"), str)
+        and binding.get("event_type") in {"time.scene_elapsed", "time.state_entry_elapsed"}
+    )
+    return node_ids
+
+
 def _apply_state_graph_node_position(
     project: dict[str, Any],
     scenes: list[dict[str, Any]],
@@ -3733,18 +3764,7 @@ def _apply_state_graph_node_position(
     )
     if target_scene is None:
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
-    valid_node_ids = {
-        state.get("state_id")
-        for state in target_scene.get("states", [])
-        if isinstance(state, dict)
-    }
-    valid_node_ids.add("scene-entry")
-    valid_node_ids.add(STATE_GRAPH_SYSTEM_EXIT_NODE_ID)
-    valid_node_ids.update(
-        f"scene-exit-{scene_exit.get('scene_exit_id')}"
-        for scene_exit in target_scene.get("scene_exits", [])
-        if isinstance(scene_exit, dict) and isinstance(scene_exit.get("scene_exit_id"), str)
-    )
+    valid_node_ids = _state_graph_node_ids(target_scene)
     if node_id not in valid_node_ids:
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown state graph node '{node_id}'")
 
@@ -6564,18 +6584,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                 continue
             nodes = scene_layout.get("nodes")
             if isinstance(nodes, dict):
-                valid_node_ids = {
-                    state.get("state_id")
-                    for state in target_scene.get("states", [])
-                    if isinstance(state, dict)
-                }
-                valid_node_ids.add("scene-entry")
-                valid_node_ids.add(STATE_GRAPH_SYSTEM_EXIT_NODE_ID)
-                valid_node_ids.update(
-                    f"scene-exit-{scene_exit.get('scene_exit_id')}"
-                    for scene_exit in target_scene.get("scene_exits", [])
-                    if isinstance(scene_exit, dict) and isinstance(scene_exit.get("scene_exit_id"), str)
-                )
+                valid_node_ids = _state_graph_node_ids(target_scene)
                 for node_id in nodes:
                     if isinstance(node_id, str) and node_id not in valid_node_ids:
                         _issue(
@@ -6736,7 +6745,7 @@ def apply_project_commands(
         elif kind in {"event_binding.add", "event_binding.update"}:
             applied.append(_apply_event_binding_upsert(scenes, command))
         elif kind == "event_binding.delete":
-            applied.append(_apply_event_binding_delete(scenes, command))
+            applied.append(_apply_event_binding_delete(project, scenes, command))
         elif kind in {"event_handler.add", "event_handler.update", "event_handler.delete"}:
             applied.append(_apply_event_handler_command(scenes, command))
         elif kind == "route.add":
