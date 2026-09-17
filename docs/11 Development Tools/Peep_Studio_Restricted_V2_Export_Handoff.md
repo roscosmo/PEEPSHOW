@@ -4,6 +4,10 @@ Status: backend implemented in authoring service API 42; the actual Studio-expor
 installation fixture passed normal USB installation, PLAY and deliberate reboot.
 This is a fixture-specific functional pass, not unrestricted V2 or shipping support.
 
+API 44 follow-up: [[Peep_Studio_Multiscene_V2_Export_Handoff]] supersedes this
+document's single-scene and no-scene-connections restrictions. The remaining
+restrictions and the API 42 hardware evidence below retain their original scope.
+
 This increment enables a conservative export subset of the installed HW6 V2
 profile. It supersedes the earlier blanket V2 export prohibition, not the
 remaining firmware limitations. No firmware, wire IDs, source schema, fixture

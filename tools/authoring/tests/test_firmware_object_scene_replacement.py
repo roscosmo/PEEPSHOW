@@ -8,7 +8,7 @@ import subprocess
 import unittest
 
 import test_firmware_object_candidate_queue as queue
-from peepshow_authoring.compiler import build_development_egg_v2
+from peepshow_authoring.compiler import build_development_egg_v2, build_egg
 from peepshow_authoring.project import load_project
 
 
@@ -74,7 +74,7 @@ class ObjectSceneReplacementTests(unittest.TestCase):
                           (self.firmware / name).read_text())
 
     def test_installed_preflight_entry_replacement_failure_and_reload(self):
-        blob = build_development_egg_v2(replacement_bundle())
+        blob = build_egg(replacement_bundle())
         path = self.work / "installed_replacement.egg"
         path.write_bytes(blob)
         path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())

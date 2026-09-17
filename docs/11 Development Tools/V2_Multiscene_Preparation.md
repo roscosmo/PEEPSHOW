@@ -3,9 +3,10 @@
 Status (2026-09-17): normal V2 install preflight and installed launch support
 the bounded fresh-entry scene set. Installed HOME/AWAY and Studio Lobby/Garden
 functional hardware testing passed, including static held-frame sleep, its
-shortened battery wake and animated regression after the static fix. Public
-multi-scene export remains disabled pending shared tooling/capability work and
-remaining timer acceptance. See [[V2_Studio_Scene_Connections_Test]], the installed
+shortened battery wake and animated regression after the static fix. API 44 now
+enables bounded public multi-scene export after the targeted timer checkpoint;
+Studio integration and its new exported fixture's hardware run remain pending.
+See [[Peep_Studio_Multiscene_V2_Export_Handoff]], [[V2_Studio_Scene_Connections_Test]], the installed
 follow-up below and [[V2_Multiscene_Installed_Test_Runbook]]. Earlier preparation milestones
 are retained as history, not current installation restrictions. Decoder baseline is
 `ac46c0e70e3f7aeab05ad22ae4b987d3e29c6436`, following authoring API 43.
@@ -307,9 +308,14 @@ observed after Resume). Evidence and remaining coverage limits are recorded in
 [[V2_Timer_Controls_Installed_Test]]. The 19 focused native tests pass. These
 results are not inferred from the no-timer Lobby/Garden fixture.
 
-1. Complete bounded multi-scene shared export/readiness and capability work,
-   preserving the proven subset and the distinction between timer semantics
-   with native coverage and individually hardware-qualified behavior.
+Shared export/readiness is now implemented in API 44. The pinned GUI integration
+fixture builds through the normal service operation to 3944 bytes, with both
+scenes ready and separate scene budgets; its exact bytes pass native installed
+preflight and entry. See [[Peep_Studio_Multiscene_V2_Export_Handoff]]. Firmware
+and timer availability labels are unchanged.
+
+1. Integrate the API 44 capability/report handoff in Studio, preserving the
+   whole-project readiness requirement and currently excluded features.
 2. Test Studio build/export -> USB install -> PLAY -> deliberate reboot. The
    development encoder used for the passed fixtures is not public export proof.
    No Studio-side compiler workaround. Functional installed-scene evidence is in

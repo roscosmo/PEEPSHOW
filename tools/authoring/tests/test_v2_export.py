@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from build_object_development import dual_fixture_bundle, sfx_fixture_bundle
+from build_object_development import dual_fixture_bundle, sfx_fixture_bundle, scene_exit_fixture_bundle
 from peepshow_authoring.compiler import build_egg, build_development_egg_v2, build_readiness_issues, EggCompileError
 from peepshow_authoring.egg_format import parse_egg, EggFormatError
 from peepshow_authoring.project import load_project
@@ -39,7 +39,9 @@ class V2ExportTests(unittest.TestCase):
     def test_service_build_exact_hardware_fixture_and_capabilities(self):
         service = AuthoringService()
         hello = service.handle(ServiceRequest("hello", "service.hello", {}))
-        self.assertEqual(43, hello["service_api_version"])
+        self.assertEqual(44, hello["service_api_version"])
+        self.assertTrue(hello["scene_object_authoring"]["multi_scene_export"])
+        self.assertEqual(2, hello["package_export"]["v2_profile"]["profile_revision"])
         self.assertEqual(PROFILE_ID, hello["package_export"]["v2_profile"]["profile_id"])
         loaded = service.handle(ServiceRequest("load", "project.load", {"path": str(FIXTURE)}))
         self.assertEqual([], loaded["build_issues"])
@@ -75,6 +77,99 @@ class V2ExportTests(unittest.TestCase):
             build_egg(mixed)
         with self.assertRaises(EggFormatError):
             parse_egg(build_development_egg_v2(audio))
+
+    def scene_set(self, count=2):
+        scenes = []
+        for index in range(count):
+            scene = deepcopy(self.bundle.scenes[0])
+            scene["scene_id"] = f"scene_{index}"
+            if count > 1:
+                route = scene["routes"][0]
+                route.pop("target_state")
+                route["target_scene"] = f"scene_{(index + 1) % count}"
+            scenes.append(scene)
+        project = deepcopy(self.bundle.project)
+        project.update(entry_scene=scenes[-1]["scene_id"],
+                       scene_sources=[f"scenes/{s['scene_id']}.state.json" for s in scenes])
+        return replace(self.bundle, project=project, scenes=tuple(scenes))
+
+    def test_multiscene_public_build_roundtrip_and_nonfirst_entry(self):
+        for bundle in (self.scene_set(8), scene_exit_fixture_bundle()):
+            with self.subTest(entry=bundle.project["entry_scene"]):
+                self.assertEqual([], build_readiness_issues(bundle))
+                blob = build_egg(bundle)
+                self.assertEqual(build_development_egg_v2(bundle), blob)
+                package = parse_egg(blob)
+                self.assertEqual(bundle.project["entry_scene"], package.manifest["entry_scene"])
+                admission = package_admission(package, len(blob))
+                self.assertEqual([], admission["issues"])
+                self.assertIsNone(admission["animation_budget"])
+                self.assertEqual({s["scene_id"] for s in bundle.scenes}, set(admission["scene_animation_budgets"]))
+        self.assertIn("V2_SCENE_PROFILE", {i["code"] for i in build_readiness_issues(self.scene_set(9))})
+        self.assertIn("V2_CAPACITY", {i["code"] for i in package_issues(
+            parse_egg(build_development_egg_v2(self.scene_set(9)), _development_v2=True), 65536)})
+        mixed = deepcopy(list(self.scene_set().scenes))
+        mixed[1]["schema_version"] = 1
+        self.assertIn("V2_SCENE_PROFILE", {i["code"] for i in build_readiness_issues(
+            replace(self.scene_set(), scenes=tuple(mixed)))})
+
+    def test_every_scene_has_independent_animation_and_graph_budgets(self):
+        blob = build_egg(self.scene_set())
+        package = parse_egg(blob)
+        scenes = deepcopy(package.scenes)
+        clips = deepcopy(list(package.animations))
+        clips.append(deepcopy(clips[0]))
+        clips[1]["frame_duration_ms"] = (250,) * 4
+        scenes[1]["objects"][0]["clip_index"] = 1
+        package = replace(package, scenes=scenes, animations=tuple(clips))
+        admission = package_admission(package, len(blob))
+        self.assertEqual([], admission["issues"])
+        self.assertEqual([400, 250], [b["quantum_ms"] for b in admission["scene_animation_budgets"].values()])
+        # Remove incoming edges: an unreachable bad scene must still block export.
+        scenes[0]["graph"]["routes"][0].update(target_scene=None, target_state_index=0)
+        for field, limit in (("state_count", 8), ("variable_count", 8), ("binding_count", 16)):
+            with self.subTest(field=field):
+                altered = deepcopy(scenes)
+                altered[1]["graph"][field] = limit + 1
+                issues = package_issues(replace(package, scenes=altered), len(blob))
+                self.assertTrue(any(i["code"] == "V2_CAPACITY" and i["scene_id"] == "scene_1" for i in issues))
+        clips[1]["frame_duration_ms"] = (251,) * 4
+        issues = package_issues(replace(package, animations=tuple(clips)), len(blob))
+        self.assertTrue(any(i["code"] == "V2_ANIMATION_TIMING" and i["scene_id"] == "scene_1" for i in issues))
+
+    def test_cross_scene_exits_reject_self_targets_and_all_actions(self):
+        for target, actions in (("scene_0", []), ("missing", []),
+                                ("scene_1", [{"kind": 1}]), ("scene_1", [{"kind": 7}]),
+                                ("scene_1", [{"kind": 9}]), ("scene_1", [{"kind": 12}])):
+            package = parse_egg(build_egg(self.scene_set()))
+            scenes = deepcopy(package.scenes)
+            scenes[0]["graph"]["routes"][0].update(target_scene=target, operations=actions)
+            self.assertIn("V2_SCENE_EXIT_UNSUPPORTED", {i["code"] for i in package_issues(
+                replace(package, scenes=scenes), 65536)})
+
+    def test_multiscene_service_readiness_and_report_are_whole_project(self):
+        service = AuthoringService()
+        loaded = service.handle(ServiceRequest("load", "project.load", {"path": str(FIXTURE)}))
+        service._bundle = self.scene_set()
+        params = {"project_revision": loaded["project_revision"]}
+        normalized = service.handle(ServiceRequest("normalize", "project.normalize", params))
+        for caps in normalized["scene_capabilities"].values():
+            self.assertTrue(caps["multi_scene_export"] and caps["export_ready"])
+            self.assertEqual("whole_project", caps["export_readiness_scope"])
+        built = service.handle(ServiceRequest("build", "project.build_package", params))
+        self.assertEqual(build_egg(service._bundle), base64.b64decode(built["package"]["blob_base64"]))
+        report = built["compatibility_report"]["budgets"]["waiting_visual_sequences"]
+        self.assertEqual("per_scene", report["scope"])
+        self.assertIsNone(report["analysis"])
+        self.assertEqual({"scene_0", "scene_1"}, set(report["scene_analyses"]))
+        scenes = deepcopy(service._bundle.scenes)
+        scenes[1]["objects"].extend([{**deepcopy(scenes[1]["objects"][1]), "object_id": f"extra_{i}"} for i in range(13)])
+        service._bundle = replace(service._bundle, scenes=scenes)
+        normalized = service.handle(ServiceRequest("bad", "project.normalize", params))
+        self.assertTrue(build_readiness_issues(service._bundle))
+        self.assertTrue(all(not caps["export_ready"] for caps in normalized["scene_capabilities"].values()))
+        with self.assertRaises(ProtocolError):
+            service.handle(ServiceRequest("blocked", "project.build_package", params))
 
     def test_shipping_block_does_not_change_draft_validity(self):
         project = deepcopy(self.bundle.project)
@@ -167,6 +262,7 @@ class V2ExportTests(unittest.TestCase):
     def test_firmware_capacity_constants_match_host_subset(self):
         inc = ROOT / "firmware/peepshow_hw6_fw0/Core/Inc"
         for file, macro, key in (
+            ("ps_egg_state_loader.h", "PS_EGG_STATE_LOADER_SCENE_MAX", "scenes"),
             ("ps_scene_runtime.h", "PS_SCENE_RUNTIME_STATE_MAX", "states"),
             ("ps_scene_runtime.h", "PS_SCENE_RUNTIME_VARIABLE_MAX", "variables"),
             ("ps_scene_runtime.h", "PS_SCENE_RUNTIME_GUARD_MAX", "guards"),

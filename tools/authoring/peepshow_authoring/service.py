@@ -59,7 +59,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 43
+SERVICE_API_VERSION = 44
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -160,7 +160,7 @@ def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
             "connection_commands": list(SCENE_CONNECTION_COMMANDS),
             "scene_entry_modes": ["fresh_default"],
             "scene_exit_action_kinds": [] if scene["schema_version"] == 2 else ["play_sfx"],
-            "multi_scene_export": not object_package,
+            "multi_scene_export": True,
             "route_destination_kinds": ["state", "system_exit", "scene"],
         } for scene in bundle.scenes
     }
@@ -379,7 +379,7 @@ class AuthoringService:
                 "connection_commands": list(SCENE_CONNECTION_COMMANDS),
                 "scene_entry_modes": ["fresh_default"],
                 "scene_exit_action_kinds": [],
-                "multi_scene_export": False,
+                "multi_scene_export": True,
                 "route_destination_kinds": ["state", "system_exit", "scene"],
             },
             "target_profiles": {

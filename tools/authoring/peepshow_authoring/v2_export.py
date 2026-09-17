@@ -14,7 +14,7 @@ from .target_profile import TARGET_PROFILE, TARGET_STATE_SCENE_EVENTS
 PROFILE_ID = "hw6_v2_resident_v1"
 LIMITS = {
     "package_bytes": TARGET_PROFILE["package"]["resident_prefix_bytes"],
-    "scenes": 1, "objects": 12, "states": 8, "variables": 8,
+    "scenes": 8, "objects": 12, "states": 8, "variables": 8,
     "bindings": TARGET_STATE_SCENE_EVENTS["binding_count_max"],
     "transitions": 16, "guards": 16, "actions": 32, "strings": 256,
     "animated_objects": 8, "clip_steps": 12, "clip_distinct_frames": 4,
@@ -26,15 +26,25 @@ LIMITS = {
 
 def public_v2_export_profile():
     return {
-        "profile_id": PROFILE_ID, "container_version": 2,
+        "profile_id": PROFILE_ID, "profile_revision": 2, "container_version": 2,
         "status": "development_restricted", "execution_model": "scene_objects",
         "limits": deepcopy(LIMITS), "interaction_modes": ["continuous"],
         "event_classes": ["input", "timer"], "audio": False,
-        "scene_connections": False, "system_exit_actions": False,
+        "scene_connections": True, "scene_entry_modes": ["fresh_default"],
+        "scene_exit_action_kinds": [], "self_scene_exits": False,
+        "system_exit_actions": False,
         "mixed_execution_models": False, "shipping_build": False,
         "budget_method": "conservative_all_clips_and_positions",
         "timing_method": "derived_gcd_no_rounding",
         "device_exact_admission_required": True,
+        "admission_scope": "all_scenes_including_unreachable",
+        "limit_scopes": {
+            "package": ["package_bytes", "scenes", "strings"],
+            "scene": ["objects", "states", "variables", "bindings", "transitions", "guards",
+                      "actions", "animated_objects", "combined_steps", "chunks", "payload_bytes"],
+            "clip": ["clip_steps", "clip_distinct_frames", "frame_duration_max_ms"],
+            "display": ["band_rows", "band_slot_bytes", "canvas_width", "tick_ms"],
+        },
     }
 
 
@@ -47,9 +57,13 @@ def issue(code, path, message, scene_id=None):
 
 def source_issues(bundle):
     issues = []
-    if len(bundle.scenes) != 1 or bundle.scenes[0].get("schema_version") != 2:
+    if not 1 <= len(bundle.scenes) <= LIMITS["scenes"] or any(
+            scene.get("schema_version") != 2 for scene in bundle.scenes):
         issues.append(issue("V2_SCENE_PROFILE", "scenes",
-                            "V2 export requires exactly one version-2 scene; split extra or legacy scenes into another project."))
+                            "V2 export requires one to eight version-2 scenes; legacy scenes cannot be mixed in."))
+    scene_ids = {scene["scene_id"] for scene in bundle.scenes}
+    if len(scene_ids) != len(bundle.scenes) or bundle.project["entry_scene"] not in scene_ids:
+        issues.append(issue("V2_SCENE_PROFILE", "scenes", "Scene IDs must be unique and the package entry must exist."))
     if bundle.project.get("validation", {}).get("build_profile") == "shipping":
         issues.append(issue("V2_SHIPPING_UNAVAILABLE", "validation.build_profile",
                             "Restricted V2 export is development-only; select the development build profile."))
@@ -67,14 +81,38 @@ def source_issues(bundle):
         if scene["interaction_policy"]["mode"] != "continuous":
             issues.append(issue("V2_INTERACTION_UNSUPPORTED", path + ".interaction_policy.mode",
                                 "Select continuous interaction for restricted V2 export.", sid))
-        if scene.get("scene_exits"):
-            issues.append(issue("V2_SCENE_EXIT_UNSUPPORTED", path + ".scene_exits",
-                                "Remove scene exits for restricted V2 export.", sid))
+        for scene_exit in scene.get("scene_exits", []):
+            if scene_exit["target_scene"] == sid or scene_exit["target_scene"] not in scene_ids:
+                issues.append(issue("V2_SCENE_EXIT_UNSUPPORTED", path + ".scene_exits",
+                                    "Scene exits must target another scene's default entry.", sid))
     return issues
 
 
 def package_admission(package, size):
     """Validate a structurally parsed V2 package against the export subset."""
+    issues = []
+    for name, used in (("package_bytes", size), ("strings", len(package.strings)),
+                       ("scenes", len(package.scenes))):
+        if used > LIMITS[name]:
+            issues.append(issue("V2_CAPACITY", "package." + name,
+                                f"V2 {name} use {used}, limit {LIMITS[name]}; reduce this content before export."))
+    if not package.scenes or any(scene.get("execution_model") != 2 for scene in package.scenes):
+        issues.append(issue("V2_SCENE_PROFILE", "scenes", "V2 export requires only scenes using scene-owned objects."))
+        return {"issues": issues, "animation_budget": None, "scene_animation_budgets": {}}
+    if package.audio_assets or package.audio_cues or any(c.chunk_type in {10, 11, 12} for c in package.chunks):
+        issues.append(issue("V2_AUDIO_UNSUPPORTED", "assets", "V2 export does not support audio chunks."))
+    scene_budgets = {}
+    for scene in package.scenes:
+        result = _scene_admission(package, scene)
+        issues.extend(result["issues"])
+        scene_budgets[scene["scene_id"]] = result["animation_budget"]
+    return {"issues": issues,
+            "animation_budget": next(iter(scene_budgets.values())) if len(package.scenes) == 1 else None,
+            "scene_animation_budgets": scene_budgets}
+
+
+def _scene_admission(package, scene):
+    """Each scene owns a separate playback cycle; never combine scene clocks."""
     issues = []
 
     def limit(name, used, path, sid=None):
@@ -82,15 +120,6 @@ def package_admission(package, size):
             issues.append(issue("V2_CAPACITY", path,
                 f"V2 {name} use {used}, limit {LIMITS[name]}; reduce this content before export.", sid))
 
-    limit("package_bytes", size, "package")
-    limit("strings", len(package.strings), "package.strings")
-    if len(package.scenes) != 1 or package.scenes[0].get("execution_model") != 2:
-        issues.append(issue("V2_SCENE_PROFILE", "scenes",
-                            "V2 export requires exactly one scene using scene-owned objects."))
-        return {"issues": issues, "animation_budget": None}
-    if package.audio_assets or package.audio_cues or any(c.chunk_type in {10, 11, 12} for c in package.chunks):
-        issues.append(issue("V2_AUDIO_UNSUPPORTED", "assets", "V2 export does not support audio chunks."))
-    scene = package.scenes[0]
     sid = scene["scene_id"]
     path = f"scenes[{sid}]"
     graph = scene["graph"]
@@ -109,8 +138,10 @@ def package_admission(package, size):
     for route in graph["routes"]:
         route_path = path + f".routes[{route['route_id']}]"
         if route["target_scene"] is not None:
-            issues.append(issue("V2_SCENE_EXIT_UNSUPPORTED", route_path,
-                                "Scene connections cannot be exported in the restricted V2 profile.", sid))
+            if (route["target_scene"] == sid or route["target_scene"] not in
+                    {candidate["scene_id"] for candidate in package.scenes} or route["operations"]):
+                issues.append(issue("V2_SCENE_EXIT_UNSUPPORTED", route_path,
+                                    "Use an action-free exit to another scene's default entry.", sid))
         for index, op in enumerate(route["operations"]):
             if op["kind"] not in {1, 9, 10, 11, 12}:
                 issues.append(issue("V2_ACTION_UNSUPPORTED", route_path + f".actions[{index}]",
