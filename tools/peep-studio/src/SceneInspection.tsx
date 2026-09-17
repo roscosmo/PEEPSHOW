@@ -3262,8 +3262,9 @@ export function StateGraphView({
         if (!didInitialFit.current) {
           didInitialFit.current = true;
           window.requestAnimationFrame(() => {
-            instance.fitView({ padding: 0.22, maxZoom: 1 });
-            window.requestAnimationFrame(() => setInitialFitComplete(true));
+            void instance.fitView({ padding: 0.22, maxZoom: 1 }).then(() => {
+              setInitialFitComplete(true);
+            });
           });
         }
       }}
@@ -3918,9 +3919,10 @@ export function SceneFlowView({
         if (!didInitialFit.current) {
           didInitialFit.current = true;
           window.requestAnimationFrame(() => {
-            instance.fitView({ padding: 0.28, maxZoom: 1 });
-            updateViewportText();
-            window.requestAnimationFrame(() => setInitialFitComplete(true));
+            void instance.fitView({ padding: 0.28, maxZoom: 1 }).then(() => {
+              updateViewportText();
+              setInitialFitComplete(true);
+            });
           });
         }
       }}

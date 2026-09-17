@@ -8657,5 +8657,6 @@ button:focus-visible {
   background: rgb(255 255 255 / 14%);
 }
 .graph-initializing {
-  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
