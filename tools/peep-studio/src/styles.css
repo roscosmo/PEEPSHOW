@@ -2805,8 +2805,16 @@ button:focus-visible {
   padding: 10px;
 }
 
-.sprite-import-workspace .sprite-import-preview-canvas img {
-  width: min(100%, var(--sprite-import-preview-width, 100%));
+.sprite-import-workspace .sprite-import-preview-canvas.source-preview img {
+  width: min(100%, var(--sprite-import-source-preview-width, 100%));
+  max-width: none;
+  max-height: none;
+  height: auto;
+  object-fit: contain;
+}
+
+.sprite-import-workspace .sprite-import-preview-canvas.converted-preview img {
+  width: min(100%, var(--sprite-import-converted-preview-width, 100%));
   max-width: none;
   max-height: none;
   height: auto;

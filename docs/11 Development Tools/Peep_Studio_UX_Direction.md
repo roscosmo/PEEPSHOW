@@ -563,8 +563,16 @@ Agreed delivery order:
    previews, then Import writes the masked 1bpp PNG into the project. Current
    controls cover named B/W presets, threshold, alpha cutoff, transparency mode
    (`Respect alpha`, `Ignore alpha`, `Transparent as white`), invert and sheet
-   columns/rows. Future indexed-color and dither import should be added as
-   conversion modes in this same staged importer, not as a separate path.
+   columns/rows. Indexed-colour and continuous-tone PNGs use this same staged
+   importer: perceptual luminance feeds direct threshold, expanded 2x2/4x4
+   pattern cells or same-resolution Floyd-Steinberg conversion, with adjustable
+   threshold and dither strength. Pattern conversion makes every source pixel a
+   complete cell, so 2x2 doubles and 4x4 quadruples both sheet and frame dimensions.
+   Expanded frames must still fit the target's 168x144 object bounds; oversized
+   sheets are rejected before allocating the converted canvas.
+   Source-colour and final black/white/transparent counts remain visible beside
+   the full-size live preview. Import still writes the existing masked 1bpp PNG
+   and asset record; no parallel runtime format or GUI-side package model exists.
 3. Animation authoring belongs in Assets. Each shared animation record is one
    library item, continuously previewing its ordered frames at the authored cadence.
    Select source-sprite checkboxes to include a whole source sheet, or toggle

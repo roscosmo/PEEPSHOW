@@ -36,6 +36,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
 import { parseSpriteSheetGrid } from "./spriteSheetImport";
+import { convertSpritePixels, spriteImportOutputScale, type SpriteImportAlphaMode, type SpriteImportConversion, type SpriteImportConversionMode } from "./spriteImportConversion";
 import { useEditorPreferences } from "./editorPreferences";
 import { SpriteAssetCard } from "./SpriteAssetCard";
 import { AnimationClipEditor } from "./AnimationClipEditor";
@@ -177,14 +178,14 @@ type EmulatorPopoutCommand =
   | { kind: "togglePlaying" }
   | { kind: "advance"; elapsedMs?: number }
   | { kind: "input"; source?: string };
-type SpriteImportConversionMode = "threshold_1bpp";
-type SpriteImportAlphaMode = "respect_alpha" | "ignore_alpha" | "transparent_as_white";
 type SpriteImportPreset = {
   id: string;
   label: string;
   threshold: string;
   alphaCutoff: string;
   alphaMode: SpriteImportAlphaMode;
+  conversionMode: SpriteImportConversionMode;
+  ditherStrength: string;
   invert: boolean;
 };
 type SpriteImportPreview = {
@@ -195,6 +196,8 @@ type SpriteImportPreview = {
   blackPixels: number;
   whitePixels: number;
   transparentPixels: number;
+  sourceColors: number;
+  sourceColorsLimited: boolean;
   error: string | null;
 };
 type AnimationAnchorX = "left" | "center" | "right";
@@ -320,18 +323,23 @@ const NORMALIZED_ANIMATION_MAX_SOURCE_DIMENSION = 4096;
 const ASSET_LIBRARY_MIN_ZOOM = 0.6;
 const ASSET_LIBRARY_MAX_ZOOM = 1.8;
 const ASSET_LIBRARY_ZOOM_STEP = 0.1;
+const SPRITE_IMPORT_MAX_OUTPUT_DIMENSION = 4096;
+const SPRITE_IMPORT_MAX_OUTPUT_PIXELS = 16_777_216;
 const DEFAULT_FONT_PREVIEW_TEXT = "PEEP STUDIO 0123456789 START SETTINGS CREDITS";
 const NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME = "Animation backing frames";
 const LEGACY_NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME = "Padded animation frames";
 const NORMALIZED_ANIMATION_BACKING_ID_PREFIXES = ["animation_backing_frames", "padded_animation_frames"];
 const SPRITE_IMPORT_ALPHA_MODES: SpriteImportAlphaMode[] = ["respect_alpha", "ignore_alpha", "transparent_as_white"];
 const SPRITE_IMPORT_PRESETS: SpriteImportPreset[] = [
-  { id: "standard", label: "Standard B/W", threshold: "128", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
-  { id: "white_art", label: "White art on transparent", threshold: "64", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
-  { id: "faint_dark", label: "Faint dark lines", threshold: "192", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
-  { id: "inverted", label: "Invert source", threshold: "128", alphaCutoff: "1", alphaMode: "respect_alpha", invert: true },
-  { id: "opaque_sheet", label: "Opaque sheet", threshold: "128", alphaCutoff: "1", alphaMode: "ignore_alpha", invert: false },
-  { id: "transparent_white", label: "Transparent as white", threshold: "128", alphaCutoff: "1", alphaMode: "transparent_as_white", invert: false },
+  { id: "standard", label: "Standard B/W", conversionMode: "threshold_1bpp", threshold: "128", ditherStrength: "100", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
+  { id: "indexed_4", label: "4-colour index 2x2", conversionMode: "ordered_2x2", threshold: "128", ditherStrength: "100", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
+  { id: "indexed_detail", label: "Fine shades 4x4", conversionMode: "ordered_4x4", threshold: "128", ditherStrength: "100", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
+  { id: "diffusion", label: "Smooth gradients", conversionMode: "floyd_steinberg", threshold: "128", ditherStrength: "100", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
+  { id: "white_art", label: "White art on transparent", conversionMode: "threshold_1bpp", threshold: "64", ditherStrength: "100", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
+  { id: "faint_dark", label: "Faint dark lines", conversionMode: "threshold_1bpp", threshold: "192", ditherStrength: "100", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
+  { id: "inverted", label: "Invert source", conversionMode: "threshold_1bpp", threshold: "128", ditherStrength: "100", alphaCutoff: "1", alphaMode: "respect_alpha", invert: true },
+  { id: "opaque_sheet", label: "Opaque sheet", conversionMode: "threshold_1bpp", threshold: "128", ditherStrength: "100", alphaCutoff: "1", alphaMode: "ignore_alpha", invert: false },
+  { id: "transparent_white", label: "Transparent as white", conversionMode: "threshold_1bpp", threshold: "128", ditherStrength: "100", alphaCutoff: "1", alphaMode: "transparent_as_white", invert: false },
 ];
 
 const normalizeTextLines = (value: string) => value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
@@ -386,11 +394,18 @@ const spriteSheetPreviewMetrics = (columns: number, frames: CompiledAssetFrame[]
 };
 
 const parseSpriteImportConversion = (
-  draft: Pick<PendingSpriteImport, "threshold" | "alphaCutoff" | "alphaMode" | "invert">,
-): { threshold: number; alphaCutoff: number; alphaMode: SpriteImportAlphaMode; invert: boolean; error?: undefined } | { error: string } => {
+  draft: Pick<PendingSpriteImport, "conversionMode" | "threshold" | "ditherStrength" | "alphaCutoff" | "alphaMode" | "invert">,
+): (SpriteImportConversion & { error?: undefined }) | { error: string } => {
+  if (!["threshold_1bpp", "ordered_2x2", "ordered_4x4", "floyd_steinberg"].includes(draft.conversionMode)) {
+    return { error: "Choose a supported conversion mode." };
+  }
   const threshold = Number(draft.threshold);
   if (!Number.isInteger(threshold) || threshold < 0 || threshold > 255) {
     return { error: "Threshold must be a whole number from 0 to 255." };
+  }
+  const ditherStrength = Number(draft.ditherStrength);
+  if (!Number.isInteger(ditherStrength) || ditherStrength < 0 || ditherStrength > 100) {
+    return { error: "Dither strength must be a whole number from 0 to 100." };
   }
   if (!SPRITE_IMPORT_ALPHA_MODES.includes(draft.alphaMode)) {
     return { error: "Choose a supported transparency mode." };
@@ -399,11 +414,41 @@ const parseSpriteImportConversion = (
   if (draft.alphaMode !== "ignore_alpha" && (!Number.isInteger(alphaCutoff) || alphaCutoff < 1 || alphaCutoff > 255)) {
     return { error: "Alpha cutoff must be a whole number from 1 to 255." };
   }
-  return { threshold, alphaCutoff: draft.alphaMode === "ignore_alpha" ? 1 : alphaCutoff, alphaMode: draft.alphaMode, invert: draft.invert };
+  return { mode: draft.conversionMode, threshold, ditherStrength, alphaCutoff: draft.alphaMode === "ignore_alpha" ? 1 : alphaCutoff, alphaMode: draft.alphaMode, invert: draft.invert };
+};
+
+const parseSpriteImportGrid = (draft: Pick<PendingSpriteImport, "width" | "height" | "columns" | "rows" | "conversionMode">) => {
+  const parsed = parseSpriteSheetGrid(draft.width, draft.height, draft.columns, draft.rows);
+  if (parsed.error !== undefined) return { ...parsed, scale: 1, outputWidth: 0, outputHeight: 0 };
+  const scale = spriteImportOutputScale(draft.conversionMode);
+  const outputWidth = draft.width * scale;
+  const outputHeight = draft.height * scale;
+  if (parsed.frameWidth * scale > 168 || parsed.frameHeight * scale > 144) {
+    return {
+      ...parsed,
+      scale,
+      outputWidth,
+      outputHeight,
+      error: `Expanded frames are ${parsed.frameWidth * scale}x${parsed.frameHeight * scale}; each frame must fit inside 168x144.`,
+    };
+  }
+  if (outputWidth > SPRITE_IMPORT_MAX_OUTPUT_DIMENSION || outputHeight > SPRITE_IMPORT_MAX_OUTPUT_DIMENSION
+    || outputWidth * outputHeight > SPRITE_IMPORT_MAX_OUTPUT_PIXELS) {
+    return {
+      ...parsed,
+      scale,
+      outputWidth,
+      outputHeight,
+      error: `Expanded sheet is ${outputWidth}x${outputHeight}; reduce its dimensions or use a smaller pattern.`,
+    };
+  }
+  return { ...parsed, scale, outputWidth, outputHeight };
 };
 
 const spriteImportPresetId = (draft: PendingSpriteImport) => (
-  SPRITE_IMPORT_PRESETS.find(preset => preset.threshold === draft.threshold
+  SPRITE_IMPORT_PRESETS.find(preset => preset.conversionMode === draft.conversionMode
+    && preset.threshold === draft.threshold
+    && preset.ditherStrength === draft.ditherStrength
     && preset.alphaCutoff === draft.alphaCutoff
     && preset.alphaMode === draft.alphaMode
     && preset.invert === draft.invert)?.id ?? "custom"
@@ -432,7 +477,7 @@ async function loadImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> 
 
 async function renderSpriteImportPng(
   sourceDataUrl: string,
-  conversion: { threshold: number; alphaCutoff: number; alphaMode: SpriteImportAlphaMode; invert: boolean },
+  conversion: SpriteImportConversion,
 ): Promise<SpriteImportPreview> {
   const source = await loadImageFromDataUrl(sourceDataUrl);
   const width = source.naturalWidth;
@@ -450,46 +495,27 @@ async function renderSpriteImportPng(
   context.clearRect(0, 0, width, height);
   context.drawImage(source, 0, 0);
   const image = context.getImageData(0, 0, width, height);
-  let visiblePixels = 0;
-  let blackPixels = 0;
-  let whitePixels = 0;
-  let transparentPixels = 0;
-  for (let index = 0; index < image.data.length; index += 4) {
-    const alpha = image.data[index + 3] ?? 0;
-    const sourceTransparent = conversion.alphaMode !== "ignore_alpha" && alpha < conversion.alphaCutoff;
-    if (sourceTransparent && conversion.alphaMode === "respect_alpha") {
-      image.data[index] = 255;
-      image.data[index + 1] = 255;
-      image.data[index + 2] = 255;
-      image.data[index + 3] = 0;
-      transparentPixels += 1;
-      continue;
-    }
-    const average = sourceTransparent
-      ? 255
-      : ((image.data[index] ?? 0) + (image.data[index + 1] ?? 0) + (image.data[index + 2] ?? 0)) / 3;
-    const black = sourceTransparent ? false : (average < conversion.threshold) !== conversion.invert;
-    const value = black ? 0 : 255;
-    image.data[index] = value;
-    image.data[index + 1] = value;
-    image.data[index + 2] = value;
-    image.data[index + 3] = 255;
-    visiblePixels += 1;
-    if (black) {
-      blackPixels += 1;
-    } else {
-      whitePixels += 1;
-    }
+  const converted = convertSpritePixels(image.data, width, height, conversion);
+  const outputCanvas = document.createElement("canvas");
+  outputCanvas.width = converted.width;
+  outputCanvas.height = converted.height;
+  const outputContext = outputCanvas.getContext("2d");
+  if (outputContext === null) {
+    throw new Error("Canvas rendering is unavailable.");
   }
-  context.putImageData(image, 0, 0);
+  const outputImage = outputContext.createImageData(converted.width, converted.height);
+  outputImage.data.set(converted.data);
+  outputContext.putImageData(outputImage, 0, 0);
   return {
-    dataUrl: canvas.toDataURL("image/png"),
-    width,
-    height,
-    visiblePixels,
-    blackPixels,
-    whitePixels,
-    transparentPixels,
+    dataUrl: outputCanvas.toDataURL("image/png"),
+    width: converted.width,
+    height: converted.height,
+    visiblePixels: converted.visiblePixels,
+    blackPixels: converted.blackPixels,
+    whitePixels: converted.whitePixels,
+    transparentPixels: converted.transparentPixels,
+    sourceColors: converted.sourceColors,
+    sourceColorsLimited: converted.sourceColorsLimited,
     error: null,
   };
 }
@@ -651,6 +677,7 @@ type PendingSpriteImport = {
   rows: string;
   conversionMode: SpriteImportConversionMode;
   threshold: string;
+  ditherStrength: string;
   alphaCutoff: string;
   alphaMode: SpriteImportAlphaMode;
   invert: boolean;
@@ -974,12 +1001,14 @@ export default function App() {
     if (conversion.error !== undefined) {
       setSpriteImportPreview({
         dataUrl: "",
-        width: pendingSpriteImport.width,
-        height: pendingSpriteImport.height,
+        width: pendingSpriteImport.width * spriteImportOutputScale(pendingSpriteImport.conversionMode),
+        height: pendingSpriteImport.height * spriteImportOutputScale(pendingSpriteImport.conversionMode),
         visiblePixels: 0,
         blackPixels: 0,
         whitePixels: 0,
         transparentPixels: 0,
+        sourceColors: 0,
+        sourceColorsLimited: false,
         error: conversion.error,
       });
       return;
@@ -997,18 +1026,22 @@ export default function App() {
         }
         setSpriteImportPreview({
           dataUrl: "",
-          width: pendingSpriteImport.width,
-          height: pendingSpriteImport.height,
+          width: pendingSpriteImport.width * spriteImportOutputScale(pendingSpriteImport.conversionMode),
+          height: pendingSpriteImport.height * spriteImportOutputScale(pendingSpriteImport.conversionMode),
           visiblePixels: 0,
           blackPixels: 0,
           whitePixels: 0,
           transparentPixels: 0,
+          sourceColors: 0,
+          sourceColorsLimited: false,
           error: errorText(error),
         });
       });
   }, [
     pendingSpriteImport?.alphaCutoff,
     pendingSpriteImport?.alphaMode,
+    pendingSpriteImport?.conversionMode,
+    pendingSpriteImport?.ditherStrength,
     pendingSpriteImport?.height,
     pendingSpriteImport?.invert,
     pendingSpriteImport?.sourceDataUrl,
@@ -1850,6 +1883,7 @@ export default function App() {
         rows: String(suggestTiles ? imported.height / 16 : 1),
         conversionMode: "threshold_1bpp",
         threshold: "128",
+        ditherStrength: "100",
         alphaCutoff: "1",
         alphaMode: "respect_alpha",
         invert: false,
@@ -1878,12 +1912,7 @@ export default function App() {
         setMessage("Restart Peep Studio to enable staged sprite writing.");
         return;
       }
-      const parsed = parseSpriteSheetGrid(
-        pendingSpriteImport.width,
-        pendingSpriteImport.height,
-        pendingSpriteImport.columns,
-        pendingSpriteImport.rows,
-      );
+      const parsed = parseSpriteImportGrid(pendingSpriteImport);
       if (parsed.error !== undefined) {
         setAssetImportDebug(`Import blocked: ${parsed.error}`);
         setMessage(parsed.error);
@@ -1901,8 +1930,8 @@ export default function App() {
         written.assetId,
         written.width,
         written.height,
-        parsed.frameWidth,
-        parsed.frameHeight,
+        parsed.frameWidth * parsed.scale,
+        parsed.frameHeight * parsed.scale,
       );
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision,
@@ -1925,7 +1954,10 @@ export default function App() {
       setCombineFrameIds([]);
       setWorkspaceMode("assets");
       setPendingSpriteImport(null);
-      setAssetImportDebug(`Imported ${pendingSpriteImport.sourceName}: ${frames.length} frame${frames.length === 1 ? "" : "s"} at ${parsed.frameWidth}x${parsed.frameHeight}, threshold ${conversion.threshold}, ${spriteImportAlphaLabel(conversion.alphaMode).toLowerCase()}${conversion.alphaMode === "ignore_alpha" ? "" : ` ${conversion.alphaCutoff}`}${conversion.invert ? ", inverted" : ""}.`);
+      const conversionLabel = conversion.mode === "threshold_1bpp"
+        ? `threshold ${conversion.threshold}`
+        : `${conversion.mode.replaceAll("_", " ")}, threshold ${conversion.threshold}, strength ${conversion.ditherStrength}%`;
+      setAssetImportDebug(`Imported ${pendingSpriteImport.sourceName}: ${frames.length} frame${frames.length === 1 ? "" : "s"} at ${parsed.frameWidth}x${parsed.frameHeight}, ${conversionLabel}, ${spriteImportAlphaLabel(conversion.alphaMode).toLowerCase()}${conversion.alphaMode === "ignore_alpha" ? "" : ` ${conversion.alphaCutoff}`}${conversion.invert ? ", inverted" : ""}.`);
       setMessage(`Imported ${written.assetId} with ${frames.length} frame${frames.length === 1 ? "" : "s"}. Save to write it to the project.`);
     } catch (error) {
       const text = errorText(error);
@@ -5654,12 +5686,7 @@ export default function App() {
   const renderSpriteImportPanel = (canEditAssets: boolean) => {
     const importCheck = pendingSpriteImport === null
       ? null
-      : parseSpriteSheetGrid(
-        pendingSpriteImport.width,
-        pendingSpriteImport.height,
-        pendingSpriteImport.columns,
-        pendingSpriteImport.rows,
-      );
+      : parseSpriteImportGrid(pendingSpriteImport);
     const frameCount = pendingSpriteImport === null || importCheck === null || importCheck.error !== undefined
       ? 0
       : (pendingSpriteImport.width / importCheck.frameWidth) * (pendingSpriteImport.height / importCheck.frameHeight);
@@ -5677,7 +5704,8 @@ export default function App() {
       pendingSpriteImport === null ? "" : "sprite-import-workspace",
     ].filter(Boolean).join(" ");
     const spriteImportPanelStyle = pendingSpriteImport === null ? undefined : {
-      "--sprite-import-preview-width": `${pendingSpriteImport.width * importPreviewScale}px`,
+      "--sprite-import-source-preview-width": `${pendingSpriteImport.width * importPreviewScale}px`,
+      "--sprite-import-converted-preview-width": `${pendingSpriteImport.width * spriteImportOutputScale(pendingSpriteImport.conversionMode) * importPreviewScale}px`,
     } as CSSProperties;
     return (
       <div className={spriteImportPanelClass} style={spriteImportPanelStyle}>
@@ -5699,13 +5727,13 @@ export default function App() {
             <div className="sprite-import-preview-grid">
               <div className="sprite-import-preview-panel">
                 <strong>Source</strong>
-                <div className="sprite-import-preview-canvas">
+                <div className="sprite-import-preview-canvas source-preview">
                   <img src={pendingSpriteImport.sourceDataUrl} alt="" />
                 </div>
               </div>
               <div className="sprite-import-preview-panel">
                 <strong>Converted</strong>
-                <div className={`sprite-import-preview-canvas ${previewError !== null ? "error" : ""}`}>
+                <div className={`sprite-import-preview-canvas converted-preview ${previewError !== null ? "error" : ""}`}>
                   {spriteImportPreview !== null && spriteImportPreview.error === null ? (
                     <img src={spriteImportPreview.dataUrl} alt="" />
                   ) : (
@@ -5728,7 +5756,9 @@ export default function App() {
                     }
                     setPendingSpriteImport((current) => current === null ? null : {
                       ...current,
+                      conversionMode: preset.conversionMode,
                       threshold: preset.threshold,
+                      ditherStrength: preset.ditherStrength,
                       alphaCutoff: preset.alphaCutoff,
                       alphaMode: preset.alphaMode,
                       invert: preset.invert,
@@ -5753,6 +5783,9 @@ export default function App() {
                   }}
                 >
                   <option value="threshold_1bpp">B/W mask</option>
+                  <option value="ordered_2x2">Pattern dither 2x2 (2x size)</option>
+                  <option value="ordered_4x4">Pattern dither 4x4 (4x size)</option>
+                  <option value="floyd_steinberg">Error diffusion</option>
                 </select>
               </label>
               <label>
@@ -5784,6 +5817,22 @@ export default function App() {
                   onChange={(event) => {
                     const value = event.target.value;
                     setPendingSpriteImport((current) => current === null ? null : { ...current, threshold: value });
+                  }}
+                />
+              </label>
+              <label>
+                Dither strength <span>{pendingSpriteImport.ditherStrength}%</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  aria-label="Sprite import dither strength"
+                  value={pendingSpriteImport.ditherStrength}
+                  disabled={!canEditAssets || pendingSpriteImport.conversionMode === "threshold_1bpp"}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setPendingSpriteImport((current) => current === null ? null : { ...current, ditherStrength: value });
                   }}
                 />
               </label>
@@ -5849,12 +5898,12 @@ export default function App() {
                 />
               </label>
               <div className={`asset-import-result ${importCheck?.error !== undefined ? "error" : ""}`}>
-                {importCheck?.error ?? `${frameCount} frame${frameCount === 1 ? "" : "s"} / ${importCheck?.frameWidth}x${importCheck?.frameHeight} px each`}
+                {importCheck?.error ?? `${frameCount} frame${frameCount === 1 ? "" : "s"} / ${importCheck?.frameWidth! * importCheck?.scale!}x${importCheck?.frameHeight! * importCheck?.scale!} px each / ${importCheck?.outputWidth}x${importCheck?.outputHeight} sheet`}
               </div>
               <div className={`asset-import-result ${previewError !== null ? "error" : ""}`}>
                 {previewError ?? (spriteImportPreview === null
                   ? "Rendering preview..."
-                  : `${spriteImportPreview.blackPixels} black / ${spriteImportPreview.whitePixels} white / ${spriteImportPreview.transparentPixels} transparent`)}
+                  : `${spriteImportPreview.sourceColorsLimited ? `${spriteImportPreview.sourceColors}+` : spriteImportPreview.sourceColors} source colors / ${spriteImportPreview.blackPixels} black / ${spriteImportPreview.whitePixels} white / ${spriteImportPreview.transparentPixels} transparent`)}
               </div>
               <button
                 className="button primary"
