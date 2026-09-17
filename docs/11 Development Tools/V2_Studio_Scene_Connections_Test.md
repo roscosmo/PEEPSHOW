@@ -2,8 +2,9 @@
 
 Status (2026-09-17): installed navigation/rendering and static held-frame STOP2
 functional PASS after the fix. The shortened quiet battery wake also passed on
-this fixture. Current measurement and animated hardware regression remain
-pending. Public multi-scene export remains disabled.
+this fixture. Animated HOME/AWAY hardware regression also passed on the same
+firmware. Current measurement remains pending. Public multi-scene export remains
+disabled pending shared tooling/capability work and remaining timer acceptance.
 
 ## Hardware Result (2026-09-17)
 
@@ -66,7 +67,7 @@ deadline. Resume untouched for 20 seconds, then wake normally and capture
 `__fw0_battery_wake_prints.gdb`: require positive expiry and successful-due-read
 deltas and unchanged visuals. Do not lower battery voltage for this test.
 Finally regress the installed HOME/AWAY egg's animation and timer exits on the
-same firmware. Animated hardware regression remains pending.
+same firmware. That animated regression passed as recorded below.
 
 ### Static Hardware Retest Result (2026-09-17)
 
@@ -107,6 +108,26 @@ this test and is not erased or presented as zero failures. The explicit test
 deltas prove the successful due read. No new visual observation, current
 measurement, real 30-minute interval qualification or low-voltage shipment
 test is claimed from these prints. No battery policy was changed.
+
+### Animated Regression Result (2026-09-17)
+
+The user reinstalled the 3440-byte HOME/AWAY egg without reflashing and confirmed
+the requested animation continuity, scene changes and timed return behavior.
+Installed source/model/bytes=3/2/3440, slot 0 generation 14. Replacement
+attempts/failures/status=10/0/0 are cumulative, not ten new transitions proven by
+this single capture. Admission token/completion/lease/status=22/22/0/0 and
+display request/completion/result/fault=16/16/0/0 confirm completed work.
+
+LPBAM publication/fault=0/0, schedule=4 steps at 400 ms, payload=8 chunks/4672
+bytes. WFI/measured/reconciled=5/5/5 with clock status zero. Timer due/applied/
+error/RTC selections=3/3/0/3. This closes the animated functional regression
+after adding static held-frame support; no current measurement was supplied.
+
+Backend requested/selected remains 2/2 (LPBAM). Its current readiness status=1
+after wake/redraw is not a failed completed sleep; readiness must be prepared
+again before the next animated handoff. The current blocker is INPUT_PENDING
+(0x800), entry status NOT_RUN. Total automatic entry count 19 is cumulative
+across package activity and is not the new package's WFI count.
 
 ## Source And Artifact
 

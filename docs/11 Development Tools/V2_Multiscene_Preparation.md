@@ -1,9 +1,12 @@
 # V2 Multi-scene Preparation
 
-Status (2026-09-16): normal V2 install preflight and installed launch now support
-the bounded fresh-entry scene set. Installed HOME/AWAY functional hardware testing
-passed; public multi-scene export remains disabled. See the installed follow-up
-below and [[V2_Multiscene_Installed_Test_Runbook]]. Earlier preparation milestones
+Status (2026-09-17): normal V2 install preflight and installed launch support
+the bounded fresh-entry scene set. Installed HOME/AWAY and Studio Lobby/Garden
+functional hardware testing passed, including static held-frame sleep, its
+shortened battery wake and animated regression after the static fix. Public
+multi-scene export remains disabled pending shared tooling/capability work and
+remaining timer acceptance. See [[V2_Studio_Scene_Connections_Test]], the installed
+follow-up below and [[V2_Multiscene_Installed_Test_Runbook]]. Earlier preparation milestones
 are retained as history, not current installation restrictions. Decoder baseline is
 `ac46c0e70e3f7aeab05ad22ae4b987d3e29c6436`, following authoring API 43.
 The original decoder increment alone was not installation, export permission or
@@ -297,14 +300,17 @@ behavior and service capabilities are unchanged.
 
 ## Next OS Work
 
-1. Installed HOME/AWAY functional testing passed on 2026-09-16: four scene
-   replacements without failure, four applied timers without error and 19
-   reconciled sleep intervals. See the installed runbook for evidence limits.
-2. Repeat with Studio's actual two-scene project when delivered, including the
-   outstanding timer acceptance cases. Responsiveness work and subsequent
-   functional checks are recorded in [[V2_Object_Input_Latency_Investigation]].
-3. Widen shared public export/readiness and advertise it only after installed
-   hardware acceptance. No Studio-side compiler workaround.
+1. Close remaining targeted timer hardware cases: active Start preservation,
+   explicit Restart/Cancel, false-guard expiry consumption and precise shell
+   pause/resume. Do not infer these from the no-timer Lobby/Garden fixture.
+2. Complete bounded multi-scene shared export/readiness and capability work,
+   preserving the proven subset and the distinction between timer semantics
+   with native coverage and individually hardware-qualified behavior.
+3. Test Studio build/export -> USB install -> PLAY -> deliberate reboot. The
+   development encoder used for the passed fixtures is not public export proof.
+   No Studio-side compiler workaround. Functional installed-scene evidence is in
+   [[V2_Studio_Scene_Connections_Test]]; responsiveness evidence remains in
+   [[V2_Object_Input_Latency_Investigation]].
 
 ## Installed Scene-Set Follow-up (2026-09-15)
 
