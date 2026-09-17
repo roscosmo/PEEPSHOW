@@ -3331,7 +3331,8 @@ button:focus-visible {
 }
 
 .audio-inspector-controls .audio-waveform,
-.audio-inspector-controls .audio-import-waveform {
+.audio-inspector-controls .audio-import-waveform,
+.audio-inspector-controls .audio-waveform-editor {
   width: 100%;
   min-width: 0;
 }
@@ -3451,6 +3452,12 @@ button:focus-visible {
   font-size: 10px;
 }
 
+.audio-waveform-editor {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .audio-import-waveform {
   position: relative;
   min-height: 220px;
@@ -3478,6 +3485,40 @@ button:focus-visible {
 
 .audio-import-waveform.compact .audio-trim-handle {
   width: 10px;
+}
+
+.audio-waveform-zoom-controls {
+  display: grid;
+  grid-template-columns: 28px minmax(60px, 1fr) 28px 28px 34px minmax(90px, auto);
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+}
+
+.audio-waveform-zoom-controls .icon-button {
+  width: 28px;
+  height: 28px;
+}
+
+.audio-waveform-zoom-controls input[type="range"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.audio-waveform-zoom-controls output,
+.audio-waveform-zoom-controls span {
+  color: #56625c;
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.audio-waveform-zoom-controls output {
+  text-align: center;
+}
+
+.audio-waveform-zoom-controls span {
+  text-align: right;
 }
 
 .audio-trim-handle {

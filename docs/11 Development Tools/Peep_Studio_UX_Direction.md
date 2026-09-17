@@ -625,6 +625,11 @@ Agreed delivery order:
    those handles; library-card audition remains the committed packaged cue.
    WAV parsing accepts both standard RIFF odd-chunk padding and real-world
    metadata chunks that omit the optional pad byte.
+   Both import and existing-SFX waveform editors support bounded `1x..16x`
+   precision zoom. Mouse-wheel zoom anchors to the pointer, middle-drag pans
+   without moving trim boundaries, and icon controls provide zoom out, zoom in
+   and fit-to-source. The visible millisecond range and zoom factor remain in a
+   fixed toolbar so navigation never resizes the inspector.
 5. Project settings and per-asset controls are separate authoring scopes. The
    project-root inspector owns defaults and package-wide policy such as the SFX
    import normalization target and, when supported, inactivity policy. An audio
