@@ -1137,7 +1137,13 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   `tools/peep-studio/dist/api44-multiscene-export/native_v2_lobby_garden_integration.egg`:
   3944 bytes, SHA-256
   `ce710a24e1c1dbb7e4a48f6c6b55cf0f5d20d00aa37181d1379d0bb24f6ad691`.
-  Hardware installation and runtime verification remain OS-owned.
+  OS reports that this exact egg passed normal USB installation and hardware
+  execution without a firmware reflash: Lobby/Garden navigation, L/R animation
+  continuity, one-shot TIMER reveal, fresh Garden reset and deliberate reboot
+  to Lobby all passed. Admission, rendering and timer processing completed
+  without errors and sleep returns were recorded. This proves only the
+  capability-advertised API 44 subset, not full V1 parity. V2 audio and runtime
+  system-font text remain separately capability-gated pending their handoffs.
 - Asset tags remain a separate metadata request: reusable sprite/audio assets
   need saved multi-tag assignments for grouping across reopen/Save As. Current
   asset records advertise no tag field or command. This does not block native
