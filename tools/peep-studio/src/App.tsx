@@ -7773,7 +7773,13 @@ export default function App() {
     setWorkspaceMode("logic");
     setSelectedScene(scene.scene_id);
     setSelectedPlacementElement(null);
-    setSceneSelection({ kind: "timer", id: bindingId });
+    const binding = scene.event_bindings?.find((item) => item.binding_id === bindingId);
+    const route = binding?.event_type === STATE_TIMER
+      ? scene.routes?.find((item) => item.event_ref === bindingId)
+      : undefined;
+    setSceneSelection(route === undefined
+      ? { kind: "timer", id: bindingId }
+      : { kind: "route", id: route.route_id, sourceState: route.from_states[0] });
   };
   const renderSceneHierarchy = () => (
     <nav
@@ -7849,6 +7855,46 @@ export default function App() {
         const timers = (scene.event_bindings ?? []).filter((binding) => (
           binding.event_type === SCENE_TIMER || binding.event_type === STATE_TIMER
         ));
+        const timerSourceStateIds = (bindingId: string) => Array.from(new Set((scene.routes ?? [])
+          .filter((route) => route.event_ref === bindingId)
+          .flatMap((route) => route.from_states)));
+        const sceneTimers = timers.filter((binding) => binding.event_type === SCENE_TIMER);
+        const unassignedStateTimers = timers.filter((binding) => (
+          binding.event_type === STATE_TIMER && timerSourceStateIds(binding.binding_id).length === 0
+        ));
+        const sceneLevelTimers = [...sceneTimers, ...unassignedStateTimers];
+        const selectedTimerBindingId = sceneSelection.kind === "timer"
+          ? sceneSelection.id
+          : sceneSelection.kind === "route"
+            ? scene.routes?.find((route) => route.route_id === sceneSelection.id)?.event_ref ?? null
+            : null;
+        const timerDelayLabel = (binding: (typeof timers)[number]) => (
+          typeof binding.configuration.delay_ms === "number"
+            ? `${binding.configuration.delay_ms} ms`
+            : "Delay unset"
+        );
+        const renderHierarchyTimerRow = (binding: (typeof timers)[number], label: string) => {
+          const selected = sceneSelected
+            && workspaceMode === "logic"
+            && selectedTimerBindingId === binding.binding_id;
+          return (
+            <button
+              className={`scene-reference-row hierarchy-timer-row ${selected ? "selected" : ""}`}
+              key={binding.binding_id}
+              type="button"
+              title={`${label} - ${timerDelayLabel(binding)}`}
+              onClick={() => openHierarchyTimer(scene, binding.binding_id)}
+            >
+              <img
+                className="studio-ui-icon"
+                src={binding.event_type === SCENE_TIMER ? "/ui-icons/scene_timer.png" : "/ui-icons/state_timer.png"}
+                alt=""
+                aria-hidden="true"
+              />
+              <span><strong>{label} - {timerDelayLabel(binding)}</strong></span>
+            </button>
+          );
+        };
         return (
           <section
             className={`scene-hierarchy-node ${sceneSelected ? "selected" : ""}`}
@@ -8053,6 +8099,11 @@ export default function App() {
                     const active = preview?.scene.scene_id === scene.scene_id && preview.scene.state_id === state.state_id;
                     const stateGroupId = `${scene.scene_id}:state:${state.state_id}`;
                     const stateExpanded = !collapsedHierarchyIds.includes(stateGroupId);
+                    const stateTimers = timers.filter((binding) => (
+                      binding.event_type === STATE_TIMER
+                      && timerSourceStateIds(binding.binding_id).includes(state.state_id)
+                    ));
+                    const stateChildCount = changedElements.length + stateTimers.length;
                     return (
                       <section className="hierarchy-branch state-branch" key={state.state_id}>
                         <div className="hierarchy-branch-row">
@@ -8095,7 +8146,7 @@ export default function App() {
                                   <Eye size={13} aria-hidden="true" />
                                 </span>
                               )}
-                              <code>{changedElements.length}</code>
+                              <code>{stateChildCount}</code>
                             </span>
                           </button>
                           <button
@@ -8112,7 +8163,7 @@ export default function App() {
                             <img src={TOPBAR_ICONS.emulator} alt="" aria-hidden="true" />
                           </button>
                         </div>
-                        {stateExpanded && changedElements.length > 0 && (
+                        {stateExpanded && stateChildCount > 0 && (
                           <div className="placement-object-children">
                             {changedElements.map((element) => {
                               const change = changes[element.element_id];
@@ -8130,6 +8181,7 @@ export default function App() {
                                 sceneSelected && primary && selectedPlacementElement === element.element_id,
                               );
                             })}
+                            {stateTimers.map((binding) => renderHierarchyTimerRow(binding, "State timer"))}
                           </div>
                         )}
                       </section>
@@ -8138,7 +8190,7 @@ export default function App() {
                 </div>}
               </section>
               </>}
-              {timers.length > 0 && (
+              {sceneLevelTimers.length > 0 && (
                 <section className="hierarchy-branch timers-branch">
                   <div className="hierarchy-branch-row">
                     <button
@@ -8158,49 +8210,15 @@ export default function App() {
                       onDoubleClick={() => toggleHierarchyGroup(timersGroupId)}
                     >
                       <img className="studio-ui-icon" src="/ui-icons/scene_timer.png" alt="" aria-hidden="true" />
-                      <span><strong>Timers</strong></span>
-                      <code>{timers.length}</code>
+                      <span><strong>Scene timers</strong></span>
+                      <code>{sceneLevelTimers.length}</code>
                     </button>
                   </div>
                   {timersExpanded && <div className="hierarchy-reference-rows">
-                    {timers.map((binding) => {
-                      const isSceneTimer = binding.event_type === SCENE_TIMER;
-                      const sourceStateIds = isSceneTimer
-                        ? []
-                        : Array.from(new Set((scene.routes ?? [])
-                          .filter((route) => route.event_ref === binding.binding_id)
-                          .flatMap((route) => route.from_states)));
-                      const sourceNames = sourceStateIds.map((stateId) => (
-                        scene.states?.find((state) => state.state_id === stateId)?.display_name ?? stateId
-                      ));
-                      const delay = typeof binding.configuration.delay_ms === "number"
-                        ? `${binding.configuration.delay_ms} ms`
-                        : "delay unset";
-                      const label = isSceneTimer
-                        ? `Scene timer - ${delay}`
-                        : `${sourceNames.join(", ") || "State-entry timer"} - ${delay}`;
-                      const selected = sceneSelected
-                        && workspaceMode === "logic"
-                        && sceneSelection.kind === "timer"
-                        && sceneSelection.id === binding.binding_id;
-                      return (
-                        <button
-                          className={`scene-reference-row ${selected ? "selected" : ""}`}
-                          key={binding.binding_id}
-                          type="button"
-                          title={label}
-                          onClick={() => openHierarchyTimer(scene, binding.binding_id)}
-                        >
-                          <img
-                            className="studio-ui-icon"
-                            src={isSceneTimer ? "/ui-icons/scene_timer.png" : "/ui-icons/state_timer.png"}
-                            alt=""
-                            aria-hidden="true"
-                          />
-                          <span><strong>{label}</strong></span>
-                        </button>
-                      );
-                    })}
+                    {sceneLevelTimers.map((binding) => renderHierarchyTimerRow(
+                      binding,
+                      binding.event_type === SCENE_TIMER ? "Scene timer" : "Unassigned state timer",
+                    ))}
                   </div>}
                 </section>
               )}

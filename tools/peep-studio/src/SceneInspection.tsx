@@ -2655,6 +2655,11 @@ export function StateGraphView({
   const flowRef = useRef<ReactFlowInstance | null>(null);
   const didInitialFit = useRef(false);
   const [initialFitComplete, setInitialFitComplete] = useState(false);
+  const selectedTimerBindingId = selected.kind === "timer"
+    ? selected.id
+    : selected.kind === "route"
+      ? scene?.routes?.find((route) => route.route_id === selected.id)?.event_ref
+      : undefined;
   const previousSceneId = useRef<string | null>(scene?.scene_id ?? null);
   const [pendingPhysicalConnection, setPendingPhysicalConnection] = useState<PendingPhysicalTriggerConnection | null>(null);
   const [peepOSTriggerStateId, setPeepOSTriggerStateId] = useState<string | null>(null);
@@ -2694,9 +2699,16 @@ export function StateGraphView({
         position: { x: timer.x, y: timer.y },
         data: {
           timer,
-          onSelect: (timerId: string) => onSelect({ kind: "timer", id: timerId }),
+          onSelect: (timerId: string) => {
+            const route = timer.eventType === "time.state_entry_elapsed"
+              ? scene?.routes?.find((item) => item.event_ref === timerId)
+              : undefined;
+            onSelect(route === undefined
+              ? { kind: "timer", id: timerId }
+              : { kind: "route", id: route.route_id, sourceState: route.from_states[0] });
+          },
         },
-        selected: selected.kind === "timer" && selected.id === timer.bindingId,
+        selected: selectedTimerBindingId === timer.bindingId,
         draggable: canMoveStates,
         connectable: false,
       })),
@@ -2722,7 +2734,7 @@ export function StateGraphView({
         connectable: endpoint.kind === "exit" ? canConnectScenes : canEdit,
       })),
     ],
-    [activeStateId, canEdit, canMoveStates, canConnectScenes, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, graph.timerNodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
+    [activeStateId, canEdit, canMoveStates, canConnectScenes, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, graph.timerNodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene, selected, selectedTimerBindingId],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
@@ -3319,7 +3331,7 @@ export function StateGraphView({
       <GraphMiniMap
         nodes={[...graph.nodes, ...graph.timerNodes, ...graph.endpoints]}
         edges={[...graph.edges, ...graph.timerEdges]}
-        selectedId={selected.kind === "state" ? selected.id : selected.kind === "timer" ? `timer-${selected.id}` : null}
+        selectedId={selected.kind === "state" ? selected.id : selectedTimerBindingId ? `timer-${selectedTimerBindingId}` : null}
       />
       {pendingPhysicalConnection !== null && (
         <Panel
