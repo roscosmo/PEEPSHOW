@@ -13,6 +13,7 @@ The package-facing time, cadence, lifecycle, wake, and power-intent API is defin
 - Power thread is sole owner of clock and sleep transitions.
 - Runtime hosts provide intent, not hardware commands.
 - No transition is complete until timebases are verified.
+- Reapplying an unchanged ThreadX tick rate must preserve the partial SysTick countdown and pending tick. Actual rate changes still validate and configure the reload; STOP2 suspend/restore separately owns counter enable/disable and pending-state handling.
 - PMIC, battery, charger, VBUS, and shipping-mode policy is owned by [[PMIC_and_Power_Contract]].
 - Startup must respect the PMIC contract battery/VBUS gate before enabling display-intensive work, audio, vibration, radio, switched rails, package runtime, or installer behavior.
 
@@ -59,6 +60,20 @@ All wakes must be classified as one of:
 - unknown (requires investigation)
 
 Unknown wake reasons are defects until explained.
+
+Battery safety has an independent RTC deadline even with no package timer or
+user input. The provisional healthy interval is 30 minutes, with shorter warning
+and failed-read intervals owned by `thPower`; see [[PMIC_and_Power_Contract]].
+The shared RTC selects the earliest battery, interaction or scene deadline.
+Early wakes preserve the remaining battery deadline unless a real successful
+battery reading refreshes it. A battery-only wake performs no synthetic package
+input or user cue and returns to STOP2 once owner work settles. This explicit
+safety wake does not authorize periodic wakes for cosmetic SOC refreshes.
+One shortened battery wake and successful due reading are hardware-confirmed;
+the real-duration interval and energy cost remain unqualified. Automatic
+critical/boot shipment remains gated pending controlled low-voltage and restart
+tests. Bounded battery-shutdown preparation retries do not authorize bypassing
+failed owner quiesce or claim that physical shipment succeeded.
 
 ---
 
@@ -448,6 +463,28 @@ HW6 FW0 evidence `EV-HW6-20260811-P1-SLEEP-034` validates the pre-STOP portion o
 ---
 
 ## Required Measurements
+
+### Battery Fault Wait
+
+Exhausted battery-shutdown preparation or returned shipment-write failures latch
+a fault wait, not a normal scene wait. The existing `PWR_FORCED_SLEEP` state
+owns this fallback. Shipment attempts remain exhausted. Every sleep attempt
+requires runtime suspension, terminal owner quiesce, released clock leases,
+safe buses/GPIO and the final queue/input check. No failed check is overridden.
+Failed attempts are spaced by `power_battery_sleep_retry_ms`.
+
+Only the battery deadline participates in the shared RTC selection in this
+mode. Wakes restore clocks/timebases and acquire a fresh battery reading, but
+do not resume package playback, advance scene timers or restore normal physical
+owners. The battery check interval is capped by `power_battery_sleep_retry_ms`.
+Buttons can wake the MCU but cannot dispatch gameplay or replenish shipment
+retries. Valid voltage at/above `power_battery_restart_allow_mv`, successful
+base-clock restoration and owner recovery are required to clear the fault.
+Package execution remains suspended until its normal recovery action.
+
+This fallback cannot guarantee low current if an owner cannot safely stop, nor
+can software guarantee power removal after permanent PMIC communication loss.
+Physical current measurements and independent hardware protection remain required.
 
 For every candidate active operating point, record the full internal configuration used for evidence: SYSCLK/HCLK, voltage scale, flash latency/cache state, relevant kernel clocks, instrumentation state, and firmware/configuration identity.
 

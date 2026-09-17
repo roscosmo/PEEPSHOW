@@ -21,6 +21,7 @@ class ObjectLpbamPrepareTests(unittest.TestCase):
         renderer = (cls.firmware / "Core/Src/display_renderer.c").read_text(encoding="utf-8")
         owner = (cls.firmware / "Core/Src/ps_hw6_owner_services.c").read_text(encoding="utf-8")
         (cls.work / "object_lpbam_under_test.inc").write_text("\n".join([
+            firmware_function(renderer, "DisplayRenderer_DrawSceneModelMasked"),
             firmware_function(renderer, "DisplayRenderer_DrawSceneModel"),
             firmware_function(renderer, "DisplayRenderer_CopySceneModelFrame"),
             firmware_function(owner, "PS_HW6_DisplayOwner_PrepareDevelopmentObjectWaiting")]), encoding="ascii")

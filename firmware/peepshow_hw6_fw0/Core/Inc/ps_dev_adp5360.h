@@ -10,12 +10,52 @@
 extern "C" {
 #endif
 
-#define PS_DEV_ADP5360_API_VERSION       (10UL)
+#define PS_DEV_ADP5360_API_VERSION       (11UL)
 #define PS_DEV_ADP5360_POWER_REGISTER_COUNT (7UL)
 #define PS_DEV_ADP5360_FUEL_REGISTER_COUNT  (5UL)
 #define PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT (5UL)
 #define PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT (4UL)
 #define PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT (2UL)
+
+typedef enum
+{
+  PS_DEV_ADP5360_GROUP_SAFETY = 0,
+  PS_DEV_ADP5360_GROUP_EVENTS,
+  PS_DEV_ADP5360_GROUP_SOC,
+  PS_DEV_ADP5360_GROUP_CONFIG,
+  PS_DEV_ADP5360_GROUP_COUNT
+} ps_dev_adp5360_group_t;
+
+#define PS_DEV_ADP5360_GROUP_ALL ((1UL << PS_DEV_ADP5360_GROUP_COUNT) - 1UL)
+#define PS_DEV_ADP5360_GROUP_MAX_VALUES (14UL)
+
+typedef struct
+{
+  ps_status_t status;
+  uint32_t read_count;
+  uint8_t values[PS_DEV_ADP5360_GROUP_MAX_VALUES];
+} ps_dev_adp5360_group_sample_t;
+
+typedef struct
+{
+  uint32_t attempt_count;
+  uint32_t success_count;
+  uint32_t last_attempt_tick;
+  uint32_t last_success_tick;
+  ps_status_t last_status;
+  uint32_t valid;
+  ps_dev_adp5360_group_sample_t last_good;
+} ps_dev_adp5360_group_record_t;
+
+/* Diagnostic history only: kernel ticks do not establish age across STOP2. */
+typedef struct
+{
+  uint32_t api_version;
+  uint32_t sequence;
+  uint32_t requested_mask;
+  uint32_t valid_mask;
+  ps_dev_adp5360_group_record_t groups[PS_DEV_ADP5360_GROUP_COUNT];
+} ps_dev_adp5360_monitor_t;
 
 typedef enum
 {
@@ -138,6 +178,9 @@ typedef struct
   uint32_t regulator_battery_ok;
   uint32_t last_hal_status;
   uint32_t last_hal_error;
+  uint32_t requested_groups;
+  uint32_t valid_groups;
+  ps_dev_adp5360_group_sample_t groups[PS_DEV_ADP5360_GROUP_COUNT];
 } ps_dev_adp5360_power_snapshot_t;
 
 ps_status_t ps_dev_adp5360_init(ps_dev_adp5360_t *device,
@@ -160,6 +203,17 @@ ps_status_t ps_dev_adp5360_enter_shipment_mode(
 ps_status_t ps_dev_adp5360_read_power_snapshot(
   ps_dev_adp5360_t *device,
   ps_dev_adp5360_power_snapshot_t *snapshot);
+/* Partial success never authorizes boot or replaces full-snapshot validation. */
+ps_status_t ps_dev_adp5360_read_groups(
+  ps_dev_adp5360_t *device,
+  uint32_t groups,
+  ps_dev_adp5360_power_snapshot_t *snapshot);
+void ps_dev_adp5360_monitor_record(
+  volatile ps_dev_adp5360_monitor_t *monitor,
+  const ps_dev_adp5360_power_snapshot_t *snapshot,
+  uint32_t tick);
+void ps_dev_adp5360_monitor_invalidate(
+  volatile ps_dev_adp5360_monitor_t *monitor);
 uint8_t ps_dev_adp5360_power_register(uint32_t index);
 uint8_t ps_dev_adp5360_charger_config_register(uint32_t index);
 uint8_t ps_dev_adp5360_interrupt_register(uint32_t index);

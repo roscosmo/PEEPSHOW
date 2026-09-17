@@ -221,6 +221,86 @@ def dual_fixture_bundle():
         assets=assets, animations=animations)
 
 
+def scene_exit_fixture_bundle():
+    """Labelled HOME/AWAY fresh-entry proof; no installed/export capability change."""
+    bundle = structured_fixture_bundle()
+    frames = list(bundle.frames)
+    assets = deepcopy(list(bundle.assets))
+    glyphs = {
+        "A": (14, 17, 17, 31, 17, 17, 17),
+        "E": (31, 16, 16, 30, 16, 16, 31),
+        "H": (17, 17, 17, 31, 17, 17, 17),
+        "L": (16, 16, 16, 16, 16, 16, 31),
+        "M": (17, 27, 21, 21, 17, 17, 17),
+        "O": (14, 17, 17, 17, 17, 17, 14),
+        "R": (30, 17, 17, 30, 20, 18, 17),
+        "W": (17, 17, 17, 21, 21, 27, 17),
+        "Y": (17, 17, 10, 4, 4, 4, 4),
+    }
+    for text in ("HOME", "AWAY", "L", "R"):
+        width = (len(text) * 6 - 1) * 2
+        stride = (width + 7) // 8
+        pixels = bytearray(stride * 14)
+        for letter, character in enumerate(text):
+            for row, bits in enumerate(glyphs[character]):
+                for column in range(5):
+                    if bits & (1 << (4 - column)):
+                        for dy in range(2):
+                            for dx in range(2):
+                                x = letter * 12 + column * 2 + dx
+                                pixels[(row * 2 + dy) * stride + x // 8] |= 128 >> (x % 8)
+        name = "exit_label_" + text.lower()
+        frames.append(replace(bundle.frames[0], asset_id=name, frame_id=name + ".0",
+            width=width, height=14, row_stride_bytes=stride, pixels=bytes(pixels),
+            mask=bytes([255] * len(pixels)), opaque=True))
+        assets.append({"asset_id": name, "asset_type": "masked_1bpp", "frames": [
+            {"frame_id": name + ".0", "source_rect": {"x": 0, "y": 0, "width": width, "height": 14}}]})
+    scenes = []
+    for scene_id, label, delay in (("home", "HOME", 2000), ("visit", "AWAY", 6000)):
+        scene = deepcopy(bundle.scenes[0])
+        scene.update(scene_id=scene_id, display_name=label, entry_state="start", scene_exits=[])
+        scene["variables"] = [{"variable_id": "moves", "value_type": "int32",
+            "initial": 0, "minimum": 0, "maximum": 1000000}]
+        scene["objects"][0]["defaults"].update(x=72, y=28)
+        scene["objects"][1]["defaults"].update(x=32, y=84)
+        scene["objects"][3]["defaults"]["y"] = 80
+        scene["objects"][4]["defaults"]["y"] = 80
+        for index, text in ((6, "l"), (7, "r")):
+            scene["objects"][index]["defaults"].update(y=60, visual_ref=f"exit_label_{text}.0")
+        scene["objects"].append({"object_id": "scene_label", "kind": "sprite",
+            "width": 46, "height": 14, "z_order": 5, "layer": "SCENE",
+            "defaults": {"x": 61, "y": 4, "visible": True,
+                         "visual_ref": "exit_label_" + label.lower() + ".0"}})
+        scene["input_actions"] = [{"action_id": name, "logical_source": button, "event_kind": "press"}
+            for name, button in (("go_away", "BUTTON_A"), ("go_home", "BUTTON_B"),
+                                 ("left", "BUTTON_L"), ("right", "BUTTON_R"))
+            if name != ("go_home" if scene_id == "home" else "go_away")]
+        scene["routes"] = [{"route_id": name, "action_ref": name, "from_states": [source],
+            "guards": [], "actions": [{"kind": "set_variable", "variable_ref": "moves",
+                                         "operation": "add", "value": 1}], "target_state": target}
+            for name, source, target in (("left", "marker_right", "start"),
+                                         ("right", "start", "marker_right"))]
+        scene["routes"].append({"route_id": "leave", "action_ref": "go_away" if scene_id == "home" else "go_home",
+            "from_states": ["start", "marker_right"], "guards": [], "actions": [],
+            "target_scene": "visit" if scene_id == "home" else "home"})
+        scene["event_bindings"] = [{"binding_id": "scene_delay", "event_type": "time.scene_elapsed",
+            "configuration": {"delay_ms": delay, "start_policy": "scene_entry"}}]
+        handler = {"handler_id": "scene_delay_handler", "event_ref": "scene_delay", "guards": [], "actions": []}
+        if scene_id == "home":
+            handler["actions"] = [{"kind": "object.set_visibility", "object_ref": "timer_marker", "visible": True}]
+        else:
+            handler["target_scene"] = "home"
+        scene["event_handlers"] = [handler]
+        inputs = [action["action_id"] for action in scene["input_actions"]]
+        scene["interaction_policy"]["meaningful_activity_actions"] = inputs
+        scene["reactive_wait_default"]["event_interests"] = inputs + ["scene_delay"]
+        scenes.append(scene)
+    project = deepcopy(bundle.project)
+    project.update(entry_scene="home", scene_sources=["scenes/home.state.json", "scenes/visit.state.json"])
+    project["package"]["package_id"] = "dev.peepshow.fresh_scene_exit"
+    return replace(bundle, project=project, scenes=tuple(scenes), frames=tuple(frames), assets=assets)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", type=Path, default=DEFAULT_PROJECT,
@@ -233,16 +313,18 @@ def main():
                         help="Use labelled B/A slots and a fixed timer slot (GUI source stays unchanged)")
     parser.add_argument("--dual", action="store_true",
                         help="Use structured slots with independent 400 ms / 800 ms animations")
+    parser.add_argument("--scene-exits", action="store_true",
+                        help="Use development-only HOME/AWAY fresh scene replacement with input and timer exits")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[2] /
                         "firmware/peepshow_hw6_fw0/Core/Src/ps_object_development_egg_autogen.c")
     parser.add_argument("--egg-output", type=Path,
                         help="Write a development egg instead of changing the linked C fixture; normal export stays disabled")
     args = parser.parse_args()
-    if (args.timers or args.sfx or args.structured or args.dual) and args.project.resolve() != DEFAULT_PROJECT.resolve():
-        parser.error("--timers/--sfx/--structured/--dual use checked-in fixtures; omit --project")
-    if sum((args.timers, args.sfx, args.structured, args.dual)) > 1:
-        parser.error("choose one of --timers, --sfx, --structured or --dual")
-    bundle = (dual_fixture_bundle() if args.dual else structured_fixture_bundle() if args.structured else sfx_fixture_bundle() if args.sfx
+    if any((args.timers, args.sfx, args.structured, args.dual, args.scene_exits)) and args.project.resolve() != DEFAULT_PROJECT.resolve():
+        parser.error("fixture variants use checked-in sources; omit --project")
+    if sum((args.timers, args.sfx, args.structured, args.dual, args.scene_exits)) > 1:
+        parser.error("choose one fixture variant")
+    bundle = (scene_exit_fixture_bundle() if args.scene_exits else dual_fixture_bundle() if args.dual else structured_fixture_bundle() if args.structured else sfx_fixture_bundle() if args.sfx
               else timer_fixture_bundle() if args.timers else load_project(args.project))
     blob = build_development_egg_v2(bundle)
     if args.egg_output is not None:

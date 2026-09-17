@@ -1129,6 +1129,9 @@ ps_status_t ps_dev_tmag3001_read_raw_sample(
   }
   device->operation_count++;
 
+  /* Settling needs no bus access; leave I2C3 available to the other owners. */
+  tx_thread_sleep(PS_DEV_TMAG3001_SAMPLE_SETTLE_TICKS);
+
   acquire_result = ps_hw_i2c3_acquire(
     PS_HW_I2C3_CLIENT_INPUT,
     PS_DEV_TMAG3001_ACQUIRE_TIMEOUT_MS,
@@ -1143,7 +1146,6 @@ ps_status_t ps_dev_tmag3001_read_raw_sample(
   }
   (void)memset(&transport, 0, sizeof(transport));
   (void)memset(data, 0, sizeof(data));
-  tx_thread_sleep(PS_DEV_TMAG3001_SAMPLE_SETTLE_TICKS);
 
   transport.last_transfer = ps_hw_i2c3_mem_read(
     &lease,

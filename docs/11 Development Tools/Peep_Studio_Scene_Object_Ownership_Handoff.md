@@ -1069,3 +1069,36 @@ GUI may now integrate these advertised connection controls and create host-only
 multi-scene projects. Keep export disabled for them. OS's next executable work
 is a separate bounded multi-scene profile/admission/runtime increment, followed
 by hardware proof; the memory/parallel design remains independently deferred.
+
+### OS Follow-up: Private Multi-scene Decode
+
+The next OS preparation increment validates every V2 scene's feature subset and
+decodes a selected destination without changing the active scene or asset catalog.
+See [[V2_Multiscene_Preparation]] for its native verification and remaining work.
+This is not installed multi-scene support: service stays API 43, the public export
+profile and `multi_scene_export: false` are unchanged. GUI should continue the
+connection editor/host fixture work already underway; no new GUI command or
+device test is requested by this internal increment.
+
+Private destination/all-scene display-owner admission is now implemented too,
+with 342 authoring/native tests passing. It checks initial presentations without
+committing them; failed/timed-out checks preserve the live scene and retain any
+outstanding private copy until completion. Runtime replacement and hardware proof
+are still next. API 43 and GUI capabilities remain unchanged; continue connection
+editing and the host fixture without enabling multi-scene export.
+
+### OS Follow-up: Development Fresh Replacement
+
+The firmware development runtime now supports admitted, action-free exits to a
+fresh destination, including timer exits. Returning recreates object/variable
+defaults, entry state, animation and timers; it is not remembered entry or resume.
+Failed admission preserves the source, and late completion cannot switch scenes.
+Native tests cover real owner raster rejection and scheduler ownership; physical
+multi-scene/STOP2 testing is still outstanding. See [[V2_Multiscene_Preparation]].
+
+Service remains API 43 with no additional public commands or export permission.
+GUI should finish its two-scene host fixture and send the exact project path and
+commit. Include clearly distinct scene labels, a visible four-frame animation,
+button navigation, a timer-driven exit and an observable fresh-return reset.
+OS will generate and embed the development egg for the hardware test. Do not
+enable multi-scene export, scene memory or parallel regions from this checkpoint.

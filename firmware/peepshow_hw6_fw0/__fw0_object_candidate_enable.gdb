@@ -1,7 +1,7 @@
 set pagination off
 printf "--- HW6 V2 candidate owner-queue check ---\n"
-if g_ps_object_candidate_probe.api_version != 1
-  printf "NOT queued: candidate probe API 1 required. Check the flashed ELF.\n"
+if g_ps_object_candidate_probe.api_version != 2
+  printf "NOT queued: candidate probe API 2 required. Check the flashed ELF.\n"
 else
   if (g_ps_hw6_rtos_probe.runtime_complete == 0) || (g_ps_object_candidate_probe.leased != 0) || (g_ps_object_candidate_request != 0)
     printf "NOT queued: finish boot or wait for the previous candidate completion. Do not clear a lease manually.\n"

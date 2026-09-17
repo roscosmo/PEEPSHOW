@@ -106,8 +106,9 @@ class ObjectAwakeTests(unittest.TestCase):
         self.assertEqual(expected, actual)
 
     def test_checked_in_fixture_is_reproducible_and_matches_restricted_export(self):
+        from build_object_development import scene_exit_fixture_bundle
         bundle = dual_fixture_bundle()
-        self.assertEqual(render_c(build_development_egg_v2(bundle)),
+        self.assertEqual(render_c(build_development_egg_v2(scene_exit_fixture_bundle())),
             (self.firmware / "Core/Src/ps_object_development_egg_autogen.c").read_text(encoding="ascii"))
         self.assertEqual(build_egg(bundle), build_development_egg_v2(bundle))
 
@@ -115,7 +116,8 @@ class ObjectAwakeTests(unittest.TestCase):
         self.run_rtos_harness("launch", ("ObjectService",))
 
     def test_bounded_display_handoff_quarantines_timeout(self):
-        self.run_rtos_harness("handoff", ("ObjectAdvance", "ObjectPresent"))
+        self.run_rtos_harness("handoff", ("ObjectLatencyStamp", "ObjectLatencyBegin",
+            "ObjectLatencyEnd", "ObjectAdvance", "ObjectPresent"))
 
     def run_rtos_harness(self, name, functions):
         source = (self.firmware / "Core/Src/ps_hw6_rtos_probe.c").read_text(encoding="utf-8")

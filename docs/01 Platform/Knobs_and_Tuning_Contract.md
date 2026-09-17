@@ -233,3 +233,23 @@ Track a knob-set stamp for each bring-up and validation run:
 - board revision
 
 Store stamps in validation evidence records.
+
+### Controlled Battery Bench Snapshot
+
+HW6 `BatteryShutdownTest` uses a generated build-local knobs snapshot for
+explicit automatic-shipment testing. `config/knobs.json` remains the source:
+temporarily enable only the critical and low-boot shipment keys, run the normal
+generator, retain its output in the isolated build directory, then restore the
+JSON defaults and regenerate normal `Core/Inc/knobs_autogen.h` before building.
+Neither generated header may be manually edited.
+
+CMake admits the snapshot only when it equals normal generated knobs except
+for those two enabled gates. START shipment and all other settings must match;
+missing or stale snapshots fail configuration. The test cannot use the normal
+Debug build directory. The snapshot is an ignored generated artifact, not a
+second maintained configuration or a live tuning mechanism.
+
+Use the named test flash/attach profiles and record the firmware commit and
+gate values with hardware results. Normal defaults remain disabled; the test
+firmware stays enabled on the device until normal firmware is reflashed.
+See [[HW6_Battery_Shutdown_Validation]] for generation and bench procedures.

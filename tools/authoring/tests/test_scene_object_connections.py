@@ -1,4 +1,4 @@
-"""Public V2 connection commands and fresh host replacement, without export."""
+"""Public V2 connection commands, fresh replacement and bounded export."""
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -90,7 +90,7 @@ class SceneObjectConnectionTests(unittest.TestCase):
         self.assertEqual(before_routes, self.scene()["routes"])
         self.assertEqual("to_settings", exit_id)
         hello = self.call("service.hello")
-        self.assertEqual(43, hello["service_api_version"])
+        self.assertEqual(44, hello["service_api_version"])
         caps = hello["scene_object_authoring"]
         scene_caps = self.call("project.normalize")["scene_capabilities"]["main"]
         for item in (caps, scene_caps):
@@ -98,10 +98,9 @@ class SceneObjectConnectionTests(unittest.TestCase):
             self.assertEqual(list(SCENE_CONNECTION_COMMANDS), item["connection_commands"])
             self.assertEqual(["fresh_default"], item["scene_entry_modes"])
             self.assertEqual([], item["scene_exit_action_kinds"])
-        self.assertFalse(caps["multi_scene_export"])
-        self.assertFalse(scene_caps["export_ready"])
-        with self.assertRaises(ProtocolError):
-            self.call("project.build_package")
+        self.assertTrue(caps["multi_scene_export"])
+        self.assertTrue(scene_caps["export_ready"])
+        self.call("project.build_package")
 
     def test_retarget_updates_routes_and_handlers_and_history_atomically(self):
         exit_id = self.add_exit()

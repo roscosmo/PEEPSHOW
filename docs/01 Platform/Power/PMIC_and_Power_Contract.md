@@ -132,11 +132,26 @@ storage, or communication diagnostic cycles.
 
 Critical-battery shutdown is a PeepOS-controlled sequence while firmware is still alive enough to make a safe decision.
 
+As of the 2026-09-15 integration checkpoint, normal HW6 FW0 defaults enable
+`power_critical_software_ship_enable` and `power_boot_low_battery_ship_enable`.
+The controlled bench tests established low-boot and runtime-critical shipment,
+shortened unattended battery-wake shutdown, synthetic failure backoff and
+valid-voltage recovery. The user also confirmed the promoted normal build's
+3.4 V boot shutdown, shortened unattended critical shutdown after approximately
+15 seconds, and normal START boot after restoring 3.8 V. Permanent physical
+failures, exact long-interval cadence and charger recovery remain unqualified.
+`power_start_software_ship_enable` remains false. Voltage thresholds and battery
+wake intervals are unchanged: warning 3500 mV, critical 3300 mV, restart 3600 mV,
+healthy sleep checks 30 minutes and warning/failure checks 60 seconds.
+Explicit gates-off diagnostic builds remain possible, but must never be mistaken
+for battery-protected normal firmware. The fault-injection helpers deliberately
+refuse the enabled normal build; do not clear their guards to run them.
+
 Rules:
 
 - On critical battery, `thPower` must request owner quiesce/save through bounded Platform-owned hooks before any software shipment request.
 - If the critical-battery software-shipment gate is disabled, firmware must record and expose that shipment would have been requested, but it must not write ADP5360 Shipment Mode register `0x36`.
-- If the gate is enabled and quiesce/save policy succeeds or reaches its bounded fallback, `thPower` may request ADP5360 Shipment Mode register `0x36 = 1`.
+- If the gate is enabled and owner preparation succeeds, `thPower` may request ADP5360 Shipment Mode register `0x36 = 1`. Exhausted preparation uses the checked fault-wait path; it does not bypass a failed owner to write shipment mode.
 - The ADP5360 hardware BAT_UV / ISOFET cutoff remains a lower emergency protection path if firmware cannot act in time.
 - Startup must read battery/VBUS state before enabling display-intensive work, audio, vibration, radio, switched rails, package runtime, or installer behavior.
 - Battery threshold decisions must use a valid decoded VBAT measurement; successful I2C reads with all-zero/raw-invalid fuel-gauge voltage must be treated as unknown and must not trigger critical shutdown.
@@ -146,6 +161,191 @@ Rules:
 - The boot/restart battery check remains pending until the first valid fuel-gauge VBAT sample is available. It must not treat the initial unavailable fuel reading as permission to enter normal runtime.
 - While boot/restart is blocked without VBUS, the UI may show a plain low-battery recovery page. With VBUS present and VBAT below the restart-allow threshold, the UI may show a plain charging recovery page. Neither page is a normal shutdown-cancel target; both clear only when `thPower` reports VBAT at/above the restart-allow threshold.
 - The restart-allow threshold must be higher than the critical-shutdown threshold.
+
+Battery shutdown preparation now has independent attempt state, rather than
+using the ship-prep ownership flag or a lifetime boot-block counter as proof of
+completion. `power_battery_shutdown_prep_attempts` defaults to three total
+attempts and `power_battery_shutdown_prep_retry_ms` to 1000 ms minimum spacing
+from failed completion. These are bounded retries of admission/owner quiesce,
+not an increased periodic battery polling rate. Existing snapshot cadence and
+all voltage thresholds remain unchanged.
+
+Each retry requires a subsequent valid critical reading, or a valid blocked
+no-VBUS boot reading. Failed/zero VBAT readings do not authorize an attempt.
+Successful preparation issues one gated battery-owned shipment request. The
+final owner call reports its result back to battery policy. A returned failure
+invalidates prepared state and permits another attempt only after the existing
+retry spacing and a subsequent valid qualifying reading. Every retry repeats
+admission and owner quiesce; the same total preparation-attempt budget bounds
+the whole episode, including attempts following a failed shipment command.
+Manual/START shipment requests remain separate one-shot requests.
+Exhaustion retains the last preparation failure and leaves shutdown preparation
+owned; it must not fabricate an ACK, resume normal work, or bypass quiesce.
+There is no blocking delay, spin loop or automatic unlimited retry.
+
+Exhaustion latches battery fault-wait without replenishing shipment attempts.
+`thPower` repeats admission and physical owner quiesce before fault sleep,
+using the original battery reason for terminal peripheral parking. STOP2 retains
+clock, RTC, GPIO, queue and final-input validation. Failed sleep attempts are
+spaced by `power_battery_sleep_retry_ms`, also the maximum fault-read interval.
+Fault wakes restore clocks/timebases but do not resume normal owners, package
+timers, animation or input delivery. Every real wake requests a fresh reading.
+Recovery requires a valid reading at/above restart-allow and successful physical
+owner resume; buttons and VBUS alone cannot clear the episode. Package work
+remains suspended for explicit recovery. If safe sleep cannot be established,
+the failure remains visible; firmware must not claim low-power residency.
+Independent hardware protection is still required.
+
+The explicit FW0 fault-wait bench request is admitted once per boot only with
+all shipment gates disabled, fresh qualifying battery data, absent/agreeing
+VBUS detection and a completed battery preparation. `thPower` restarts that
+test episode and injects a failed preparation return only after the actual
+admission/quiesce call succeeds. Real owner results are retained separately;
+no physical ACK is fabricated, and failed real preparation is not relabelled as
+successful injection. The existing retry budget and spacing still determine
+exhaustion. Shipment requests are discarded while this test is active.
+
+Only this armed test caps the battery wake interval with
+`power_battery_fault_test_wake_ms` (15000 ms). Its first classified button wake
+opens one `power_battery_fault_test_inspect_ms` (60000 ms) awake inspection
+window. RTC wakes do not open the window; later buttons cannot extend it.
+The window uses running ThreadX time, so a debugger halt freezes its countdown.
+Package suppression and battery monitoring remain active. Current measured
+during inspection is not fault-sleep current. Healthy recovery ends the test
+but preserves its evidence; another injection requires an intentional reset.
+
+FW0 fault-test mode 2 uses the same admission and preparation exhaustion, then
+consumes one SENSOR-owner result injection during the first fault quiesce.
+The physical owner runs its real quiesce first. Only a real HAL_OK becomes a
+reported HAL_ERROR; a real failure is preserved and consumes the injection
+without claiming a synthetic refusal. Normal owner result/mask publication and
+ACK delivery are unchanged, so receipt of the ACK does not permit sleep when
+the reported action failed. There is no withheld ACK or deliberate bus fault.
+The existing `power_battery_sleep_retry_ms` backoff is unchanged. Battery checks
+continue while awake, and the next attempt must pass a new complete barrier.
+Recovery clears any pending injection. Retained fault-test API 2 data separates
+the real result, synthetic refusal, next attempt timing, intervening WFI and
+successful due reads. This qualifies transient refusal handling, not safe
+parking of permanently broken hardware.
+
+The separate `g_ps_hw6_battery_shutdown_probe` (API 2) reports reason, attempts,
+prepared, exhausted, last status and next kernel tick for the current episode.
+It also reports battery shipment pending, actual owner-call attempts, returned
+failures, latest result and first failure. A queued request reports NOT_RUN,
+not successful execution. A returned HAL_OK is command completion, not proof
+that the rail fell. No repeat is scheduled from HAL_OK alone. The actual
+physical-shutdown test still requires current/rail evidence.
+It resets on initialization and existing valid recovery paths: runtime voltage
+above warning, boot voltage at/above restart-allow, or boot VBUS charge recovery.
+Warning/unknown samples do not replenish the attempt budget. After charge
+recovery, removing VBUS while still boot-blocked permits a new preparation
+episode; a historical diagnostic counter no longer prevents it.
+
+For voltage recovery from battery-owned `PWR_SHIP_PREP`, recover
+`PMIC_SHIP_PENDING` to `PMIC_MONITOR` before clearing battery ownership. The
+same cleanup applies when a blocked boot enters VBUS charge recovery, before
+selecting the charging state. Do not clear a START-only pending shipment merely
+because a healthy voltage sample arrived. This is software-state cleanup, not
+automatic package resume or evidence that physical shipment occurred. Native
+regressions exercise the actual power/PMIC transition tables. On 2026-09-14,
+runtime recovery at measured 3782 mV returned policy OK and power/PMIC to 2/3,
+cleared preparation tracking and issued no shipment request.
+
+The battery quiesce timing probe (API 3) retains the latest critical/boot-low
+barrier, per-owner dispatch/wait-completion ticks and display clock queue/ACK
+completions observed during that barrier. Normal STOP2 barriers do not overwrite
+it. `__fw0_battery_quiesce_timing_prints.gdb` prints the record. Each preparation
+retry replaces the latest record. A separate first-failure record survives all
+later barriers and recovery until reset. It freezes the first completed battery
+barrier with a failed result or an observed display clock queue/ACK failure.
+Both records include per-owner send/ACK/flags/action results, final barrier
+status and display/storage clock grant/release results. Owner action results
+are sampled when that owner's wait returns; late completions cannot alter the
+frozen record. Admission failures before the barrier are outside this probe.
+API 3 also samples boot/calibration progress, an outstanding storage clock
+transaction at barrier begin and storage dispatch/completion, and joystick
+owner/driver states and ready/identity/sleep-write results around input quiesce.
+These copy existing software probes without additional peripheral reads.
+Storage wait=1 means a clock transaction is outstanding; it does not by itself
+prove a clock fault. Input results without an ACK may be pending or historical.
+The final result is recorded after storage-clock cleanup. These timestamps include scheduling and waits;
+they do not measure isolated CPU time. The last display clock result can replace
+an earlier result, while the failure count remains cumulative for that barrier.
+No queue, timeout, clock-transition or acknowledgement behaviour is changed by
+this observer. Do not halt during the measured preparation.
+
+The 2026-09-14 completed target capture established a circular wait: thPower
+awaited display quiesce while display awaited a clock reply from thPower.
+Preparation took 1000 ticks (10 seconds) and reported success after a display
+clock ACK timeout. That result is not a clean preparation pass.
+Battery-critical and boot-low barriers now use the existing power/display
+handoff: thPower grants display transfer clocks directly before waiting for
+display, satisfies an outstanding clock wait, and holds the grant while display
+finishes and processes quiesce. The existing queued-request suppression prevents
+the superseded request from restoring transfer capabilities later. Cleanup ends
+the handoff and releases the display grant; grant/release failure rejects
+preparation. Normal sleep and START barriers remain unchanged. Owner ACKs are
+still required; this does not synthesize a display-quiesce acknowledgement.
+Focused native regression tests pass. Runtime target revalidation at measured
+3175 mV completed preparation in ticks 479..482 (30 ms), with all owner actions
+and ACKs successful and an outstanding display clock request completing with
+zero failures. Physical shipment remained gated off. Low-voltage boot at
+measured 3374 mV subsequently required two attempts; only the successful second
+attempt was retained by API 1. The new first-failure capture is intended to
+identify that unresolved first attempt, not to declare boot preparation fixed.
+The subsequent retained first failure showed storage ACK timeout from tick
+260 to 1260 and input action HAL_ERROR despite its successful ACK. The second
+barrier at tick 1384 completed successfully and the user saw the warning appear.
+The API-3 capture confirmed boot/calibration overlap: calibration was started
+but unresolved, storage was waiting for a clock reply at barrier begin and
+dispatch (request start tick 28, capabilities 0x2), and thPower waited for its
+quiesce ACK until timeout. The joystick hardware operation actually succeeded:
+ready/identity/sleep-write and driver status were zero, terminal sleep was
+committed, but owner state JOY_OFF rejected JOY_EV_QUIESCE. The retry accepted
+the existing sleep proof. This was a state-handling error, not an I2C failure.
+
+Battery-critical/boot-low preparation now reserves the storage flash clock even
+before FLASH_READY. A power-owned storage handoff answers a pending clock
+request and serves flash-clock requests/releases locally while the real owner
+barrier runs. The grant remains held until barrier cleanup; it does not grant
+USB/MSC capabilities or manufacture storage's quiesce ACK. A grant failure is
+retained for the waiting caller even if cleanup subsequently succeeds. The
+superseded queued request is consumed without a second ACK or clock change.
+Grant, owner send/ACK/action and cleanup failures still reject preparation.
+Normal sleep/START storage handoff behaviour is unchanged. After successful
+hardware sleep, input now handles JOY_OFF/JOY_SUSPENDED consistently with the
+cached sleep-proof path; other states still require their valid transition.
+These corrections are native-tested and build-verified. Low-boot target
+revalidation at measured 3373 mV completed on attempt 1 in ticks 258..261
+(30 ms), with all owner actions/ACKs successful and no first failed barrier.
+The pending storage clock wait cleared before storage dispatch; its grant and
+release succeeded. Input's hardware sleep and owner action both succeeded.
+The user confirmed the warning appeared directly after boot and recovery after
+raising voltage. Recovery is visually confirmed in this run; no post-recovery
+probe was supplied. Shipment remained disabled, so physical shutdown and
+discharge protection are not established by this pass.
+
+That preparation fix did not change START handling or retry the final PMIC
+shipment write. The later API 2 result-handling increment above adds bounded
+re-preparation after a returned write failure; the driver primitive is unchanged.
+Automatic critical/boot shipment remains disabled in normal builds.
+Physical shipment failure handling and a bounded fallback after exhausted
+preparation still require qualification before enabling automatic protection.
+Native tests compile the actual preparation and battery evaluation functions
+with fake admission/quiesce boundaries, for gates both off and on. They cover
+admission failure, quiesce timeout, spacing, exhaustion, invalid measurements,
+single request after success, recovery, VBUS removal and kernel tick wraparound.
+Controlled-voltage automatic low-boot and runtime shutdown subsequently passed
+in the isolated test build, including a shortened unattended RTC wake to
+shipment at 4.8 uA; see [[HW6_Battery_Shutdown_Validation]]. Physical failure
+injection, permanent-failure low-power behaviour and independent hardware
+protection remain unqualified.
+
+Verification for this preparation fix: 107 firmware tests and the Debug build
+pass; generated target-profile and whitespace checks pass. Build usage is
+RAM 552808 bytes, ROM 879664 bytes and SRAM4 15480 bytes. The existing V2 runtime
+stack check still reports 2432/4096 bytes including reserve; this is not a
+power-thread stack high-water measurement or physical shutdown evidence.
 
 Provisional FW0 thresholds, pending HW6 measurement and UX review:
 
@@ -161,6 +361,198 @@ Provisional FW0 thresholds, pending HW6 measurement and UX review:
 HW6 FW0 target evidence now validates the runtime policy path at one normal point, one warning point, one critical point, one runtime recovery point, the no-VBUS boot/restart block, the VBUS-present boot charge-recovery path, the START runtime-admission/cancel-resume scaffold, the START owner-ACK quiesce barrier, the pre-STOP sleep-prep owner-ACK scaffold, the manual STOP2 START-wake scaffold, and the shared ADP5360 software shipment primitive. The no-VBUS boot-gate case used a controlled source: `3270 mV` held policy state `BOOT_RESTART_BLOCKED`, kept power/PMIC in `PWR_SHIP_PREP` / `PMIC_SHIP_PENDING`, showed UI/display shutdown state `LOW_BATT_BOOT`, and recorded a default-off software-shipment skip. Raising the source produced `3707 mV`, cleared the boot gate, returned power/PMIC to `PWR_ACTIVE_LP` / `PMIC_MONITOR`, and returned UI/display to HOME. The VBUS-present case used the restart threshold forced to `4200 mV`: PMIC-read `3968 mV` selected `BOOT_CHARGE_RECOVERY`, suppressed HOME, showed UI/display shutdown state `LOW_BATT_CHARGE`, kept shipment requests at zero, and PMIC entered `PMIC_CHARGING`. Restoring the restart threshold to `3600 mV` with PMIC-read `4049 mV` cleared the boot gate and returned UI/display to HOME while PMIC stayed charging. `EV-HW6-20260811-P1-SHIP-032` then proved a manual power-owner request can write ADP5360 `0x36 = 1` and place the device in shipment mode. Threshold values remain provisional until UX, current, automatic gated software-shipment paths, and persistent save evidence are complete. `EV-HW6-20260811-P1-SLEEP-034` proves sleep-prep can enter `PWR_SLEEP_PREP`, collect owner ACKs with masks `0x7e/0x7e/0x7e/0x7e/0x0`, intentionally skip STOP entry, and recover to `PWR_ACTIVE_LP`. `EV-HW6-20260811-P1-STOP2-035` proves the follow-on manual path can enter real STOP2 after the same owner-ACK barrier, wake from START on PA4, restore clocks, recover the power FSM to `PWR_ACTIVE_LP`, collect baseline post-wake owner ACK/liveness proof with inactive/parked owners, and complete a staged active-owner STOP2 pass where audio/input/display/sensor/comm are active, quiesced, STOP2-entered, then resumed or confirmed live after wake. Storage/flash were intentionally excluded from the staged active-owner pass to avoid repeating flash scratch/erase/write tests; production automatic STOP admission, wake classification, tick compensation, LPBAM, current, repeated cycles, and fault-injection remain open.
 
 ---
+
+## Planned PMIC Monitoring Schedule
+
+Status: optional-work scheduling is not implemented. The read-group foundation
+and periodic STOP2 battery deadline are implemented as described below, with one
+shortened battery wake/read hardware-confirmed. FW0 still performs a full snapshot when
+the `1000 ms` monitor period is due, with additional boot, interrupt and explicit
+diagnostic requests. Checking whether the period is due is not a hardware read.
+The current snapshot performs 24 single-register reads and up to two flag-clear
+writes. It runs synchronously in `thPower`, so even an already-acknowledged clock
+request can wait for this work before its requesting thread runs.
+
+The next monitoring increment separates these workloads without transferring
+PMIC ownership away from `thPower`:
+
+| Workload | Trigger and scheduling rule | Required validity |
+| --- | --- | --- |
+| Battery safety | Retain the existing 1000 ms active-monitor target initially; service relevant power events promptly. Faster checks near thresholds or around load changes require an explicit policy and measurement. | Valid VBAT and the presence, fault and external-power information needed for the decision; slow SOC must not substitute for voltage safety. |
+| Charger and VBUS events | Interrupt-driven status refresh, with a bounded periodic backstop for missed events. Coalesce requests without discarding unrecorded flags. | Record observed flags before write-one-to-clear; publish decoded status only from successful reads. |
+| SOC and UI telemetry | Slower, independently scheduled updates. UI and package consumers use the published cache rather than initiating synchronous PMIC reads. | Value, last-success time, age and validity are visible to consumers. An overdue value is not a fresh measurement. |
+| Identity and configuration verification | Mandatory at boot, after configuration changes and after recovery; a separate, slower integrity audit thereafter. | Boot/recovery admission still requires verified identity and relevant rail, charger and gauge configuration. Ordinary telemetry cannot clear a failed verification. |
+
+The slower telemetry, backstop and audit periods are not selected by this
+design. They must become separately described knobs, with evidence supporting
+their defaults. Do not silently repurpose the current monitor-period knob to
+mean all of these schedules. Battery voltage can change quickly under load even
+when SOC changes slowly.
+
+### Freshness And Failure Rules
+
+- Each group publishes its last successful sample time, latest attempt status,
+  validity and a defined maximum usable age. Target update period, maximum usable
+  age and permitted scheduling deferral are separate policy values.
+- Publish a group only after its required reads complete successfully. Do not
+  present a mixture of old and new fields as one current successful sample.
+  Preserve the last good sample for diagnostics while exposing failure/staleness.
+- Decisions using multiple groups must check every required group's validity
+  and age. Required freshness limits must be specified before implementing that
+  decision; this document does not establish a safe maximum age from one trace.
+- Missing, failed or over-age safety information enters the documented
+  unknown/recovery policy. It must not silently permit a new high-load operation
+  or be interpreted as zero battery voltage.
+- The present snapshot's overall success includes configuration verification.
+  Splitting reads therefore requires explicit separate verification and sample
+  validity, not merely removing configuration reads from the success test.
+
+### Bounded Work And Sleep
+
+- Use bounded owner jobs and service pending requests between safe transaction
+  boundaries. No extra thread, cross-owner peripheral access, hidden retry loop
+  or arbitrary sleep is introduced to simulate prioritisation.
+- Routine telemetry and integrity audits may defer during bounded interactive
+  work, but retain their original deadline and a maximum deferral. Repeated input
+  cannot continually restart their deadlines. Safety and critical power events
+  cannot be postponed merely to improve animation or button latency.
+- A bus transaction remains indivisible, with its existing ownership and clock
+  protections. Grouped register reads may reduce transaction overhead later;
+  they do not replace the scheduling and freshness policy.
+- Do not wake from STOP2 solely to refresh cosmetic SOC/UI data or perform a
+  routine configuration audit. Overdue optional work is considered on natural
+  wake; freshness accounting must include elapsed STOP2 time.
+- The existing one-second owner-loop monitor is not a promise of a one-second
+  RTC wake. Any required asleep safety sampling deadline must be explicitly
+  designed with the power/sleep policy and shared RTC arbitration, then measured
+  on hardware. Do not add such a wake implicitly while splitting the snapshot.
+
+### Implementation And Acceptance
+
+First define the read groups, verification barriers and published freshness
+state; then schedule bounded jobs and tune optional periods. Preserve PMIC
+interrupt record/clear ordering, boot battery admission, charger/VBUS reporting,
+critical-battery policy and recovery behaviour throughout.
+
+Acceptance requires traces showing actual register work and request latency,
+including sustained input and simultaneous PMIC events; failure/stale-sample
+tests; and hardware checks of boot, charger connect/disconnect, battery policy
+and STOP2 wake behaviour. Measure current and energy as well as responsiveness.
+No performance or battery-safety improvement is established by this design alone.
+
+### Read-Group Foundation (Driver API 11)
+
+`ps_dev_adp5360_read_groups()` accepts a mask of these groups. The full-snapshot
+entry point still selects ALL, preserving the existing 24 reads in their original
+order, both conditional W1C writes, lease boundaries and admission checks.
+Boot, IRQ, diagnostics and periodic monitoring still use that full entry point.
+
+| Bit / group | Read addresses in group order | Reads |
+| --- | --- | --- |
+| `0x1` SAFETY | `2e,2f,08,09,0a,25,26` | 7 |
+| `0x2` EVENTS | `34,35`, followed by clear of successfully read, nonzero flags | 2 |
+| `0x4` SOC | `21` | 1 |
+| `0x8` CONFIG | `00,29,2a,2b,2c,02,03,04,07,0a,32,33,20,27` | 14 |
+
+The duplicate thermistor-control read remains intentional compatibility work,
+not a new optimisation. Configuration-group success preserves existing ID/rail
+expected-value checks and requires its reads to succeed; it does not introduce
+expected-value verification of every charger/gauge setting. Those writes and
+boot sequencing retain their existing owners and checks. Safety-group success
+preserves fault-clear and rail-good checks; battery-policy validation, including
+the nonzero VBAT requirement, still applies separately.
+
+Each attempt reports requested/valid masks and per-group status and raw values.
+Unrequested fields are not valid readings. Any failed read invalidates its group;
+failed W1C invalidates EVENTS; acquisition/release failure invalidates all
+requested groups. Successful partial reads do not authorize boot or normal load
+admission, and ordinary telemetry cannot validate CONFIG.
+
+`g_ps_hw6_pmic_monitor_probe` records attempts, successes, last attempt status,
+last-good raw group values and kernel tick timestamps. Failed attempts retain
+last-good values but clear validity; unrequested groups are untouched. Owner
+initialisation and PMIC configuration/shipment operations invalidate the records
+before further hardware work. This is diagnostic history, not the policy cache:
+its validity means successful acquisition since invalidation, not age-qualified
+freshness or permission to run. Kernel timestamps must not be used to infer age
+through STOP2. Maximum usable ages and a sleep-aware timebase remain part of the
+next optional-work scheduling increment. The separate sleep battery deadline
+below is not a general-purpose freshness API for these group records.
+
+After rebuilding/flashing a matching ELF, `__fw0_pmic_monitor_prints.gdb` prints
+these records without requesting hardware work. During healthy full monitoring,
+requested/valid masks are `0xf/0xf`, statuses are zero and last-good read counts
+are `7/2/1/14`. Attempt counters alone do not prove successful hardware reads.
+
+### Periodic STOP2 Battery Deadline
+
+Battery monitoring must not depend on a user input, package timer or charger
+interrupt eventually waking the device. The shared RTC wake timer now selects
+the earliest of battery, interaction and scene-timer deadlines, including when
+there is no active package timer or the device is in the shell. This is an
+explicit battery-safety wake, not an optional UI/SOC refresh.
+
+Provisional knobs, requiring hardware and energy validation:
+
+| Knob | Default | Meaning |
+| --- | --- | --- |
+| `power_battery_sleep_check_ms` | 1800000 (30 minutes) | Target maximum interval from a valid healthy reading to the next battery check through STOP2. |
+| `power_battery_sleep_warning_ms` | 60000 | Interval after a valid reading at/below the existing warning threshold. |
+| `power_battery_sleep_retry_ms` | 60000 | Maximum scheduled delay to another attempt after a failed reading. |
+
+Only successful full-snapshot policy readings, including the existing nonzero
+VBAT check, refresh the normal/warning deadline. Failed attempts use the retry
+interval or an already-earlier deadline; further failures before that deadline
+cannot continually push it out. Actual read work still runs through `thPower`.
+The awake one-second monitor and full snapshot validation are unchanged.
+
+`ps_battery_wake` records the remaining deadline at RTC preparation and rebases
+it using measured RTC elapsed time at finish. Scene replacement and unrelated
+wakes do not reset it; an actual successful battery reading on such a wake may
+legitimately refresh it. Timer competition does not lose the unselected battery
+deadline. A due battery check overrides the awake monitor's cadence skip even
+when ThreadX ticks were stopped. RTC read/arm failures force a fresh check and
+do not count as successful time accounting. RTC rounding and bounded owner work
+add servicing latency; the period is not a claim of exact wall-time completion.
+
+Battery-only RTC expiry does not queue a package interaction-timeout command or
+invent a button, activation, sound or UI notification. Coincident genuine scene
+or interaction deadlines are still serviced. Normal owner resume and display
+reconciliation remain in place, after which a healthy settled device can return
+to STOP2. RTC preparation is cleaned up on aborted sleep as well as real wake.
+Shared RTC source values are NONE=0, INTERACTION=1, STATE_TIMER=2, BATTERY=3.
+
+**Discharge protection remains incomplete until the shutdown path is qualified.**
+`power_critical_software_ship_enable` and `power_boot_low_battery_ship_enable`
+remain false for this wake-path increment. Low readings still enter the existing
+battery policy and quiesce path, but these defaults do not guarantee physical
+shipment. A controlled supply test must prove critical shutdown, failed-read
+handling, VBUS-present charge recovery and restart admission before enabling
+automatic shipment. Do not deliberately exhaust a cell to test this. Complete
+PMIC communication failure can prevent a software shipment command; periodic
+reads are not a substitute for hardware battery protection.
+
+The one-shot `__fw0_battery_wake_enable.gdb` helper queues a shortening to 15
+seconds in `thPower`; it cannot lengthen the deadline or alter voltage/charging
+settings. Use the running autonomous 1234/A-B package after its timer reveal.
+The shell stayed awake in the observed test and is not a suitable test setup.
+Resume without input for 20 seconds, then wake normally if
+needed, halt and source `__fw0_battery_wake_prints.gdb`. Firmware-held test
+baselines survive debugger reconnect without reset. Require a battery RTC
+expiry and a successful due-check delta, not just a timer selection or thread
+run count; verify continued visuals/input and low-current return. A successful
+reading before expiry can replace the test deadline, so zero expiry delta is
+not a pass. Follow with a real-duration 30-minute test and controlled low-voltage
+tests.
+
+The 2026-09-14 shortened hardware test passed: expiry and successful due-read
+deltas were both one, STOP2 entries two, RTC wake classifications one, clock
+failures zero, and the latest valid reading was 3861 mV. The cumulative acquisition
+record contained one earlier failure (six attempts, five successes); its cause
+is not established. This proves one battery RTC wake and successful due reading,
+not error-free lifetime monitoring, the real 30-minute interval, low-current
+residency or complete discharge protection. The 60-second warning interval is
+provisional pending energy measurement and shutdown policy qualification.
 
 ## VBUS Detection
 
@@ -376,6 +768,56 @@ Rules:
 - seller-stated pouch-cell capacity is not a design fact until measured or otherwise verified.
 - ADP5360 fuel-gauge capacity configuration is a Platform battery-profile setting, not a package or game setting.
 - if the physical cell capacity exceeds the ADP5360 fuel-gauge coding range, charger safety policy still follows the cell datasheet and PMIC limits; package-visible battery estimates must be treated as approximate until characterized.
+
+---
+
+## Deferred PPK2 Battery-Harness Tests (2026-09-15)
+
+Charger-connected recovery and real-cell current characterization are deferred
+until a reviewed battery harness supports measurement with PPK2 in Ammeter
+mode, not Source Meter mode. This is follow-up Platform validation, not a
+blocker for continuing V2 package integration. The conservative `100 mA`
+baseline remains unchanged; no higher-current profile is approved by this plan.
+
+Harness prerequisites:
+
+- Confirm cell identity and approved limits, polarity, protection, connector
+  wiring, NTC contact, and USB/debugger ground and power paths before use.
+- Qualify the instrument and wiring for charging and discharging current
+  directions, range, burden voltage and measurement offset. Do not assume one
+  PPK2 connection measures both directions correctly; use an appropriate
+  additional measurement method where required. Do not drive the real cell
+  from PPK2 Source Meter output.
+- Record where current is measured. Net battery current, USB input current,
+  programmed charging current and the VBUS input limit are different quantities;
+  system load must be accounted for when comparing them.
+
+Planned tests:
+
+1. Measure real-cell active, STOP2, periodic battery-check and shipment current,
+   including energy per wake and elapsed wake intervals using log timestamps.
+   Record debugger attachment and repeat relevant measurements detached.
+2. Observe battery voltage and current through low-battery shutdown, attempted
+   restart and recovery. Repeat with charger absent/present; distinguish
+   battery isolation from a system still powered by USB. Do not deliberately
+   deep-discharge the cell to exercise firmware thresholds.
+3. Check charger attachment while low-boot blocked or shipped, recovery through
+   the restart threshold, and detachment while still low. Confirm there is no
+   sustained awake drain or repeated boot/shutdown loop.
+4. Characterize charging at the retained baseline with active and sleeping
+   system loads: battery/USB current, cell voltage and temperature, charger
+   state, taper, termination and recharge. Validate temperature protection
+   through a separately reviewed controlled test, not by overheating the cell.
+5. Consider staged charge-current increases only after the actual cell limits,
+   PMIC limits, USB source budget, system load and thermal results support them.
+   Any approved setting must use the knobs/profile path and verified register
+   readback. The goal is a qualified charge rate, not simply the cell maximum.
+
+Retain the wiring diagram, cell/source identification, firmware revision and
+settings, instrument configuration, timestamped PPK2 logs, voltage/temperature
+measurements and PMIC status/readbacks with each result. Earlier isolated-supply
+shutdown passes remain valid for their stated scope; they do not establish
+charger recovery, charging performance or complete discharge protection.
 
 ---
 

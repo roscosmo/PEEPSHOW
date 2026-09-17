@@ -24,6 +24,7 @@ volatile ps_package_workflow_probe_t g_ps_package_workflow_probe;
 volatile ps_package_source_probe_t g_ps_package_source_probe;
 volatile uint32_t g_ps_package_source_override;
 static struct { uint32_t usb_host_msc_active; } g_ps_hw6_owner_sm_probe;
+static struct { uint32_t active; } g_ps_hw6_battery_fault_wait_probe;
 static struct { uint32_t export_enabled; } g_ps_storage_msc_bridge_probe;
 static uint32_t ps_runtime_interaction_state, ps_runtime_interaction_cue_active;
 static uint32_t ps_runtime_interaction_activation_active, ps_input_activity_generation;
@@ -37,6 +38,11 @@ static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
 { (void)blob; (void)size; (void)objects; return 0; }
 static UINT PS_HW6_RTOS_InstalledObjectLaunch(void) { return render_status; }
 void PS_SceneRuntime_SetObjectAdmission(ps_scene_object_admission_fn_t admission)
+{ assert(admission != NULL); }
+static uint32_t PS_HW6_RTOS_ObjectSceneCheck(const uint8_t *blob,
+  uint32_t size, uint32_t scene, const ps_scene_objects_t *objects)
+{ (void)blob; (void)size; (void)scene; (void)objects; return 0; }
+void PS_SceneRuntime_SetObjectSceneAdmission(ps_scene_object_scene_admission_fn_t admission)
 { assert(admission != NULL); }
 uint32_t PS_SceneRuntime_InstalledObjectsActive(void) { return 0; }
 

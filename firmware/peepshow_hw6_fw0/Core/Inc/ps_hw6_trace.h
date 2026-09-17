@@ -21,6 +21,72 @@ extern "C" {
 #define PS_HW6_TRACE_EVENT_PMIC_INTERRUPT    (0x5140UL)
 #define PS_HW6_TRACE_EVENT_SLEEP             (0x5150UL)
 #define PS_HW6_TRACE_EVENT_CLOCK_POLICY      (0x5160UL)
+#define PS_HW6_TRACE_EVENT_OBJECT_STAGE      (0x5170UL)
+#define PS_HW6_TRACE_EVENT_OBJECT_RASTER     (0x5171UL)
+#define PS_HW6_TRACE_EVENT_OBJECT_CAPTURE    (0x5172UL)
+#define PS_HW6_TRACE_EVENT_OBJECT_OWNER      (0x5173UL)
+#define PS_HW6_TRACE_EVENT_SYSTICK_REGISTERS (0x5174UL)
+#define PS_HW6_TRACE_EVENT_SYSTICK_BEFORE    (0x5175UL)
+#define PS_HW6_TRACE_EVENT_SYSTICK_AFTER     (0x5176UL)
+
+typedef struct
+{
+  uint32_t sequence;
+  uint32_t reload_before;
+  uint32_t value_before;
+  uint32_t reload_target;
+  uint32_t cycles_before;
+  uint32_t tick_before;
+  uint32_t icsr_before;
+} ps_hw6_trace_systick_snapshot_t;
+
+enum
+{
+  PS_TRACE_OWNER_PMIC_SNAPSHOT = 1,
+  PS_TRACE_OWNER_JOYSTICK_WAKE,
+  PS_TRACE_OWNER_JOYSTICK_READ,
+  PS_TRACE_OWNER_JOYSTICK_SUSPEND
+};
+
+enum
+{
+  PS_TRACE_RASTER_VALIDATE = 1,
+  PS_TRACE_RASTER_OVERLAP,
+  PS_TRACE_RASTER_CLEAR,
+  PS_TRACE_RASTER_DRAW,
+  PS_TRACE_RASTER_COPY,
+  PS_TRACE_RASTER_COLD
+};
+
+typedef struct
+{
+  uint32_t api_version;
+  uint32_t request;
+  uint32_t armed;
+  uint32_t active;
+  uint32_t complete;
+  uint32_t arm_status;
+  uint32_t freeze_status;
+  uint32_t sequence;
+  uint32_t hclk_start;
+  uint32_t hclk_end;
+  uint32_t counter_before;
+  uint32_t counter_after;
+  uint32_t wraps;
+  uint32_t wraps_at_receive;
+  uint32_t marker_errors;
+} ps_hw6_object_trace_probe_t;
+
+extern volatile ps_hw6_object_trace_probe_t g_ps_object_trace_probe;
+uint32_t PS_HW6_TraceObjectArm(uint32_t allowed);
+void PS_HW6_TraceObjectBegin(uint32_t sequence);
+void PS_HW6_TraceObjectStage(uint32_t stage, uint32_t token, uint32_t hclk);
+void PS_HW6_TraceObjectRaster(uint32_t stage, uint32_t end);
+uint32_t PS_HW6_TraceObjectOwnerBegin(uint32_t stage);
+void PS_HW6_TraceObjectOwnerEnd(uint32_t stage, uint32_t sequence, uint32_t status);
+void PS_HW6_TraceObjectEnd(uint32_t status);
+void PS_HW6_TraceSysTickBefore(ps_hw6_trace_systick_snapshot_t *snapshot, uint32_t reload_target);
+void PS_HW6_TraceSysTickAfter(const ps_hw6_trace_systick_snapshot_t *snapshot);
 
 #define PS_HW6_TRACE_SLEEP_STAGE_PREP_START  (1UL)
 #define PS_HW6_TRACE_SLEEP_STAGE_ENTER_STOP2 (2UL)

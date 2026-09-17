@@ -87,6 +87,13 @@
     "comm_ble_rx_buffer_bytes",
     "power_rtc_wake_irq_priority",
     "power_battery_monitor_period_ms",
+    "power_battery_sleep_check_ms",
+    "power_battery_sleep_warning_ms",
+    "power_battery_sleep_retry_ms",
+    "power_battery_shutdown_prep_attempts",
+    "power_battery_shutdown_prep_retry_ms",
+    "power_battery_fault_test_inspect_ms",
+    "power_battery_fault_test_wake_ms",
     "power_battery_warning_mv",
     "power_battery_critical_ship_mv",
     "power_battery_restart_allow_mv",
@@ -1099,6 +1106,90 @@
       "path": "platform.knobs.power.battery_monitor_period_ms",
       "description": "Cadence for thPower-owned PMIC battery voltage snapshots while the FW0 monitor scaffold is active."
     },
+    "power_battery_sleep_check_ms": {
+      "type": "integer",
+      "minimum": 60000,
+      "maximum": 3600000,
+      "default": 1800000,
+      "unit": "ms",
+      "timebase_domain": "rtc",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_sleep_check_ms",
+      "description": "Maximum target interval from a successful healthy battery reading to a quiet STOP2 battery wake. Provisional 30-minute default requires power and low-voltage hardware validation."
+    },
+    "power_battery_sleep_warning_ms": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 60000,
+      "default": 60000,
+      "unit": "ms",
+      "timebase_domain": "rtc",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_sleep_warning_ms",
+      "description": "Shorter STOP2 battery-check interval after a valid reading at or below the existing warning threshold."
+    },
+    "power_battery_sleep_retry_ms": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 60000,
+      "default": 60000,
+      "unit": "ms",
+      "timebase_domain": "rtc",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_sleep_retry_ms",
+      "description": "Maximum delay to another STOP2 battery-check attempt after a failed sample; repeated failures before this deadline cannot extend it. Does not guarantee shutdown if PMIC communication is unavailable."
+    },
+    "power_battery_shutdown_prep_attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 3,
+      "unit": "count",
+      "timebase_domain": "none",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_shutdown_prep_attempts",
+      "description": "Maximum admission/quiesce attempts per battery shutdown episode, including the first attempt and re-preparation after a failed shipment command. Also bounds shipment writes. Exhaustion never bypasses failed owner quiesce."
+    },
+    "power_battery_shutdown_prep_retry_ms": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 10000,
+      "default": 1000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_shutdown_prep_retry_ms",
+      "description": "Minimum awake time after failed battery preparation or shipment-command completion before re-preparation on a subsequent valid critical or boot-blocked reading. Not a periodic battery wake interval."
+    },
+    "power_battery_fault_test_inspect_ms": {
+      "type": "integer",
+      "minimum": 10000,
+      "maximum": 120000,
+      "default": 60000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "debug_visibility",
+      "path": "platform.knobs.power.battery_fault_test_inspect_ms",
+      "description": "Running-time awake inspection window after the first button wake in an explicitly armed, shipment-disabled battery fault test. Halting freezes this timebase. Does not affect ordinary fault wait."
+    },
+    "power_battery_fault_test_wake_ms": {
+      "type": "integer",
+      "minimum": 5000,
+      "maximum": 60000,
+      "default": 15000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "debug_visibility",
+      "path": "platform.knobs.power.battery_fault_test_wake_ms",
+      "description": "Maximum battery RTC interval only during an explicitly armed fault test; RTC elapsed time rebases the deadline through STOP2. No production cadence change."
+    },
     "power_battery_warning_mv": {
       "type": "integer",
       "minimum": 2500,
@@ -1220,23 +1311,23 @@
     },
     "power_critical_software_ship_enable": {
       "type": "boolean",
-      "default": false,
+      "default": true,
       "unit": "bool",
       "timebase_domain": "threadx",
       "owner": "thPower",
       "class": "protected_policy",
       "path": "platform.knobs.power.critical_software_ship_enable",
-      "description": "When true, critical-battery policy may request ADP5360 software shipment after the bounded quiesce scaffold. Default false records would-ship only."
+      "description": "Default true enables critical-battery ADP5360 software shipment after successful bounded owner preparation. False is for explicit preparation-only diagnostics; it records would-ship without removing power."
     },
     "power_boot_low_battery_ship_enable": {
       "type": "boolean",
-      "default": false,
+      "default": true,
       "unit": "bool",
       "timebase_domain": "boot_snapshot",
       "owner": "thPower",
       "class": "protected_policy",
       "path": "platform.knobs.power.boot_low_battery_ship_enable",
-      "description": "When true, boot below restart-allow voltage with no VBUS may re-enter ADP5360 software shipment. Default false records would-ship only."
+      "description": "Default true permits boot below restart-allow voltage with no VBUS to re-enter ADP5360 software shipment after successful preparation. False is for explicit preparation-only diagnostics and leaves the device powered."
     },
     "power_start_software_ship_enable": {
       "type": "boolean",

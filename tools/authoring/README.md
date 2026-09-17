@@ -210,9 +210,11 @@ transactional object edits, save/reload and host preview. Check
 do not infer supported editing commands from the API number alone. Object clips
 continue through state changes, hidden placement and static masks. The host
 preview reuses the graph/timer executor with a labeled internal adapter, not a
-new executable package decoder. API 42 enables ordinary V2 build/export for the
-restricted `hw6_v2_resident_v1` profile: one resident scene, input/timers/objects,
-no audio or exits, and conservative animation-resource checks. Discover support
+new executable package decoder. API 42 introduced ordinary V2 build/export for
+the restricted `hw6_v2_resident_v1` profile. API 44 expands its advertised
+`profile_revision` to 2: one to eight resident V2 scenes, input/timers/objects,
+action-free fresh scene exits, no audio, and conservative per-scene animation
+checks. Discover support
 through hello and per-scene capabilities; require whole-project `export_ready`
 and inspect `build_issues`. Unsupported drafts retain editing/preview. Legacy
 projects are not implicitly migrated. Export limits and GUI integration:
@@ -232,8 +234,10 @@ both routes and handlers; referenced exits cannot be deleted until detached.
 V2 exit actions must be empty (guards are allowed); V1 SFX behavior is unchanged.
 Discover `scene_connection_commands`, `connection_commands`, `scene_entry_modes`
 and `scene_exit_action_kinds` through hello/per-scene capabilities. This is
-host-only: multi-scene V2 export, scene memory and parallel regions remain
-unavailable. See Native V2 Scene Connections (API 43) in the ownership handoff.
+the original host connection increment. API 44 now advertises multi-scene export
+and reports separate `scene_analyses` budgets, while scene memory and parallel
+regions remain unavailable. The exact export/readiness handoff is
+`docs/11 Development Tools/Peep_Studio_Multiscene_V2_Export_Handoff.md`.
 
 The canonical HW6 development limits live in
 `peepshow_authoring/target_profiles/hw6_fw0_development.json`. After changing

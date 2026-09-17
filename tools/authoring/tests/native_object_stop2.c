@@ -16,7 +16,8 @@
 
 static uint32_t ps_hw6_display_lpbam_active, ps_hw6_display_lpbam_prearmed;
 static uint32_t ps_hw6_display_lpbam_compiled;
-static struct { uint32_t display_success, display_ui_page; } g_ps_hw6_owner_probe;
+static struct { uint32_t display_success, display_ui_page, display_complete,
+  display_ui_status; } g_ps_hw6_owner_probe;
 static ps_scene_render_model_t ps_hw6_development_display_model;
 volatile ps_hw6_object_lpbam_prepare_probe_t g_ps_object_lpbam_prepare_probe;
 #include "object_lpbam_under_test.inc"
@@ -31,6 +32,7 @@ static display_renderer_waiting_animation_t s_display_full_scene_waiting;
 static display_renderer_waiting_animation_t s_display_waiting_guaranteed_animation;
 static const display_renderer_waiting_animation_t *s_display_selected_waiting_animation;
 static uint32_t s_display_full_scene_waiting_active, s_display_cursor_base_valid;
+static ps_scene_waiting_visual_t s_display_scene_waiting_visual;
 static uint8_t s_display_cursor_base_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 volatile display_renderer_scene_waiting_probe_t g_display_renderer_scene_waiting_probe;
 static void PS_HW6_DisplayOwner_SnapshotSceneWaitingTimeline(void) {}
@@ -39,6 +41,17 @@ static uint32_t tx_time_get(void) { return now; }
 static uint64_t ps_object_missing_consumed, ps_object_rtc_start_ms;
 static uint32_t ps_object_rtc_start_tick, ps_object_rtc_valid;
 static uint32_t ps_object_last_tick, ps_object_tick_fraction;
+static uint32_t ps_object_clock_activation;
+static struct { uint32_t runtime_active_unit_id; } g_ps_hw6_rtos_probe;
+static struct { uint32_t active; } g_ps_hw6_battery_fault_wait_probe;
+volatile ps_ui_router_probe_t g_ps_ui_router_probe;
+static ps_object_waiting_program_t ps_object_waiting_lease;
+static uint32_t ps_object_waiting_lease_request;
+static uint32_t g_ps_hw6_power_stop2_display_backend_override;
+static uint32_t ps_stop2_lpbam_abort_late_test_active;
+#define PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_NONE 0U
+#define PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_HELD_FRAME 1U
+#define PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_LPBAM 2U
 typedef struct { uint32_t Hours, Minutes, Seconds, SubSeconds, SecondFraction; } RTC_TimeTypeDef;
 typedef struct { uint32_t Year, Month, Date; } RTC_DateTypeDef;
 static RTC_TimeTypeDef rtc_time;
@@ -65,6 +78,100 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_GetLpbamTimerCounts(uint32_t ms,
 { *period = ms * 31250U / 1000U; *compare = *period - 1U; return HAL_OK; }
 #include "object_stop2_under_test.inc"
 
+static void held_frame(uint32_t hide_animation)
+{
+  static ps_object_waiting_program_t hold;
+  uint32_t next, step, remaining;
+  uint64_t elapsed = s_ps_object_graph.objects.elapsed_ms;
+  if (hide_animation)
+  {
+    assert(s_display_full_scene_waiting_active == 1);
+    s_ps_object_graph.objects.objects[0].visible = 0;
+  }
+  assert(PS_SceneRuntime_BuildDevelopmentWaiting(&hold) == 0);
+  assert(hold.step_count == 1 && hold.quantum_ms == 0 && hold.initial_remaining_ms == 0);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&ps_hw6_development_display_model, &next) == 0);
+  assert(PS_HW6_DisplayOwner_PublishDevelopmentWaiting(&hold, 0) == HAL_OK);
+  assert(!s_display_full_scene_waiting_active && !g_display_renderer_scene_waiting_probe.active);
+  assert(!ps_hw6_object_animation.sequence_frame_count && !g_ps_object_lpbam_probe.deadline_tick);
+  assert(!PS_HW6_DisplayOwner_ObjectWaitingPosition(now, &step, &remaining));
+  assert(!ps_hw6_display_lpbam_prearmed && !ps_hw6_display_lpbam_active);
+  assert(PS_HW6_DisplayOwner_PublishDevelopmentWaiting(NULL, 0) == HAL_OK);
+
+  ps_object_waiting_lease = hold;
+  ps_object_waiting_lease_request = 9;
+  g_ps_object_development_probe.render_request = 9;
+  g_ps_object_development_probe.render_complete = 9;
+  g_ps_object_development_probe.render_status = 0;
+  g_ps_object_lpbam_prepare_probe.schedule_status = 0;
+  g_ps_object_lpbam_prepare_probe.request_count = 7;
+  g_ps_object_lpbam_prepare_probe.complete_count = 7;
+  g_ps_object_lpbam_probe.publish_status = 0;
+  assert(PS_HW6_RTOS_Stop2DisplayWaitBackendRequested() == PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_HELD_FRAME);
+  /* Selecting held-frame still requires the existing physical render checks. */
+  assert(!PS_HW6_RTOS_Stop2DisplayHeldFrameReady());
+  g_ps_hw6_owner_probe.display_ui_page = g_ps_ui_router_probe.current_page;
+  g_ps_hw6_owner_probe.display_success = 1;
+  g_ps_hw6_owner_probe.display_complete = 1;
+  assert(PS_HW6_RTOS_Stop2DisplayHeldFrameReady());
+  g_ps_hw6_owner_probe.display_ui_status = 1;
+  assert(!PS_HW6_RTOS_Stop2DisplayHeldFrameReady());
+  g_ps_hw6_owner_probe.display_ui_status = 0;
+
+  volatile uint32_t *conditions[] = {
+    &g_ps_object_development_probe.render_complete,
+    &g_ps_object_development_probe.render_status,
+    &g_ps_object_lpbam_prepare_probe.schedule_status,
+    &g_ps_object_lpbam_prepare_probe.request_count,
+    &g_ps_object_lpbam_prepare_probe.complete_count,
+    &g_ps_object_lpbam_probe.publish_status,
+    &ps_object_waiting_lease_request,
+    &ps_object_waiting_lease.base.activation,
+    &ps_object_waiting_lease.step_count,
+    &ps_object_waiting_lease.quantum_ms
+  };
+  for (uint32_t i = 0; i < sizeof(conditions) / sizeof(conditions[0]); ++i)
+  {
+    uint32_t saved = *conditions[i];
+    *conditions[i] = saved + 1;
+    assert(PS_HW6_RTOS_Stop2DisplayWaitBackendRequested() == PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_LPBAM);
+    *conditions[i] = saved;
+  }
+  hold.step_count = 2;
+  assert(PS_HW6_DisplayOwner_PublishDevelopmentWaiting(&hold, 0) == HAL_ERROR);
+  hold.step_count = 1; hold.initial_remaining_ms = 1;
+  assert(PS_HW6_DisplayOwner_PublishDevelopmentWaiting(&hold, 0) == HAL_ERROR);
+  hold.initial_remaining_ms = 0;
+  ps_hw6_development_display_model.scene_id++;
+  assert(PS_HW6_DisplayOwner_PublishDevelopmentWaiting(&hold, 0) == HAL_ERROR);
+  ps_hw6_development_display_model.scene_id--;
+
+  rtc_date = (RTC_DateTypeDef){26,9,17};
+  rtc_time = (RTC_TimeTypeDef){12,0,0,0,0};
+  assert(PS_HW6_RTOS_ObjectSleepClockBegin() == HAL_OK);
+  rtc_time.Seconds = 2;
+  PS_HW6_RTOS_ObjectSleepClockFinish();
+  assert(g_ps_object_lpbam_probe.sleep_count == 1);
+  assert(PS_HW6_RTOS_ObjectAdvance(now) == 0);
+  assert(s_ps_object_graph.objects.elapsed_ms == elapsed + 2000);
+  assert(g_ps_object_lpbam_probe.reconciled_count == 1);
+  if (hide_animation)
+  {
+    s_ps_object_graph.objects.objects[0].visible = 1;
+    assert(PS_SceneRuntime_BuildDevelopmentWaiting(&hold) == 0);
+    assert(hold.quantum_ms == 400 && hold.step_count == 4);
+    assert(hold.base.objects[0].step == 2 && hold.initial_remaining_ms == 150);
+    assert(PS_SceneRuntime_ProjectDevelopmentObjects(&ps_hw6_development_display_model, &next) == 0);
+    assert(PS_HW6_DisplayOwner_PublishDevelopmentWaiting(&hold, now + 15) == HAL_OK);
+    assert(s_display_full_scene_waiting_active == 1);
+    ps_object_waiting_lease = hold;
+    assert(PS_HW6_RTOS_Stop2DisplayWaitBackendRequested() == PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_LPBAM);
+    /* A visible clip cannot masquerade as a static schedule. */
+    hold.quantum_ms = 0; hold.initial_remaining_ms = 0; hold.step_count = 1;
+    assert(PS_HW6_DisplayOwner_PublishDevelopmentWaiting(&hold, 0) == HAL_ERROR);
+  }
+}
+
 int main(int argc, char **argv)
 {
   static ps_object_waiting_program_t program;
@@ -76,12 +183,15 @@ int main(int argc, char **argv)
   size = read_blob(argv[1], candidate);
   set_hash(argv[1], candidate, size);
   assert(PS_SceneRuntime_EnterDevelopmentObjects(candidate, size) == 0);
+  ps_object_clock_activation = PS_SceneRuntime_SceneActivation();
   now = 65;
   assert(PS_HW6_RTOS_ObjectAdvance(now) == 0);
   assert(PS_SceneRuntime_BuildDevelopmentWaiting(&program) == 0);
   assert(PS_SceneRuntime_ProjectDevelopmentObjects(&ps_hw6_development_display_model, &next) == 0);
   g_ps_object_lpbam_probe.enabled = 1;
+  if (strcmp(argv[2], "2") == 0) { held_frame(0); return 0; }
   assert(PS_HW6_DisplayOwner_PublishDevelopmentWaiting(&program, 80) == HAL_OK);
+  if (strcmp(argv[2], "3") == 0) { held_frame(1); return 0; }
   program.quantum_ms = 401;
   assert(PS_HW6_DisplayOwner_PublishDevelopmentWaiting(&program, 80) == HAL_ERROR);
   program.quantum_ms = 400;

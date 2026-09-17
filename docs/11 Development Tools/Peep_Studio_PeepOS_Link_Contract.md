@@ -63,11 +63,16 @@ validated authoring example.
 
 ## Current Capability
 
-Authoring service API 43 adds host V2 scene-connection commands and fresh-default
-replacement preview. See [[Peep_Studio_Scene_Object_Ownership_Handoff]], Native
-V2 Scene Connections, for the command, action and reference-lifetime contract.
-Multi-scene V2 export remains blocked; scene memory and parallel regions remain
-design-only. No new firmware capability is implied by host editing support.
+Authoring service API 44 enables bounded multi-scene V2 export through the
+existing public build operation. Discover `multi_scene_export` and whole-project
+`export_ready`; the profile admits up to eight resident scenes, checks every
+scene's budgets and permits only action-free fresh-default scene exits. See
+[[Peep_Studio_Multiscene_V2_Export_Handoff]] for the exact capability/report
+contract, restrictions and pending Studio-generated hardware test.
+API 43's connection commands and reference lifetimes remain unchanged; see
+[[Peep_Studio_Scene_Object_Ownership_Handoff]], Native V2 Scene Connections.
+Scene memory and parallel regions remain design-only. V2 audio, runtime text
+and shipping support are not implied by this export increment.
 
 Restricted ordinary V2 build/export introduced in API 42 remains available.
 See [[Peep_Studio_Restricted_V2_Export_Handoff]] for its single-scene subset,

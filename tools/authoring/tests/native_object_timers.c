@@ -20,6 +20,7 @@ volatile ps_hw6_object_development_probe_t g_ps_object_development_probe;
 volatile ps_hw6_object_lpbam_probe_t g_ps_object_lpbam_probe;
 static uint64_t ps_object_missing_consumed;
 static uint32_t ps_object_last_tick, ps_object_tick_fraction;
+static uint32_t ps_object_clock_activation, ps_object_rtc_valid;
 static uint32_t now, draws, failures, exits, render_error;
 static struct { uint32_t blocked, discarded; } g_ps_audio_package_probe;
 static uint32_t sfx_allowed, sfx_pending, sfx_sends, sfx_reject;
@@ -27,6 +28,7 @@ static uint32_t sfx_samples[16];
 static uint32_t PS_HW6_RTOS_ObjectAdvance(uint32_t tick);
 static UINT PS_HW6_RTOS_ObjectPresent(void);
 static void PS_HW6_RTOS_RuntimeStateTimersClear(void);
+static void PS_HW6_RTOS_RuntimeStateTimersSync(uint32_t tick, uint32_t force);
 static uint32_t tx_time_get(void) { return now; }
 static uint32_t PS_HW6_RTOS_MsToTicks(uint32_t ms) { return (ms + 9U) / 10U; }
 static uint32_t PS_HW6_RTOS_TimeReached(uint32_t tick, uint32_t deadline)
@@ -98,20 +100,251 @@ static void service(uint32_t tick)
   PS_HW6_RTOS_RuntimeStateTimersService(0);
 }
 
+static uint32_t reject_destination;
+static uint32_t admission_delay = 23;
+static uint32_t timer_scene_admission(const uint8_t *blob, uint32_t size,
+  uint32_t scene_id, const ps_scene_objects_t *objects)
+{
+  static ps_scene_runtime_state_scene_t scene;
+  static ps_egg_sprite_catalog_t catalog;
+  static ps_scene_object_graph_t graph;
+  static ps_object_waiting_program_t program;
+  static ps_object_waiting_workspace_t workspace;
+  ps_egg_v2_profile_result_t profile;
+  if (PS_EggStateLoader_DecodeV2SceneCandidate(blob, size, scene_id,
+        &scene, &catalog, &profile) != 0) { return 1; }
+  if (PS_SceneObjectGraph_Init(&graph, &scene, profile.scene_count, 1) != 0) { return 1; }
+  if (PS_ObjectWaiting_Build(objects != NULL ? objects : &graph.objects,
+        scene.scene_id, &program, &workspace) != 0) { return 1; }
+  if (PS_SceneRuntime_StateSceneActive()) { now += admission_delay; }
+  return reject_destination && scene_id == 2;
+}
+
+static uint32_t timer_object_admission(const uint8_t *blob, uint32_t size,
+  const ps_scene_objects_t *objects)
+{
+  return timer_scene_admission(blob, size, 1, objects);
+}
+
+static void replacement_timers(uint32_t mode)
+{
+  uint32_t timer = binding(PS_SCENE_RUNTIME_TIMER_SCENE);
+  uint32_t outgoing_activation = PS_SceneRuntime_SceneActivation();
+  if (mode == 16)
+  {
+    now = 150;
+    input(1);
+  }
+  else
+  {
+    if (mode == 18) { reject_destination = 1; }
+    service(300);
+    if (mode == 18)
+    {
+      uint32_t failed_timer = g_ps_hw6_rtos_probe.runtime_state_timer_last_binding_index;
+      uint32_t errors = g_ps_hw6_rtos_probe.runtime_state_timer_error_count;
+      assert(errors == 1 && failures == 0 && PS_SceneRuntime_StateSceneActive());
+      assert(PS_SceneRuntime_SceneActivation() == outgoing_activation);
+      assert(ps_runtime_state_timers[failed_timer].rejected_pending == 1);
+      assert(ps_runtime_state_timers[failed_timer].active == 0);
+      service(400);
+      assert(g_ps_hw6_rtos_probe.runtime_state_timer_error_count == errors);
+      assert(PS_SceneRuntime_SceneActivation() == outgoing_activation);
+      reject_destination = 0;
+      now = 450;
+      input(2); /* Authored explicit restart, no automatic retry. */
+      assert(ps_runtime_state_timers[failed_timer].rejected_pending == 0);
+      assert(ps_runtime_state_timers[failed_timer].active == 1);
+      service(ps_runtime_state_timers[failed_timer].deadline_tick);
+    }
+  }
+  assert(g_ps_scene_runtime_probe.scene_id == 2 && s_ps_object_graph.variables[0] == 20);
+  assert(PS_SceneRuntime_SceneActivation() == outgoing_activation + 1);
+  assert(s_ps_object_graph.objects.elapsed_ms == 0);
+  assert(g_ps_object_development_probe.elapsed_ms == 0);
+  assert(s_ps_object_snapshot.objects[0].step == 0);
+  assert(ps_runtime_timer_scene_activation == PS_SceneRuntime_SceneActivation());
+  timer = binding(PS_SCENE_RUNTIME_TIMER_SCENE);
+  assert(ps_runtime_state_timers[timer].deadline_tick == now + 200);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_active_count == 1);
+  assert(failures == 0);
+  service(now + 5);
+  assert(s_ps_object_graph.variables[0] == 20); /* No outgoing timer effect. */
+  service(ps_runtime_state_timers[timer].deadline_tick);
+  assert(g_ps_scene_runtime_probe.scene_id == 2);
+  assert(s_ps_object_snapshot.objects[2].effective.flags & 1U);
+}
+
+static void scene_exit_hardware_fixture(FILE *output)
+{
+  uint32_t epoch;
+  admission_delay = 0;
+  assert(g_ps_scene_runtime_probe.scene_id == 1 && model.elements[1].x == 32);
+  frame(output); /* HOME at zero, marker left, empty timer slot. */
+  now = 145; input(4);
+  assert(s_ps_object_snapshot.objects[0].step == 1 && model.elements[1].x == 120);
+  frame(output);
+  now = 190; input(3);
+  assert(s_ps_object_snapshot.objects[0].step == 2 && model.elements[1].x == 32);
+  frame(output);
+  epoch = PS_SceneRuntime_SceneActivation();
+  now = 195; input(1); /* Exit before HOME's two-second timer. */
+  assert(g_ps_scene_runtime_probe.scene_id == 2 && PS_SceneRuntime_SceneActivation() == epoch + 1);
+  assert(s_ps_object_snapshot.objects[0].step == 0 && s_ps_object_graph.variables[0] == 0);
+  frame(output);
+  now = 240; input(4);
+  assert(s_ps_object_snapshot.objects[0].step == 1 && model.elements[1].x == 120);
+  frame(output);
+  service(400); /* HOME's old deadline has passed. AWAY must still be empty. */
+  assert(PS_HW6_RTOS_ObjectPresent() == 0);
+  assert(g_ps_scene_runtime_probe.scene_id == 2 && g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 0);
+  assert((s_ps_object_snapshot.objects[2].effective.flags & 1U) == 0);
+  assert(ps_runtime_state_timers[binding(PS_SCENE_RUNTIME_TIMER_SCENE)].deadline_tick == 795);
+  frame(output);
+  service(795); /* Six seconds in AWAY, independent of the local selection. */
+  assert(g_ps_scene_runtime_probe.scene_id == 1 && model.elements[1].x == 32);
+  assert(s_ps_object_graph.variables[0] == 0 && s_ps_object_snapshot.objects[0].step == 0);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_applied_count == 1);
+  frame(output);
+  service(995);
+  assert(s_ps_object_snapshot.objects[2].effective.flags & 1U);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_applied_count == 2);
+  frame(output);
+  now = 1000; input(1);
+  now = 1045; input(4);
+  now = 1050; input(2); /* Explicit early return also creates fresh HOME. */
+  assert(g_ps_scene_runtime_probe.scene_id == 1 && s_ps_object_graph.variables[0] == 0);
+  assert((s_ps_object_snapshot.objects[2].effective.flags & 1U) == 0);
+  assert(s_ps_object_snapshot.objects[0].step == 0 && model.elements[1].x == 32);
+  frame(output);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_error_count == 0 && failures == 0);
+}
+
+static void timer_controls_hardware_fixture(FILE *output)
+{
+  uint32_t timer = binding(PS_SCENE_RUNTIME_TIMER_SCENE);
+  uint32_t epoch;
+  admission_delay = 0;
+  assert(timer == 4 && s_ps_object_snapshot.count == 10);
+  assert(ps_runtime_state_timers[timer].active == 0);
+  assert(s_ps_object_snapshot.objects[0].effective.flags & 1U);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  frame(output);
+  service(1300); /* Action-start does not arm on scene entry. */
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 0);
+  now = 1400; input(1);
+  assert(ps_runtime_state_timers[timer].deadline_tick == 2400);
+  now = 1600; input(1);
+  assert(ps_runtime_state_timers[timer].deadline_tick == 2400);
+  now = 1800; input(4);
+  now = 1900; input(4);
+  assert(ps_runtime_state_timers[timer].deadline_tick == 2400);
+  assert(s_ps_object_graph.variables[0] == 1);
+  epoch = PS_SceneRuntime_StateActivation();
+  service(2399);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  service(2400);
+  assert(s_ps_object_snapshot.objects[1].effective.flags & 1U);
+  assert(PS_SceneRuntime_StateActivation() == epoch);
+  frame(output);
+  now = 2500; input(2);
+  assert(ps_runtime_state_timers[timer].deadline_tick == 3500);
+  now = 2800; input(2);
+  assert(ps_runtime_state_timers[timer].deadline_tick == 3800);
+  service(3500);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 1);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  service(3800);
+  assert(s_ps_object_snapshot.objects[1].effective.flags & 1U);
+  now = 3900; input(2);
+  now = 4000; input(3);
+  service(5100);
+  assert(ps_runtime_state_timers[timer].active == 0);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 2);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  now = 5200; input(4);
+  assert(s_ps_object_graph.variables[0] == 0);
+  assert((s_ps_object_snapshot.objects[0].effective.flags & 1U) == 0);
+  now = 5300; input(1);
+  service(6300);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_ignored_count == 1);
+  assert(ps_runtime_state_timers[timer].active == 0);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  frame(output);
+  now = 6400; input(4);
+  assert(s_ps_object_graph.variables[0] == 1);
+  service(7600);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 3);
+  assert((s_ps_object_snapshot.objects[1].effective.flags & 1U) == 0);
+  frame(output);
+  now = 7700; input(2);
+  now = 8000;
+  PS_HW6_RTOS_RuntimeStateTimersPause(now);
+  assert(PS_HW6_RTOS_ObjectAdvance(now) == 0);
+  assert(ps_runtime_state_timers[timer].paused_remaining_ticks == 700);
+  g_ps_hw6_rtos_probe.runtime_lifecycle = 3;
+  service(10000);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 3);
+  PS_HW6_RTOS_RuntimeStateTimersResume(now);
+  ps_object_last_tick = now;
+  g_ps_hw6_rtos_probe.runtime_lifecycle = PS_HW6_RUNTIME_LIFECYCLE_RUNNING;
+  assert(ps_runtime_state_timers[timer].deadline_tick == 10700);
+  epoch = PS_SceneRuntime_StateActivation();
+  service(10699);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 3);
+  service(10700);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_applied_count == 3);
+  assert(PS_SceneRuntime_StateActivation() == epoch);
+  assert(s_ps_object_snapshot.objects[1].effective.flags & 1U);
+  assert(g_ps_hw6_rtos_probe.runtime_state_timer_error_count == 0 && failures == 0);
+  frame(output);
+}
+
 int main(int argc, char **argv)
 {
   uint32_t size, timer, state_timer, state_epoch, scene_epoch, mode, next;
   FILE *output;
-  assert(argc == 4);
+  assert(argc == 4 || argc == 5);
   size = read_blob(argv[1], candidate);
   set_hash(argv[1], candidate, size);
   mode = (uint32_t)atoi(argv[3]);
-  assert(PS_SceneRuntime_EnterDevelopmentObjects(candidate, size) == 0);
+  if (mode == 20)
+  {
+    uint32_t status = timer_scene_admission(candidate, size, 1, NULL);
+    assert(size == 3356);
+    if (status != 0)
+    { fprintf(stderr, "Timer fixture preflight failed: status=%u loader reason=%u states=%u routes=%u\n",
+        status, g_ps_egg_validation_probe.reason, g_ps_egg_validation_probe.state_count, g_ps_egg_validation_probe.route_count); }
+    assert(status == 0);
+    PS_SceneRuntime_SetObjectAdmission(timer_object_admission);
+  }
+  if (mode >= 16)
+  {
+    PS_SceneRuntime_SetObjectSceneAdmission(timer_scene_admission);
+    if (argc == 5)
+    {
+      memcpy(baseline, candidate, size);
+      baseline_size = size;
+      assert(PS_SceneRuntime_EnterStateScene() != PS_SCENE_RUNTIME_INDEX_INVALID);
+      assert(PS_SceneRuntime_InstalledObjectsActive());
+    }
+    else { assert(PS_SceneRuntime_EnterDevelopmentSceneSet(candidate, size) == 0); }
+  }
+  else { assert(PS_SceneRuntime_EnterDevelopmentObjects(candidate, size) == 0); }
   now = ps_object_last_tick = 100;
   g_ps_hw6_rtos_probe.runtime_current_class = PS_HW6_RUNTIME_CLASS_LP_GRAPH;
   g_ps_hw6_rtos_probe.runtime_lifecycle = PS_HW6_RUNTIME_LIFECYCLE_RUNNING;
   PS_HW6_RTOS_RuntimeStateTimersSync(now, 1);
   assert(PS_HW6_RTOS_ObjectPresent() == 0);
+  if (mode >= 16)
+  {
+    output = fopen(argv[2], "wb"); assert(output != NULL);
+    if (mode == 20) { timer_controls_hardware_fixture(output); }
+    else if (mode == 19) { scene_exit_hardware_fixture(output); }
+    else { replacement_timers(mode); frame(output); }
+    fclose(output);
+    return 0;
+  }
   timer = binding(PS_SCENE_RUNTIME_TIMER_SCENE);
   state_timer = mode >= 11 ? 0U : binding(PS_SCENE_RUNTIME_TIMER_STATE_ENTRY);
   scene_epoch = PS_SceneRuntime_SceneActivation();

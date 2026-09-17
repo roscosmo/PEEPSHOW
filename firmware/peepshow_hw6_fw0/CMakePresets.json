@@ -18,6 +18,13 @@
             }
         },
         {
+            "name": "BatteryShutdownTest",
+            "inherits": "Debug",
+            "cacheVariables": {
+                "PS_HW6_BATTERY_SHUTDOWN_TEST": "ON"
+            }
+        },
+        {
             "name": "RelWithDebInfo",
             "inherits": "default",
             "cacheVariables": {
@@ -40,6 +47,10 @@
         }
     ],
     "buildPresets": [
+        {
+            "name": "BatteryShutdownTest",
+            "configurePreset": "BatteryShutdownTest"
+        },
         {
             "name": "Debug",
             "configurePreset": "Debug"

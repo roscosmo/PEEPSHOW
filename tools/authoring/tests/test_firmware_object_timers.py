@@ -17,6 +17,82 @@ from peepshow_authoring.project import load_project
 
 
 class ObjectTimerTests(unittest.TestCase):
+    def test_timer_controls_fixture_installed_and_development(self):
+        from build_timer_controls_fixture import timer_controls_bundle
+        bundle = timer_controls_bundle()
+        frames = {frame.frame_id: frame for frame in bundle.frames}
+        expected = bytearray()
+        for guard, done in ((True, False), (True, True), (False, False),
+                            (True, False), (True, True)):
+            logical = bytearray(3024)
+            for obj in bundle.scenes[0]["objects"]:
+                defaults = obj["defaults"]
+                visible = {"guard": guard, "done": done}.get(obj["object_id"], defaults["visible"])
+                if not visible:
+                    continue
+                frame = frames.get(defaults.get("visual_ref"))
+                self.assertLessEqual(defaults["x"] + obj["width"], 168)
+                self.assertLessEqual(defaults["y"] + obj["height"], 144)
+                for y in range(obj["height"]):
+                    for x in range(obj["width"]):
+                        if frame is not None:
+                            offset = y * frame.row_stride_bytes + x // 8
+                            black = bool(frame.pixels[offset] & frame.mask[offset] & (128 >> (x % 8)))
+                        else:
+                            black = obj["kind"] == "filled_rect" or x in (0, obj["width"] - 1) or y in (0, obj["height"] - 1)
+                        if black:
+                            left, top = defaults["x"] + x, defaults["y"] + y
+                            logical[top * 21 + left // 8] |= 128 >> (left % 8)
+            expected.extend(panel_pixels(logical))
+        for installed in (False, True):
+            with self.subTest(installed=installed):
+                self.assertEqual(expected, self.run_timer(20, bundle=bundle, installed=installed))
+
+    def test_labelled_scene_exit_fixture_timing_and_panel_pixels(self):
+        from build_object_development import scene_exit_fixture_bundle
+        bundle = scene_exit_fixture_bundle()
+        actual = self.run_timer(19, bundle=bundle)
+        frames = {frame.frame_id: frame for frame in bundle.frames}
+        expected = bytearray()
+        for scene_index, phase, marker_x, revealed in (
+                (0, 0, 32, False), (0, 1, 120, False), (0, 2, 32, False),
+                (1, 0, 32, False), (1, 1, 120, False), (1, 1, 120, False),
+                (0, 0, 32, False), (0, 1, 32, True), (0, 0, 32, False)):
+            logical = bytearray(3024)
+            for index, obj in enumerate(bundle.scenes[scene_index]["objects"]):
+                defaults = obj["defaults"]
+                if not (revealed if index == 2 else defaults["visible"]):
+                    continue
+                left = marker_x if index == 1 else defaults["x"]
+                top = defaults["y"]
+                frame = None
+                if obj["kind"] == "sprite":
+                    ref = bundle.animations[0]["frame_refs"][phase] if index == 0 else defaults["visual_ref"]
+                    frame = frames[ref]
+                for y in range(obj["height"]):
+                    for x in range(obj["width"]):
+                        if frame is not None:
+                            offset = y * frame.row_stride_bytes + x // 8
+                            black = bool(frame.pixels[offset] & frame.mask[offset] & (128 >> (x % 8)))
+                        else:
+                            black = obj["kind"] == "filled_rect" or x in (0, obj["width"] - 1) or y in (0, obj["height"] - 1)
+                        if black:
+                            logical[(top + y) * 21 + (left + x) // 8] |= 128 >> ((left + x) % 8)
+            expected.extend(panel_pixels(logical))
+        self.assertEqual(expected, actual)
+
+    def test_multiscene_input_and_timer_ownership_and_rejected_exit(self):
+        from test_firmware_object_scene_replacement import replacement_bundle
+        for mode in (16, 17, 18):
+            with self.subTest(mode=mode):
+                self.run_timer(mode, bundle=replacement_bundle(timer_exit=True))
+
+    def test_installed_multiscene_timer_replacement_and_rejection(self):
+        from test_firmware_object_scene_replacement import replacement_bundle
+        for mode in (16, 17, 18):
+            with self.subTest(mode=mode):
+                self.run_timer(mode, bundle=replacement_bundle(timer_exit=True), installed=True)
+
     @classmethod
     def setUpClass(cls):
         awake.ObjectAwakeTests.setUpClass.__func__(cls)
@@ -43,7 +119,7 @@ class ObjectTimerTests(unittest.TestCase):
         if result.returncode:
             raise AssertionError(result.stdout + result.stderr)
 
-    def run_timer(self, mode, scene=None, bundle=None):
+    def run_timer(self, mode, scene=None, bundle=None, installed=False):
         if bundle is None:
             bundle = timer_fixture_bundle()
         if scene is not None:
@@ -53,7 +129,10 @@ class ObjectTimerTests(unittest.TestCase):
         path.write_bytes(blob)
         path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())
         output = self.work / "timer_pixels.bin"
-        result = subprocess.run([str(self.timer_exe), str(path), str(output), str(mode)],
+        args = [str(self.timer_exe), str(path), str(output), str(mode)]
+        if installed:
+            args.append("installed")
+        result = subprocess.run(args,
             capture_output=True, text=True, timeout=10, env=self.env)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         return output.read_bytes()

@@ -156,6 +156,7 @@ typedef struct
   uint32_t loader_reason;
   uint32_t scene_id;
   uint32_t item_index; /* Zero-based binding/transition/action; otherwise invalid. */
+  uint32_t scene_count; /* Validated package count on success; zero on rejection. */
 } ps_egg_v2_profile_result_t;
 
 /* thRuntime only; shares the serialized candidate scratch/HASH path.
@@ -172,6 +173,19 @@ uint32_t PS_EggStateLoader_ValidateV2Profile(const uint8_t *blob, uint32_t size,
 uint32_t PS_EggStateLoader_DecodeV2Candidate(const uint8_t *blob, uint32_t size,
   ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
   ps_egg_v2_profile_result_t *result);
+/* Preparation only, thRuntime only, using the same serialized scratch/HASH path.
+ * Validates every scene against the resident V2 subset, allowing action-free
+ * exits to another scene's default entry. scene_id=0 selects package entry.
+ * Uses the existing loader scene-count and resident-byte bounds. No mixed
+ * models, audio, history/resume, activation or display/LPBAM admission.
+ * On success result->scene_count supplies the graph-validation bound; descriptor
+ * and catalog borrow blob bytes, which must remain immutable until released.
+ * On rejection both outputs are cleared. Neither the active loader nor its
+ * catalog changes. Existing installed/export admission remains single-scene.
+ */
+uint32_t PS_EggStateLoader_DecodeV2SceneCandidate(const uint8_t *blob, uint32_t size,
+  uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,
+  ps_egg_sprite_catalog_t *catalog, ps_egg_v2_profile_result_t *result);
 /* Pure lookup in a validated immutable view; never falls back to active assets. */
 uint32_t PS_EggStateLoader_GetCatalogSpriteFrame(const ps_egg_sprite_catalog_t *catalog,
   uint32_t frame_id, ps_egg_state_loader_sprite_frame_t *frame);

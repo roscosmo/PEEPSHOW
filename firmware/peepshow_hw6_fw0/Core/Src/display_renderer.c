@@ -1,4 +1,5 @@
 #include "display_renderer.h"
+#include "ps_hw6_trace.h"
 #include "ps_package_workflow.h"
 
 #include <string.h>
@@ -37,6 +38,8 @@ typedef struct
 } display_renderer_list_t;
 
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
+/* thDisplay selects a private raster only within synchronous composition. */
+static uint8_t *s_display_draw_framebuffer = s_display_framebuffer;
 static const ps_egg_sprite_catalog_t *s_display_candidate_catalog;
 static uint8_t s_display_committed_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint8_t s_display_cursor_base_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
@@ -273,41 +276,32 @@ static uint32_t DisplayRenderer_ApplyPackageSprite(
     return 0UL;
   }
 
-  if (clear_bounds != 0UL)
-  {
-    for (y = 0U; y < frame.height; ++y)
-    {
-      for (x = 0U; x < frame.width; ++x)
-      {
-        DisplayRenderer_SetLogicalPixelInBuffer(
-          destination,
-          (uint16_t)(bounds->x + x),
-          (uint16_t)(bounds->y + y),
-          0UL);
-      }
-    }
-  }
-
+  /* Bounds were checked once above. A logical row walks upward through panel
+   * rows; its destination bit is constant. Clear transparent pixels in this
+   * same pass when requested, preserving opaque white and mask semantics. */
   for (y = 0U; y < frame.height; ++y)
   {
+    uint32_t source_row = (uint32_t)y * frame.row_stride_bytes;
+    uint32_t panel_x = (uint32_t)bounds->y + y;
+    uint32_t target = ((DISPLAY_RENDERER_WIDTH - 1UL - bounds->x) * LINE_WIDTH) +
+                      (panel_x >> 3U);
+    uint8_t target_bit = (uint8_t)(1U << (panel_x & 7U));
     for (x = 0U; x < frame.width; ++x)
     {
       uint8_t bit = (uint8_t)(0x80U >> (x & 7U));
-      uint32_t offset = ((uint32_t)y * frame.row_stride_bytes) +
-                        ((uint32_t)x >> 3U);
+      uint32_t offset = source_row + ((uint32_t)x >> 3U);
       uint32_t owned = (frame.opaque != 0UL) ? 1UL :
         (((frame.mask[offset] & bit) != 0U) ? 1UL : 0UL);
       uint32_t black = ((frame.pixels[offset] & bit) != 0U) ? 1UL : 0UL;
 
       if (owned != 0UL)
       {
-        DisplayRenderer_SetLogicalPixelInBuffer(
-          destination,
-          (uint16_t)(bounds->x + x),
-          (uint16_t)(bounds->y + y),
-          black);
+        if (black != 0UL) { destination[target] &= (uint8_t)~target_bit; }
+        else { destination[target] |= target_bit; }
         count += black;
       }
+      else if (clear_bounds != 0UL) { destination[target] |= target_bit; }
+      target -= LINE_WIDTH;
     }
   }
   if (black_pixels != NULL)
@@ -1843,12 +1837,12 @@ static uint32_t DisplayRenderer_SetBlack(uint16_t x, uint16_t y)
 
   index = ((uint32_t)panel_y * LINE_WIDTH) + ((uint32_t)panel_x >> 3U);
   mask = (uint8_t)(1U << (panel_x & 7U));
-  if ((s_display_framebuffer[index] & mask) == 0U)
+  if ((s_display_draw_framebuffer[index] & mask) == 0U)
   {
     return 0UL;
   }
 
-  s_display_framebuffer[index] &= (uint8_t)~mask;
+  s_display_draw_framebuffer[index] &= (uint8_t)~mask;
   return 1UL;
 }
 
@@ -2401,7 +2395,7 @@ static uint32_t DisplayRenderer_DrawSceneElement(
         };
         (void)DisplayRenderer_ApplyPackageSprite(
           element->asset_id, &bounds,
-          s_display_framebuffer, sizeof(s_display_framebuffer),
+          s_display_draw_framebuffer, sizeof(s_display_framebuffer),
           0UL, &sprite_black_pixels);
         black_pixels += sprite_black_pixels;
       }
@@ -2426,7 +2420,7 @@ static uint32_t DisplayRenderer_DrawSceneElement(
           };
           (void)DisplayRenderer_ApplyPackageSprite(
             element->asset_id, &bounds,
-            s_display_framebuffer, sizeof(s_display_framebuffer),
+            s_display_draw_framebuffer, sizeof(s_display_framebuffer),
             0UL, &sprite_black_pixels);
           black_pixels += sprite_black_pixels;
         }
@@ -2438,14 +2432,17 @@ static uint32_t DisplayRenderer_DrawSceneElement(
   return black_pixels;
 }
 
-static uint32_t DisplayRenderer_DrawSceneModel(
-  const ps_scene_render_model_t *model)
+static uint32_t DisplayRenderer_DrawSceneModelMasked(
+  const ps_scene_render_model_t *model, uint32_t draw_mask)
 {
   uint32_t black_pixels = 0UL;
   uint32_t layer;
   uint32_t emitted_mask = 0UL;
 
-  if (DisplayRenderer_ValidateSceneModel(model) == 0UL)
+  PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_VALIDATE, 0UL);
+  uint32_t valid = DisplayRenderer_ValidateSceneModel(model);
+  PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_VALIDATE, 1UL);
+  if (valid == 0UL)
   {
     return 0UL;
   }
@@ -2475,20 +2472,28 @@ static uint32_t DisplayRenderer_DrawSceneModel(
         break;
       }
       emitted_mask |= 1UL << selected;
-      black_pixels += DisplayRenderer_DrawSceneElement(
-        &model->elements[selected]);
+      if ((draw_mask & (1UL << selected)) != 0UL)
+      {
+        black_pixels += DisplayRenderer_DrawSceneElement(
+          &model->elements[selected]);
+      }
     }
   }
   return black_pixels;
 }
 
+static uint32_t DisplayRenderer_DrawSceneModel(const ps_scene_render_model_t *model)
+{
+  return DisplayRenderer_DrawSceneModelMasked(model, UINT32_MAX);
+}
+
 uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *model,
   uint8_t *destination, uint32_t destination_size)
 {
-  static uint8_t saved[DISPLAY_RENDERER_BUFFER_SIZE];
   uint32_t index;
   uint32_t saved_rotation;
   if ((destination == NULL) || (destination == s_display_framebuffer) ||
+      (s_display_draw_framebuffer != s_display_framebuffer) ||
       (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
       (DisplayRenderer_ValidateSceneModel(model) == 0UL)) { return 0UL; }
   /* Legacy focus drawing changes cursor bookkeeping; it is not a V2 object. */
@@ -2497,14 +2502,13 @@ uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *mode
     if (model->elements[index].type == PS_SCENE_RENDER_ELEMENT_FOCUS)
     { return 0UL; }
   }
-  (void)memcpy(saved, s_display_framebuffer, sizeof(saved));
-  (void)memset(s_display_framebuffer, 0xFF, sizeof(s_display_framebuffer));
+  (void)memset(destination, 0xFF, DISPLAY_RENDERER_BUFFER_SIZE);
   saved_rotation = s_rotate_ccw;
   s_rotate_ccw = 1UL;
+  s_display_draw_framebuffer = destination;
   (void)DisplayRenderer_DrawSceneModel(model);
+  s_display_draw_framebuffer = s_display_framebuffer;
   s_rotate_ccw = saved_rotation;
-  (void)memcpy(destination, s_display_framebuffer, sizeof(s_display_framebuffer));
-  (void)memcpy(s_display_framebuffer, saved, sizeof(saved));
   return 1UL;
 }
 
@@ -2518,6 +2522,179 @@ uint32_t DisplayRenderer_CopyCandidateSceneFrame(const ps_scene_render_model_t *
   status = DisplayRenderer_CopySceneModelFrame(model, destination, destination_size);
   s_display_candidate_catalog = NULL;
   return status;
+}
+
+static uint32_t DisplayRenderer_ElementsOverlap(const ps_scene_render_element_t *a,
+  const ps_scene_render_element_t *b)
+{
+  return ((a->x < (uint32_t)b->x + b->width) &&
+          (b->x < (uint32_t)a->x + a->width) &&
+          (a->y < (uint32_t)b->y + b->height) &&
+          (b->y < (uint32_t)a->y + a->height)) ? 1UL : 0UL;
+}
+
+static const ps_scene_render_element_t *DisplayRenderer_CacheElement(
+  const ps_scene_frame_cache_t *cache, const ps_scene_render_model_t *model,
+  uint32_t index)
+{
+  return (index < cache->model.element_count) ? &cache->model.elements[index] :
+    &model->elements[index - cache->model.element_count];
+}
+
+static void DisplayRenderer_ClearLogicalRectInBuffer(uint8_t *framebuffer,
+  uint16_t x, uint16_t y, uint16_t width, uint16_t height)
+{
+  if ((framebuffer == NULL) || (x >= DISPLAY_RENDERER_WIDTH) ||
+      (y >= DISPLAY_RENDERER_HEIGHT) || (width == 0U) || (height == 0U))
+  { return; }
+  uint32_t columns = DISPLAY_RENDERER_WIDTH - x;
+  uint32_t rows = DISPLAY_RENDERER_HEIGHT - y;
+  if (columns > width) { columns = width; }
+  if (rows > height) { rows = height; }
+
+  /* Logical Y becomes panel X; logical X selects reversed panel rows.
+   * White bits are one. Preserve pixels outside both byte-edge masks. */
+  uint32_t first_byte = (uint32_t)y >> 3U;
+  uint32_t last_pixel = (uint32_t)y + rows - 1U;
+  uint32_t last_byte = last_pixel >> 3U;
+  uint8_t first_mask = (uint8_t)(0xFFU << (y & 7U));
+  uint8_t last_mask = (uint8_t)(0xFFU >> (7U - (last_pixel & 7U)));
+  uint32_t first_row = DISPLAY_RENDERER_WIDTH - x - columns;
+  for (uint32_t row = first_row; row < first_row + columns; ++row)
+  {
+    uint8_t *span = framebuffer + row * LINE_WIDTH + first_byte;
+    if (first_byte == last_byte)
+    { span[0] |= (uint8_t)(first_mask & last_mask); }
+    else
+    {
+      span[0] |= first_mask;
+      if (last_byte > first_byte + 1U)
+      { (void)memset(span + 1U, 0xFF, last_byte - first_byte - 1U); }
+      span[last_byte - first_byte] |= last_mask;
+    }
+  }
+}
+
+uint32_t DisplayRenderer_CopyCandidateSceneFrameCached(const ps_scene_render_model_t *model,
+  const ps_egg_sprite_catalog_t *catalog, ps_scene_frame_cache_t *cache,
+  uint8_t *destination, uint32_t destination_size)
+{
+  _Static_assert(2U * PS_SCENE_RENDER_MODEL_ELEMENT_MAX <= 32U, "cache dirty mask capacity");
+  _Static_assert(PS_SCENE_FRAME_CACHE_BYTES == DISPLAY_RENDERER_BUFFER_SIZE, "cache frame dimensions");
+  uint32_t index;
+  uint32_t dirty = 0UL;
+  uint32_t count;
+  uint32_t full;
+  uint32_t saved_rotation;
+  if (cache == NULL) { return 0UL; }
+  if ((catalog == NULL) || (s_display_candidate_catalog != NULL) ||
+      (s_display_draw_framebuffer != s_display_framebuffer) ||
+      (destination == NULL) || (destination == cache->frame) ||
+      (destination == s_display_framebuffer) ||
+      (destination_size < DISPLAY_RENDERER_BUFFER_SIZE))
+  { cache->valid = 0UL; return 0UL; }
+  s_display_candidate_catalog = catalog;
+  /* Cached pixels must never hide invalid/missing assets, including hidden ones. */
+  PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_VALIDATE, 0UL);
+  uint32_t valid = DisplayRenderer_ValidateSceneModel(model);
+  PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_VALIDATE, 1UL);
+  if (valid == 0UL)
+  { cache->valid = 0UL; s_display_candidate_catalog = NULL; return 0UL; }
+  full = ((cache->valid == 0UL) || (cache->model.scene_id != model->scene_id)) ? 1UL : 0UL;
+  for (index = 0UL; index < model->element_count; ++index)
+  {
+    if (model->elements[index].type == PS_SCENE_RENDER_ELEMENT_FOCUS)
+    { cache->valid = 0UL; s_display_candidate_catalog = NULL; return 0UL; }
+    /* Legacy text is not clipped to its declared rectangle. */
+    if (model->elements[index].type == PS_SCENE_RENDER_ELEMENT_TEXT) { full = 1UL; }
+  }
+  if (cache->valid != 0UL)
+  {
+    for (index = 0UL; index < cache->model.element_count; ++index)
+    {
+      if (cache->model.elements[index].type == PS_SCENE_RENDER_ELEMENT_TEXT) { full = 1UL; }
+    }
+  }
+  if (full != 0UL)
+  {
+    PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_COLD, 0UL);
+    cache->valid = DisplayRenderer_CopySceneModelFrame(model, cache->frame, sizeof(cache->frame));
+    PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_COLD, 1UL);
+    if (cache->valid != 0UL)
+    {
+      cache->full_frames++;
+      for (index = 0UL; index < model->element_count; ++index)
+      { cache->elements_drawn += model->elements[index].visible; }
+    }
+  }
+  else
+  {
+    PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_OVERLAP, 0UL);
+    count = cache->model.element_count + model->element_count;
+    /* Index changes conservatively dirty both versions, including ordering ties. */
+    for (index = 0UL; index < count; ++index)
+    {
+      const ps_scene_render_element_t *element = DisplayRenderer_CacheElement(cache, model, index);
+      uint32_t local = (index < cache->model.element_count) ? index : index - cache->model.element_count;
+      if ((element->visible != 0UL) &&
+          ((local >= cache->model.element_count) || (local >= model->element_count) ||
+           (memcmp(&cache->model.elements[local], &model->elements[local], sizeof(*element)) != 0)))
+      { dirty |= 1UL << index; }
+    }
+    /* Expand to whole overlapping objects so no primitive needs partial clipping.
+     * At most 24 objects can be added; this is a bounded closure, not a retry. */
+    for (uint32_t pass = 0UL; pass < count; ++pass)
+    {
+      uint32_t before = dirty;
+      for (index = 0UL; index < count; ++index)
+      {
+        const ps_scene_render_element_t *element = DisplayRenderer_CacheElement(cache, model, index);
+        if ((element->visible == 0UL) || ((dirty & (1UL << index)) != 0UL)) { continue; }
+        for (uint32_t other = 0UL; other < count; ++other)
+        {
+          if (((dirty & (1UL << other)) != 0UL) &&
+              (DisplayRenderer_ElementsOverlap(element, DisplayRenderer_CacheElement(cache, model, other)) != 0UL))
+          { dirty |= 1UL << index; break; }
+        }
+      }
+      if (before == dirty) { break; }
+    }
+    PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_OVERLAP, 1UL);
+    if (dirty != 0UL)
+    {
+      /* Modify the private cache in place; neither live pixels nor DMA storage
+       * are scratch. The draw destination is restored before returning. */
+      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_CLEAR, 0UL);
+      for (index = 0UL; index < count; ++index)
+      {
+        const ps_scene_render_element_t *element = DisplayRenderer_CacheElement(cache, model, index);
+        if ((dirty & (1UL << index)) == 0UL) { continue; }
+        DisplayRenderer_ClearLogicalRectInBuffer(cache->frame,
+          element->x, element->y, element->width, element->height);
+      }
+      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_CLEAR, 1UL);
+      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_DRAW, 0UL);
+      saved_rotation = s_rotate_ccw;
+      s_rotate_ccw = 1UL;
+      s_display_draw_framebuffer = cache->frame;
+      (void)DisplayRenderer_DrawSceneModelMasked(model, dirty >> cache->model.element_count);
+      s_display_draw_framebuffer = s_display_framebuffer;
+      s_rotate_ccw = saved_rotation;
+      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_DRAW, 1UL);
+    }
+    cache->reused_frames++;
+    for (index = 0UL; index < model->element_count; ++index)
+    { cache->elements_drawn += ((dirty >> (cache->model.element_count + index)) & 1UL); }
+  }
+  if (cache->valid != 0UL)
+  {
+    PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_COPY, 0UL);
+    cache->model = *model;
+    (void)memcpy(destination, cache->frame, sizeof(cache->frame));
+    PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_COPY, 1UL);
+  }
+  s_display_candidate_catalog = NULL;
+  return cache->valid;
 }
 
 static void DisplayRenderer_ListInit(display_renderer_list_t *list)

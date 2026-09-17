@@ -146,6 +146,91 @@ This is a tooling limitation, not evidence of a firmware lifecycle failure.
 
 ## TraceX Runtime Scaffold
 
+### One-Press V2 Raster Capture
+
+The HOME/AWAY awake development fixture supports an opt-in one-press TraceX
+capture through `__fw0_object_trace_enable.gdb`. The helper only writes a request;
+thRuntime restarts the existing static trace ring through ThreadX APIs, verifies
+that DWT CYCCNT advances and then arms the existing latency probe. No inferior
+function calls, new trace allocation, clock change or STOP2 override is used.
+Existing Platform trace/user-event knobs must be enabled. This diagnostic only
+admits an awake development scene with no outstanding candidate/display lease.
+
+Resume for one second before pressing the opposite L/R selection. The trace
+retains recent input/scheduler history and freezes after the matching runtime
+transaction completes, whether successful or rejected. Re-arm explicitly for
+another capture; a reset cancels an armed capture. Do not halt during the press.
+`__fw0_object_trace_prints.gdb` prints the capture state and latency summary;
+`__fw0_tracex_dump.gdb` accepts both running and successfully frozen trace buffers.
+The existing latest/timestamped `.trx` paths remain unchanged.
+
+Application markers use these ThreadX user-event IDs:
+
+| ID | Information fields 1 / 2 / 3 / 4 |
+| --- | --- |
+| `0x5170` | latency stage / capture sequence / candidate token / HCLK Hz |
+| `0x5171` | raster phase / begin=0,end=1 / capture sequence / reserved |
+| `0x5172` | ARM=1,RECEIVE=2,DONE=3 / sequence / HCLK Hz / tick at ARM/RECEIVE, result at DONE |
+| `0x5173` | owner operation / begin=0,end=1 / capture sequence / driver ps_status_t (begin=NOT_RUN) |
+| `0x5174` | capture sequence / SysTick LOAD before / VAL before / target LOAD |
+| `0x5175` | capture sequence / sampled DWT cycles before retune / ThreadX tick before / ICSR before |
+| `0x5176` | capture sequence / sampled DWT cycles after retune / ThreadX tick after / ICSR after |
+
+Latency stages match `ps_hw6_object_latency.h`. Raster phases are validation=1,
+overlap closure=2, rectangle clearing=3, drawing=4, framebuffer copies=5 and cold
+full-render fallback=6. DRAW includes a nested VALIDATE; do not sum overlapping
+intervals. No per-pixel or continuous application marker loop is introduced.
+
+Owner operations are PMIC snapshot=1, joystick wake=2, sample read=3 and suspend=4.
+The PMIC marker encloses the driver call in `PS_HW6_PowerOwner_RunSnapshot`;
+joystick markers enclose actual driver calls in the cardinal sampling path.
+An already-active sensor does not emit a wake marker. They report driver success
+or failure (zero is PS_STATUS_OK), not merely owner scheduling. Pair markers by
+ThreadX context, operation and capture sequence; elapsed time includes driver
+settling sleeps, mutex waits and preemption, not just bus or CPU time. These
+markers do not report individual retry counts or prove why a snapshot was requested.
+
+Begin returns the active capture sequence to the caller. End is emitted only
+for that same still-active capture; work begun before capture or completed after
+freeze/re-arm cannot produce a misleading end in another capture. An unfinished
+pair at freeze is truncated work, not proof of failure. Markers are inactive
+outside the existing one-press window and do not change polling, retries, driver
+configuration, priorities or PMIC safety policy.
+
+The current Cortex-M33 port timestamps from the 32-bit DWT cycle counter, not the
+100 Hz kernel tick. The retune diagnostic uses the existing one-press window;
+all three records are emitted after the original LOAD/VAL writes. Use the
+explicit sampled DWT fields for before/after timing, not these records' insertion
+timestamps. Pair ordered triples by thread and capture sequence and reject
+incomplete triples or captures with marker errors. Reads are not atomic: pending
+SysTick (ICSR bit 26), active SysTick (VECTACTIVE=15), a crossing tick or preemption
+can make partial-tick accounting ambiguous. CTRL is not read, because that would
+clear COUNTFLAG. At a stable HCLK and unchanged reload, LOAD minus VAL is an
+estimate of the partial countdown discarded by the original VAL reset, not an
+independent wall-time measurement. Tracing itself does not change interrupt masks;
+its added observation cost must still be considered. With same-rate tick
+preservation, matching LOAD requests leave SysTick untouched and emit no retune
+triple. Actual reload changes retain the existing reset and diagnostic records.
+A stable 24 MHz capture should therefore contain no retune triples even when
+clock-policy requests occur. Compare the complete cycle/tick interval as well;
+absence of markers alone does not prove accurate timekeeping.
+
+The current Cortex-M33 port timestamps from the 32-bit DWT cycle counter, not the
+100 Hz kernel tick. At unchanged 24 MHz, 24000 counts equal 1 ms. Check capture
+start/end HCLK and existing clock-policy markers; do not apply one conversion
+across clock changes. Use unsigned wrap arithmetic. Long halted intervals and
+STOP2 are outside this capture's timing contract.
+
+Require complete=1, arm/freeze status=0, marker_errors=0 and retained matching
+RECEIVE/DONE events before interpreting the interval. A ring wrap alone does not
+prove data loss, but overwritten/unpaired markers invalidate the affected phase.
+ThreadX scheduling/queue events distinguish running, runnable and blocked work;
+they do not prove pixels were drawn. Application phase markers and the existing
+panel result provide that additional evidence. Interrupts without explicit trace
+entry/exit hooks remain included in the apparent thread interval: this is not
+a complete ISR or isolated CPU profile. Tracing perturbs timings; compare later
+with an untraced run and debugger-detached PPK2 measurements.
+
 TraceX is allowed for HW6 FW0 bring-up as a bounded, static RAM trace buffer. It is an observation tool for RTOS scheduling, object creation, event flags, queue activity, and owner-thread lifecycle behavior. It is not a package-facing diagnostic API and it must not become a hidden control path.
 
 Rules:

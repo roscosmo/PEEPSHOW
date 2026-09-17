@@ -19,10 +19,12 @@ class ObjectDisplayAdmissionTests(unittest.TestCase):
     def setUpClass(cls):
         awake.ObjectAwakeTests.setUpClass.__func__(cls)
         renderer = (cls.firmware / "Core/Src/display_renderer.c").read_text(encoding="utf-8")
-        (cls.work / "object_display_under_test.inc").write_text("\n".join(
+        (cls.work / "object_display_under_test.inc").write_text('#include "ps_scene_frame_cache.h"\n' + "\n".join(
             firmware_function(renderer, name) for name in (
-                "DisplayRenderer_DrawSceneModel", "DisplayRenderer_CopySceneModelFrame",
-                "DisplayRenderer_CopyCandidateSceneFrame")), encoding="ascii")
+                "DisplayRenderer_DrawSceneModelMasked", "DisplayRenderer_DrawSceneModel", "DisplayRenderer_CopySceneModelFrame",
+                "DisplayRenderer_CopyCandidateSceneFrame", "DisplayRenderer_ElementsOverlap",
+                "DisplayRenderer_CacheElement", "DisplayRenderer_ClearLogicalRectInBuffer",
+                "DisplayRenderer_CopyCandidateSceneFrameCached")), encoding="ascii")
         (cls.work / "stm32u5xx_hal.h").write_text(
             "#ifndef TEST_HAL_H\n#define TEST_HAL_H\n"
             "typedef enum {HAL_OK=0, HAL_ERROR=1} HAL_StatusTypeDef;\n#endif\n", encoding="ascii")
@@ -72,11 +74,29 @@ class ObjectDisplayAdmissionTests(unittest.TestCase):
         scene["objects"][0]["defaults"]["visible"] = False
         self.assertIn("steps=1 chunks=1 bytes=584", self.check(replace(bundle, scenes=(scene,))))
 
+    def test_band_comparisons_match_row_packer_for_every_frame_byte(self):
+        result = subprocess.run([str(self.exe)], capture_output=True, text=True,
+                                timeout=10, env=self.env)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("all frame bytes and band boundaries match row-based payloads", result.stdout)
+
     def test_combined_schedule_rejection_isolated(self):
         bundle = dual_fixture_bundle()
         clips = deepcopy(bundle.animations)
         clips[1]["frame_duration_ms"] = [700] * 4
         self.assertIn("schedule rejection isolated", self.check(replace(bundle, animations=clips), 2))
+
+    def test_incremental_pixels_match_full_rendering(self):
+        result = subprocess.run([str(self.exe), "raster-cache"], capture_output=True, text=True,
+                                timeout=10, env=self.env)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("cached pixels match full raster", result.stdout)
+
+    def test_byte_clearing_matches_pixel_oracle(self):
+        result = subprocess.run([str(self.exe), "clear-rect"], capture_output=True, text=True,
+                                timeout=30, env=self.env)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("byte clearing matches pixel oracle", result.stdout)
 
     def test_payload_overflow_does_not_disturb_live_data(self):
         bundle = structured_fixture_bundle()

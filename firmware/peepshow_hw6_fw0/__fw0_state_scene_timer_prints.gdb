@@ -14,6 +14,6 @@ printf "STOP2 enabled/checks/entries/skips/status physical/failure = %u / %u / %
 if s_ps_scene_runtime_development_objects != 0
   printf "V2 timer test: due/dispatch/applied count real handler work; errors must remain zero. Scene timers preserve state activation unless their handler explicitly transitions. RTC selection is expected if an active timer spans autonomous STOP2; it is not required in the awake-only variant.\n"
 else
-  printf "expected after the injected transition: due/dispatch/applied each increment once, error remains 0, and RTC state selects is at least 1 if STOP2 occurred. The current configured/active values may return to 0 in the destination state. RTC source NONE/INTERACTION/STATE_TIMER=0/1/2; state binding preserves the last selected timer.\n"
+  printf "expected after the injected transition: due/dispatch/applied each increment once, error remains 0, and RTC state selects is at least 1 if STOP2 occurred. The current configured/active values may return to 0 in the destination state. RTC source NONE/INTERACTION/STATE_TIMER/BATTERY=0/1/2/3; state binding preserves the last selected timer.\n"
 end
 printf "--- end HW6 STATE scoped timers ---\n"

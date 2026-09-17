@@ -312,6 +312,13 @@ uint32_t PS_SceneRuntime_EnterStateScene(void);
 typedef uint32_t (*ps_scene_object_admission_fn_t)(const uint8_t *blob,
   uint32_t size, const ps_scene_objects_t *objects);
 void PS_SceneRuntime_SetObjectAdmission(ps_scene_object_admission_fn_t admission);
+typedef uint32_t (*ps_scene_object_scene_admission_fn_t)(const uint8_t *blob,
+  uint32_t size, uint32_t scene_id, const ps_scene_objects_t *objects);
+void PS_SceneRuntime_SetObjectSceneAdmission(ps_scene_object_scene_admission_fn_t admission);
+/* Explicit development only. Bytes remain immutable for the session. NULL
+ * objects in the admission callback requests the selected fresh entry. */
+uint32_t PS_SceneRuntime_EnterDevelopmentSceneSet(const uint8_t *blob, uint32_t size);
+uint32_t PS_SceneRuntime_ObjectReplacementRejected(void);
 uint32_t PS_SceneRuntime_InstalledObjectsActive(void);
 /* Explicit awake development session, never normal package admission. */
 uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t size);

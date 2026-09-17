@@ -13,6 +13,7 @@
 #define DISPLAY_RENDERER_HEIGHT 144U
 #define LINE_WIDTH 18U
 static uint8_t s_display_framebuffer[LINE_WIDTH * DISPLAY_HEIGHT];
+static uint8_t *s_display_draw_framebuffer = s_display_framebuffer;
 static uint32_t s_rotate_ccw = 1U;
 
 /* These branches are outside the primitive tests; unexpected use must fail. */

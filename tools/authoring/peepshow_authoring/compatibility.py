@@ -317,10 +317,13 @@ def build_compatibility_report(
     has_objects = any(scene.get("schema_version") == 2 for scene in bundle.scenes)
     if has_objects:
         package_limit = V2_LIMITS["package_bytes"]
+        admission = package_admission(package, len(package_blob)) if package is not None else None
         budgets["waiting_visual_sequences"] = {
-            "status": "passed_conservative" if package is not None else "blocked",
+            "status": "passed_conservative" if admission is not None and not admission["issues"] else "blocked",
             "limits": {key: V2_LIMITS[key] for key in ("combined_steps", "chunks", "payload_bytes")},
-            "analysis": package_admission(package, len(package_blob))["animation_budget"] if package is not None else None,
+            "analysis": admission["animation_budget"] if admission is not None else None,
+            "scene_analyses": admission["scene_animation_budgets"] if admission is not None else {},
+            "scope": "per_scene",
             "exact_device_admission_required": True,
         }
     audio_limit = (
