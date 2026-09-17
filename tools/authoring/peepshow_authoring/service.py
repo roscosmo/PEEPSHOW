@@ -59,7 +59,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 45
+SERVICE_API_VERSION = 46
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -411,6 +411,7 @@ class AuthoringService:
                     "render_element.add",
                     "render_element.delete",
                     "render_element.set_bounds",
+                    "render_element.set_kind",
                     "render_element.set_layer",
                     "render_element.set_z_order",
                 ],

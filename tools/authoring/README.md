@@ -225,6 +225,10 @@ through hello and per-scene capabilities; require whole-project `export_ready`
 and inspect `build_issues`. Unsupported drafts retain editing/preview. Legacy
 projects are not implicitly migrated. Export limits and GUI integration:
 `docs/11 Development Tools/Peep_Studio_Restricted_V2_Export_Handoff.md`.
+API 46 adds reference-safe shape fill editing. V2 scenes advertise
+`object.set_kind`; legacy presentation advertises `render_element.set_kind`.
+Both commands only switch outline/filled variants within the same rectangle,
+circle or ellipse family and preserve the existing object record and references.
 After the normal Studio-export hardware test, `prepare_v2_rejection.py` creates
 a separate digest-damaged copy for USB rejection/recovery testing. It requires
 a valid exported V2 egg and a new output directory; it never writes to the

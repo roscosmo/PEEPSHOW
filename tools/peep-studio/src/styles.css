@@ -1591,7 +1591,8 @@ button:focus-visible {
   stroke-width: 1;
 }
 
-.placement-primitive-draft rect.filled {
+.placement-primitive-draft rect.filled,
+.placement-primitive-draft ellipse.filled {
   fill: rgb(13 131 189 / 24%);
 }
 
@@ -2805,20 +2806,58 @@ button:focus-visible {
   padding: 10px;
 }
 
-.sprite-import-workspace .sprite-import-preview-canvas.source-preview img {
+.sprite-import-workspace .sprite-import-preview-canvas.source-preview .sprite-import-preview-image {
   width: min(100%, var(--sprite-import-source-preview-width, 100%));
+}
+
+.sprite-import-workspace .sprite-import-preview-canvas.converted-preview .sprite-import-preview-image {
+  width: min(100%, var(--sprite-import-converted-preview-width, 100%));
+}
+
+.sprite-import-workspace .sprite-import-preview-image {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  padding: 0;
+  line-height: 0;
+}
+
+.sprite-import-workspace .sprite-import-preview-image img {
+  display: block;
+  width: 100%;
   max-width: none;
   max-height: none;
   height: auto;
   object-fit: contain;
 }
 
-.sprite-import-workspace .sprite-import-preview-canvas.converted-preview img {
-  width: min(100%, var(--sprite-import-converted-preview-width, 100%));
-  max-width: none;
-  max-height: none;
-  height: auto;
-  object-fit: contain;
+.sprite-import-grid-guides {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  padding: 0;
+  pointer-events: none;
+}
+
+.sprite-import-grid-guides i {
+  position: absolute;
+  display: block;
+  background: #00ff66;
+}
+
+.sprite-import-grid-guides i.vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-1px);
+}
+
+.sprite-import-grid-guides i.horizontal {
+  right: 0;
+  left: 0;
+  height: 1px;
+  transform: translateY(-1px);
 }
 
 .sprite-import-preview-panel {
@@ -2851,7 +2890,7 @@ button:focus-visible {
   image-rendering: crisp-edges;
 }
 
-.sprite-import-preview-canvas span {
+.sprite-import-preview-canvas > span:not(.sprite-import-preview-image) {
   padding: 8px;
   text-align: center;
 }
@@ -4487,8 +4526,9 @@ button:focus-visible {
   top: 24px;
   left: 24px;
   display: grid;
-  gap: 6px;
-  padding: 7px;
+  grid-template-columns: repeat(2, 96px);
+  gap: 10px;
+  padding: 10px;
   border: 1px solid rgb(25 32 29 / 24%);
   border-radius: 8px;
   background: rgb(24 30 27 / 92%);
@@ -4497,13 +4537,13 @@ button:focus-visible {
 
 .placement-tool-palette button {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 96px;
+  height: 96px;
   align-items: center;
   justify-items: center;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 10px;
   background: transparent;
   color: #f2f5f3;
 }
@@ -4519,17 +4559,22 @@ button:focus-visible {
 }
 
 .placement-tool-palette .studio-ui-icon {
-  width: 23px;
-  height: 23px;
+  width: 78px;
+  height: 78px;
+}
+
+.placement-select-icon {
+  width: 60px;
+  height: 60px;
 }
 
 .placement-sprite-picker {
   position: absolute;
   z-index: 6;
   top: 24px;
-  left: 72px;
+  left: 246px;
   display: grid;
-  width: min(360px, calc(100% - 96px));
+  width: min(360px, calc(100% - 270px));
   max-height: calc(100% - 48px);
   gap: 10px;
   overflow: hidden;

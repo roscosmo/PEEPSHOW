@@ -140,6 +140,33 @@ class SceneObjectIntegrationTests(unittest.TestCase):
         with self.assertRaises(ProtocolError):
             self.edit(self.command("object.delete", object_id="extra"))
 
+    def test_shape_fill_kind_edit_preserves_object_and_undo(self):
+        self.migrate()
+        shape = {
+            "object_id": "panel",
+            "kind": "outline_rect",
+            "width": 31,
+            "height": 15,
+            "z_order": 4,
+            "layer": "SCENE",
+            "defaults": {"x": 12, "y": 18, "visible": True},
+        }
+        self.edit(self.command("object.add", object=shape, visible_in_states=["left"]))
+        before = self.service._bundle.canonical_bytes()
+        changed = self.edit(self.command("object.set_kind", object_id="panel", object_kind="filled_rect"))
+        panel = next(item for item in self.scene()["objects"] if item["object_id"] == "panel")
+        self.assertEqual("filled_rect", panel["kind"])
+        self.assertIn("object.set_kind", changed["scene_capabilities"]["state_demo"]["supported_commands"])
+        left = next(state for state in self.scene()["states"] if state["state_id"] == "left")
+        self.assertTrue(any(item["object_ref"] == "panel" for item in left["object_overrides"]))
+        self.call("project.undo")
+        self.assertEqual(before, self.service._bundle.canonical_bytes())
+        self.call("project.redo")
+        panel = next(item for item in self.scene()["objects"] if item["object_id"] == "panel")
+        self.assertEqual("filled_rect", panel["kind"])
+        with self.assertRaises(ProtocolError):
+            self.edit(self.command("object.set_kind", object_id="panel", object_kind="filled_circle"))
+
     def test_clip_reference_edits_are_atomic(self):
         self.migrate()
         before = self.service._bundle.canonical_bytes()

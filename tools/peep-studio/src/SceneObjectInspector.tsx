@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { EyeOff, RotateCcw, Trash2 } from "lucide-react";
 import { FramePreviewCanvas } from "./FramebufferCanvas";
+import { isFillableShapeKind, shapeKindWithFill } from "./placementGeometry";
 import type { AssetRecord, AuthoredClip, CompiledAssetFrame, PlacementOwnership, RenderElement, SceneDocument, SceneObject } from "./types";
 
 type Property = "x" | "y" | "visible" | "visual_ref";
@@ -48,6 +49,9 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
   const selectionKey = JSON.stringify([scene.scene_id, object.object_id, stateIds]);
   const animated = !!object.animation_ref;
   const stateScope = stateIds.length > 0;
+  const fillableShape = isFillableShapeKind(object.kind);
+  const filledShape = object.kind === "filled_rect" || object.kind === "filled_circle" || object.kind === "filled_ellipse";
+  const fillEditable = !busy && supports("object.set_kind");
   const targets = stateIds.map(id => ownership?.states[id]?.resolved_elements.find(item => item.element_id === object.object_id));
   const shared = <K extends Property,>(property: K): RenderElement[K] | undefined => {
     const defaults: Pick<RenderElement, Property> = object.defaults;
@@ -99,6 +103,21 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
     <div className="scene-object-property"><label className="scene-object-visibility"><span>Visible</span>
       <Visibility value={shared("visible")} disabled={!editable} onChange={value => void set("visible", value)} /></label>
       {reset("visible")}<small>{status("visible")}</small></div>
+    {fillableShape && <div className="scene-object-property"><label className="scene-object-visibility"><span>Filled</span>
+      <input
+        aria-label="Object filled"
+        type="checkbox"
+        checked={filledShape}
+        disabled={!fillEditable}
+        title={fillEditable ? "Fill this shape in every state" : "Fill editing is not available in this project version"}
+        onChange={event => {
+          const objectKind = shapeKindWithFill(object.kind, event.target.checked);
+          if (objectKind !== null) {
+            void onApply([{ kind: "object.set_kind", scene_id: scene.scene_id, object_id: object.object_id, object_kind: objectKind }]);
+          }
+        }}
+      />
+    </label><small>All states</small></div>}
     {object.kind === "sprite" && <>
       {(stateScope || animated) && <div className="scene-object-property">
         <details key={selectionKey} className="object-frame-picker">

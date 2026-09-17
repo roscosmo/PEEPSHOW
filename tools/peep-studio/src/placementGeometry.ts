@@ -1,8 +1,35 @@
 export const PLACEMENT_WIDTH = 168;
 export const PLACEMENT_HEIGHT = 144;
 
-export type PlacementPrimitiveKind = "line" | "outline_rect" | "filled_rect" | "circle" | "ellipse";
+export type PlacementPrimitiveKind =
+  | "line"
+  | "outline_rect"
+  | "filled_rect"
+  | "circle"
+  | "ellipse"
+  | "filled_circle"
+  | "filled_ellipse";
 export type PlacementLineDirection = "down_right" | "up_right";
+
+export function isFillableShapeKind(kind: string): boolean {
+  return ["outline_rect", "filled_rect", "circle", "filled_circle", "ellipse", "filled_ellipse"].includes(kind);
+}
+
+export function shapeKindWithFill(kind: string, filled: boolean): PlacementPrimitiveKind | null {
+  switch (kind) {
+    case "outline_rect":
+    case "filled_rect":
+      return filled ? "filled_rect" : "outline_rect";
+    case "circle":
+    case "filled_circle":
+      return filled ? "filled_circle" : "circle";
+    case "ellipse":
+    case "filled_ellipse":
+      return filled ? "filled_ellipse" : "ellipse";
+    default:
+      return null;
+  }
+}
 
 export type PlacementPoint = {
   x: number;
@@ -28,15 +55,15 @@ export function normalizePrimitiveBounds(
 ): PlacementBounds {
   const x = Math.min(PLACEMENT_WIDTH - 1, Math.max(0, Math.round(bounds.x)));
   const y = Math.min(PLACEMENT_HEIGHT - 1, Math.max(0, Math.round(bounds.y)));
-  if (kind === "circle") {
+  if (kind === "circle" || kind === "filled_circle") {
     const maximum = Math.min(PLACEMENT_WIDTH - x, PLACEMENT_HEIGHT - y);
     const size = oddDimension(Math.max(bounds.width, bounds.height), maximum);
     return { x, y, width: size, height: size };
   }
-  const width = kind === "ellipse"
+  const width = kind === "ellipse" || kind === "filled_ellipse"
     ? oddDimension(bounds.width, PLACEMENT_WIDTH - x)
     : Math.min(PLACEMENT_WIDTH - x, Math.max(1, Math.round(bounds.width)));
-  const height = kind === "ellipse"
+  const height = kind === "ellipse" || kind === "filled_ellipse"
     ? oddDimension(bounds.height, PLACEMENT_HEIGHT - y)
     : Math.min(PLACEMENT_HEIGHT - y, Math.max(1, Math.round(bounds.height)));
   return { x, y, width, height };
@@ -47,7 +74,7 @@ export function primitiveBoundsFromPoints(
   start: PlacementPoint,
   end: PlacementPoint,
 ): PlacementBounds {
-  const constrainedEnd = kind === "circle"
+  const constrainedEnd = kind === "circle" || kind === "filled_circle"
     ? (() => {
         const span = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y));
         return {

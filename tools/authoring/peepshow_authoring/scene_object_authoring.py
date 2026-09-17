@@ -13,7 +13,7 @@ from .scene_objects import (
 
 
 OBJECT_COMMANDS = (
-    "object.add", "object.delete", "object.set_defaults", "object.bind_animation",
+    "object.add", "object.delete", "object.set_defaults", "object.set_kind", "object.bind_animation",
     "object.clear_animation", "object_override.set", "object_override.clear",
     "object_actions.set",
 )
@@ -160,6 +160,7 @@ def apply_object_command(scenes, command):
         "object.add": {"object", "visible_in_states"},
         "object.delete": {"object_id"},
         "object.set_defaults": {"object_id", "properties"},
+        "object.set_kind": {"object_id", "object_kind"},
         "object.bind_animation": {"object_id", "animation_ref"},
         "object.clear_animation": {"object_id"},
         "object_override.set": {"object_id", "state_id", "properties"},
@@ -210,6 +211,19 @@ def apply_object_command(scenes, command):
             if not isinstance(values, dict) or not values or values.keys() - PROPERTY_KEYS:
                 raise ProjectCommandError("OBJECT_PROPERTY_INVALID", "properties must select x, y, visible or visual_ref")
             obj["defaults"].update(deepcopy(values))
+        elif kind == "object.set_kind":
+            object_kind = command["object_kind"]
+            families = (
+                {"outline_rect", "filled_rect"},
+                {"circle", "filled_circle"},
+                {"ellipse", "filled_ellipse"},
+            )
+            if not isinstance(object_kind, str) or not any(obj.get("kind") in family and object_kind in family for family in families):
+                raise ProjectCommandError(
+                    "OBJECT_KIND_INVALID",
+                    "object_kind must select the outline or filled variant of the same shape",
+                )
+            obj["kind"] = object_kind
         elif kind == "object.bind_animation":
             obj["animation_ref"] = command["animation_ref"]
         elif kind == "object.clear_animation":

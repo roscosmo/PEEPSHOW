@@ -63,7 +63,13 @@ validated authoring example.
 
 ## Current Capability
 
-Authoring service API 45 adds resident sampled-SFX export to the API 44 bounded
+Authoring service API 46 adds capability-advertised shape fill editing to the
+API 45 service. V2 `object.set_kind` and legacy `render_element.set_kind` only
+switch outline/filled variants within the same rectangle, circle or ellipse
+family. The object ID, overrides, animation bindings, layer and draw order stay
+unchanged, and the normal transaction history supplies undo/redo and save/reload.
+
+API 45 adds resident sampled-SFX export to the API 44 bounded
 multi-scene V2 profile. Discover `v2_profile.audio_profile` and V2 per-scene
 `audio_export`, then require whole-project `export_ready`. Local input/timer
 `play_sfx` is supported; the total 65536-byte package ceiling and action-free

@@ -2238,6 +2238,42 @@ def _apply_render_element_set_bounds(
     }
 
 
+def _apply_render_element_set_kind(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "render_model_id", "element_id", "element_kind"},
+        {"kind", "scene_id", "render_model_id", "element_id", "element_kind", "command_id"},
+    )
+    render_model = _target_render_model(scenes, command.get("scene_id"), command.get("render_model_id"))
+    element = _target_render_element(render_model, command.get("element_id"))
+    element_kind = command.get("element_kind")
+    families = (
+        {"outline_rect", "filled_rect"},
+        {"circle", "filled_circle"},
+        {"ellipse", "filled_ellipse"},
+    )
+    if not isinstance(element_kind, str) or not any(
+        element.get("kind") in family and element_kind in family for family in families
+    ):
+        raise ProjectCommandError(
+            "RENDER_KIND_INVALID",
+            "element_kind must select the outline or filled variant of the same shape",
+        )
+    previous = element.get("kind")
+    element["kind"] = element_kind
+    return {
+        "kind": "render_element.set_kind",
+        "scene_id": command.get("scene_id"),
+        "render_model_id": command.get("render_model_id"),
+        "element_id": command.get("element_id"),
+        "previous": previous,
+        "element_kind": element_kind,
+    }
+
+
 def _apply_render_element_set_property(
     scenes: list[dict[str, Any]],
     frames: list[Masked1bppFrame],
@@ -6731,6 +6767,8 @@ def apply_project_commands(
             applied.append(_apply_render_element_delete(scenes, command))
         elif kind == "render_element.set_bounds":
             applied.append(_apply_render_element_set_bounds(scenes, command))
+        elif kind == "render_element.set_kind":
+            applied.append(_apply_render_element_set_kind(scenes, command))
         elif kind == "render_element.bind_waiting_animation":
             applied.append(_apply_render_element_bind_waiting_animation(scenes, frames, command))
         elif kind == "render_element.clear_waiting_animation":

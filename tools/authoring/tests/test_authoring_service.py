@@ -315,7 +315,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(45, SERVICE_API_VERSION)
+        self.assertEqual(46, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -461,6 +461,7 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("state_placement.set_override", graph["state_placement_commands"])
         self.assertIn("state_placement.clear_override", graph["state_placement_commands"])
         self.assertIn("placement_object.add", result["state_scene_presentation"]["element_commands"])
+        self.assertIn("render_element.set_kind", result["state_scene_presentation"]["element_commands"])
         self.assertIn("route.guard.move", graph["guard_commands"])
         self.assertIn("route.action.move", graph["action_commands"])
         self.assertIn("scene_exit.add", graph["scene_exit_commands"])
@@ -2119,6 +2120,13 @@ class AuthoringServiceTests(unittest.TestCase):
                             "height": 18,
                         },
                         {
+                            "kind": "render_element.set_kind",
+                            "scene_id": "state_demo",
+                            "render_model_id": "scene_placement",
+                            "element_id": "menu_box",
+                            "element_kind": "filled_rect",
+                        },
+                        {
                             "kind": "render_element.set_layer",
                             "scene_id": "state_demo",
                             "render_model_id": "scene_placement",
@@ -2147,6 +2155,7 @@ class AuthoringServiceTests(unittest.TestCase):
         model = next(item for item in demo["render_models"] if item["visual_id"] == "scene_placement")
         element = next(item for item in model["elements"] if item["element_id"] == "menu_box")
         self.assertEqual((24, 22, 48, 18), (element["x"], element["y"], element["width"], element["height"]))
+        self.assertEqual("filled_rect", element["kind"])
         self.assertEqual("BACKGROUND", element["layer"])
         self.assertFalse(element["visible"])
         self.assertEqual(7, element["z_order"])

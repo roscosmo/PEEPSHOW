@@ -46,11 +46,13 @@ import { AudioImportWaveform } from "./AudioImportWaveform";
 import { EmulatorPanel } from "./EmulatorPanel";
 import type { EmulatorPopoutState } from "./EmulatorPopoutApp";
 import {
+  isFillableShapeKind,
   lineDirectionFromPoints,
   normalizePrimitiveBounds,
   PLACEMENT_HEIGHT,
   PLACEMENT_WIDTH,
   primitiveBoundsFromPoints,
+  shapeKindWithFill,
   type PlacementBounds,
   type PlacementLineDirection,
   type PlacementPoint,
@@ -96,15 +98,8 @@ import type {
 } from "./types";
 import type { RenderElement, RenderModel, StateRecord, StateVariable } from "./types";
 
-const PLACEMENT_PRIMITIVES = [
-  { kind: "line", label: "Line" },
-  { kind: "outline_rect", label: "Outline rectangle" },
-  { kind: "filled_rect", label: "Filled rectangle" },
-  { kind: "circle", label: "Circle" },
-  { kind: "ellipse", label: "Ellipse" },
-] as const;
-
-type PlacementTool = "select" | PlacementPrimitiveKind;
+type PlacementDrawingTool = "line" | "rectangle" | "circle";
+type PlacementTool = "select" | "sprite" | "animation" | PlacementDrawingTool;
 type PlacementPrimitiveDraft = {
   kind: PlacementPrimitiveKind;
   bounds: PlacementBounds;
@@ -139,6 +134,7 @@ const WORKSPACE_MODES: Array<{ mode: WorkspaceMode; label: string; icon: string 
 ];
 const EMULATOR_POPOUT_DRAG_THRESHOLD = 34;
 const UI_ICONS = {
+  animation: "/ui-icons/animation.png",
   circle: "/ui-icons/circle.png",
   line: "/ui-icons/line.png",
   rectangle: "/ui-icons/rectangle.png",
@@ -5121,7 +5117,13 @@ export default function App() {
     let latestX = startX;
     let latestY = startY;
     setSelectedPlacementElement(element.element_id);
-    if (renderModelId !== null) setSceneSelection({ kind: "render", id: renderModelId });
+    if (renderModelId !== null) {
+      setSceneSelection({ kind: "render", id: renderModelId });
+    } else if (objectSceneSelected) {
+      setSceneSelection(placementStateId === null
+        ? { kind: "scene" }
+        : { kind: "state", id: placementStateId });
+    }
 
     const move = (moveEvent: PointerEvent) => {
       const dx = Math.round(((moveEvent.clientX - startClientX) / rect.width) * 168);
@@ -5220,8 +5222,15 @@ export default function App() {
     y: Math.min(PLACEMENT_HEIGHT - 1, Math.max(0, Math.floor(((clientY - rect.top) / rect.height) * PLACEMENT_HEIGHT))),
   });
   const startPlacementPrimitiveDraw = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const kind: PlacementPrimitiveKind | null = placementTool === "line"
+      ? "line"
+      : placementTool === "rectangle"
+        ? "outline_rect"
+        : placementTool === "circle"
+          ? "ellipse"
+          : null;
     if (
-      placementTool === "select" ||
+      kind === null ||
       event.button !== 0 ||
       selectedSceneDocument === null ||
       (!objectSceneSelected && placementRenderModel === null) ||
@@ -5234,7 +5243,6 @@ export default function App() {
     event.stopPropagation();
     event.currentTarget.focus();
     placementDrawCancelRef.current?.();
-    const kind = placementTool;
     const rect = event.currentTarget.getBoundingClientRect();
     const start = placementPointFromClient(rect, event.clientX, event.clientY);
     let latestBounds = primitiveBoundsFromPoints(kind, start, start);
@@ -5262,7 +5270,10 @@ export default function App() {
       finished = true;
       update(stopEvent.clientX, stopEvent.clientY);
       cleanup();
-      void addPlacementPrimitive(kind, latestBounds, latestLineDirection);
+      const createdKind = placementTool === "circle" && latestBounds.width === latestBounds.height
+        ? "circle"
+        : kind;
+      void addPlacementPrimitive(createdKind, latestBounds, latestLineDirection);
     };
     const cancel = () => {
       if (finished) {
@@ -5281,6 +5292,25 @@ export default function App() {
     window.addEventListener("pointerup", stop);
     window.addEventListener("pointercancel", cancel);
   };
+  const togglePlacementAssetPicker = (tool: "sprite" | "animation") => {
+    placementDrawCancelRef.current?.();
+    const shouldOpen = placementTool !== tool || !spritePickerOpen;
+    setPlacementTool(shouldOpen ? tool : "select");
+    setSpritePickerOpen(shouldOpen);
+    setSelectedPlacementElement(null);
+  };
+  const closePlacementAssetPicker = () => {
+    setSpritePickerOpen(false);
+    setPlacementTool("select");
+  };
+  const legacyPlacementAnimationGroups = visibleCompiledAssetFrameGroups.filter((group) =>
+    group.frames.length >= 2
+    && group.frames.length <= 4
+    && group.frames.every((frame) => frame.width === group.frames[0]?.width && frame.height === group.frames[0]?.height),
+  );
+  const placementAnimationsAvailable = objectSceneSelected
+    ? animationClips.length > 0
+    : legacyPlacementAnimationGroups.length > 0;
   const renderPlacementToolPalette = () => (
     <div className="placement-tool-palette" aria-label="Placement tools">
       <button
@@ -5294,21 +5324,27 @@ export default function App() {
         title="Select and move objects"
         aria-label="Select and move objects"
       >
-        <SquareMousePointer size={18} aria-hidden="true" />
+        <SquareMousePointer className="placement-select-icon" aria-hidden="true" />
       </button>
       <button
         type="button"
         disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || (!objectSceneSelected && placementRenderModel === null) || compiledAssetFrames.length === 0}
-        className={spritePickerOpen ? "active" : ""}
-        onClick={() => {
-          placementDrawCancelRef.current?.();
-          setPlacementTool("select");
-          setSpritePickerOpen((open) => !open);
-        }}
+        className={placementTool === "sprite" && spritePickerOpen ? "active" : ""}
+        onClick={() => togglePlacementAssetPicker("sprite")}
         title={compiledAssetFrames.length === 0 ? "No sprite assets available" : "Add sprite"}
         aria-label="Add sprite"
       >
         <StudioIcon name="sprite" />
+      </button>
+      <button
+        type="button"
+        disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || (!objectSceneSelected && placementRenderModel === null) || !placementAnimationsAvailable}
+        className={placementTool === "animation" && spritePickerOpen ? "active" : ""}
+        onClick={() => togglePlacementAssetPicker("animation")}
+        title={placementAnimationsAvailable ? "Add animation" : "No compatible animations available"}
+        aria-label="Add animation"
+      >
+        <StudioIcon name="animation" />
       </button>
       <button
         type="button"
@@ -5320,36 +5356,40 @@ export default function App() {
       >
         <StudioIcon name="text" />
       </button>
-      {PLACEMENT_PRIMITIVES.map((primitive) => (
+      {([
+        { tool: "rectangle", label: "Rectangle", icon: "rectangle" },
+        { tool: "circle", label: "Circle or oval", icon: "circle" },
+        { tool: "line", label: "Line", icon: "line" },
+      ] as const).map((primitive) => (
         <button
-          key={primitive.kind}
-          className={`primitive-${primitive.kind} ${placementTool === primitive.kind ? "active" : ""}`}
+          key={primitive.tool}
+          className={`primitive-${primitive.tool} ${placementTool === primitive.tool ? "active" : ""}`}
           type="button"
           disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || (!objectSceneSelected && placementRenderModel === null)}
           onClick={() => {
             placementDrawCancelRef.current?.();
-            setPlacementTool(primitive.kind);
+            setPlacementTool(primitive.tool);
             setSpritePickerOpen(false);
             setSelectedPlacementElement(null);
           }}
           title={`Draw ${primitive.label.toLowerCase()}`}
           aria-label={`Draw ${primitive.label.toLowerCase()}`}
         >
-          {placementKindIcon(primitive.kind)}
+          <StudioIcon name={primitive.icon} />
         </button>
       ))}
     </div>
   );
   const renderSpritePicker = () => (
-    <div className="placement-sprite-picker" role="dialog" aria-label="Choose sprite">
+    <div className="placement-sprite-picker" role="dialog" aria-label={placementTool === "animation" ? "Choose animation" : "Choose sprite"}>
       <div className="placement-sprite-picker-heading">
-        <strong>Choose sprite</strong>
-        <button type="button" onClick={() => setSpritePickerOpen(false)} title="Close sprite picker" aria-label="Close sprite picker">
+        <strong>{placementTool === "animation" ? "Choose animation" : "Choose sprite"}</strong>
+        <button type="button" onClick={closePlacementAssetPicker} title="Close asset picker" aria-label="Close asset picker">
           <X size={14} aria-hidden="true" />
         </button>
       </div>
       <div className="placement-sprite-picker-groups">
-        {objectSceneSelected && animationClips.map(clip => {
+        {placementTool === "animation" && objectSceneSelected && animationClips.map(clip => {
           const frames = clip.frame_refs.flatMap(id => compiledAssetFrameById.get(id) ? [compiledAssetFrameById.get(id)!] : []);
           return <section className="placement-sprite-picker-group" key={clip.animation_id}>
             <SpriteAssetCard frames={frames} durations={clip.frame_duration_ms} name={animationLabel(clip)} selected={false}
@@ -5361,7 +5401,20 @@ export default function App() {
               }} />
           </section>;
         })}
-        {visibleCompiledAssetFrameGroups.map((group) => (
+        {placementTool === "animation" && !objectSceneSelected && legacyPlacementAnimationGroups.map((group) => (
+          <section className="placement-sprite-picker-group" key={group.assetId}>
+            <SpriteAssetCard
+              frames={group.frames}
+              durations={group.frames.map(() => 400)}
+              name={assetDisplayName(group.assetId)}
+              selected={false}
+              disabled={busy !== null || !scopedPlacementAddSupported}
+              playback={preferences.thumbnailPlayback}
+              onSelect={() => void addPlacementSprite(group.frames[0] ?? null)}
+            />
+          </section>
+        ))}
+        {placementTool === "sprite" && visibleCompiledAssetFrameGroups.map((group) => (
           <section className="placement-sprite-picker-group" key={group.assetId}>
             <div>
               <strong>{assetDisplayName(group.assetId)}</strong>
@@ -5552,7 +5605,7 @@ export default function App() {
           )}
           {variant === "placement" && (
             <div
-              className={`placement-screen-overlay labels-${placementLabelMode} ${placementOverlayVisible ? "" : "boxes-hidden"} ${placementTool === "select" ? "" : `drawing-tool drawing-${placementTool}`}`}
+              className={`placement-screen-overlay labels-${placementLabelMode} ${placementOverlayVisible ? "" : "boxes-hidden"} ${["line", "rectangle", "circle"].includes(placementTool) ? `drawing-tool drawing-${placementTool}` : ""}`}
               aria-label="Placement selection overlay"
               tabIndex={0}
               ref={placementScreenOverlayRef}
@@ -5582,8 +5635,9 @@ export default function App() {
                       height={Math.max(0, placementPrimitiveDraft.bounds.height - 1)}
                     />
                   )}
-                  {(placementPrimitiveDraft.kind === "circle" || placementPrimitiveDraft.kind === "ellipse") && (
+                  {(["circle", "ellipse", "filled_circle", "filled_ellipse"] as PlacementPrimitiveKind[]).includes(placementPrimitiveDraft.kind) && (
                     <ellipse
+                      className={placementPrimitiveDraft.kind === "filled_circle" || placementPrimitiveDraft.kind === "filled_ellipse" ? "filled" : ""}
                       cx={placementPrimitiveDraft.bounds.x + placementPrimitiveDraft.bounds.width / 2}
                       cy={placementPrimitiveDraft.bounds.y + placementPrimitiveDraft.bounds.height / 2}
                       rx={Math.max(0.5, placementPrimitiveDraft.bounds.width / 2 - 0.5)}
@@ -5695,6 +5749,18 @@ export default function App() {
       : parseSpriteImportConversion(pendingSpriteImport);
     const previewError = spriteImportPreview?.error ?? conversionCheck?.error ?? null;
     const selectedPresetId = pendingSpriteImport === null ? "custom" : spriteImportPresetId(pendingSpriteImport);
+    const guideColumnsValue = pendingSpriteImport === null ? 1 : Number(pendingSpriteImport.columns);
+    const guideRowsValue = pendingSpriteImport === null ? 1 : Number(pendingSpriteImport.rows);
+    const guideColumns = Number.isInteger(guideColumnsValue) && guideColumnsValue >= 1 && guideColumnsValue <= 256 ? guideColumnsValue : 1;
+    const guideRows = Number.isInteger(guideRowsValue) && guideRowsValue >= 1 && guideRowsValue <= 256 ? guideRowsValue : 1;
+    const spriteSheetGuides = <span className="sprite-import-grid-guides" aria-hidden="true">
+      {Array.from({ length: Math.max(0, guideColumns - 1) }, (_, index) => (
+        <i className="vertical" style={{ left: `${((index + 1) / guideColumns) * 100}%` }} key={`column-${index}`} />
+      ))}
+      {Array.from({ length: Math.max(0, guideRows - 1) }, (_, index) => (
+        <i className="horizontal" style={{ top: `${((index + 1) / guideRows) * 100}%` }} key={`row-${index}`} />
+      ))}
+    </span>;
     const importPreviewScale = pendingSpriteImport === null
       ? 1
       : Math.max(2, Math.round(preferences.assetLibraryZoom * 3));
@@ -5728,14 +5794,20 @@ export default function App() {
               <div className="sprite-import-preview-panel">
                 <strong>Source</strong>
                 <div className="sprite-import-preview-canvas source-preview">
-                  <img src={pendingSpriteImport.sourceDataUrl} alt="" />
+                  <span className="sprite-import-preview-image">
+                    <img src={pendingSpriteImport.sourceDataUrl} alt="" />
+                    {spriteSheetGuides}
+                  </span>
                 </div>
               </div>
               <div className="sprite-import-preview-panel">
                 <strong>Converted</strong>
                 <div className={`sprite-import-preview-canvas converted-preview ${previewError !== null ? "error" : ""}`}>
                   {spriteImportPreview !== null && spriteImportPreview.error === null ? (
-                    <img src={spriteImportPreview.dataUrl} alt="" />
+                    <span className="sprite-import-preview-image">
+                      <img src={spriteImportPreview.dataUrl} alt="" />
+                      {spriteSheetGuides}
+                    </span>
                   ) : (
                     <span>{previewError ?? "Rendering preview..."}</span>
                   )}
@@ -7202,6 +7274,10 @@ export default function App() {
         return "Circle";
       case "ellipse":
         return "Ellipse";
+      case "filled_circle":
+        return "Filled circle";
+      case "filled_ellipse":
+        return "Filled ellipse";
       default:
         return kind.replaceAll("_", " ");
     }
@@ -7220,6 +7296,8 @@ export default function App() {
         return "rectangle";
       case "circle":
       case "ellipse":
+      case "filled_circle":
+      case "filled_ellipse":
         return "circle";
       default:
         return "rectangle";
@@ -7295,7 +7373,7 @@ export default function App() {
         x: Math.min(48, PLACEMENT_WIDTH - frame.width), y: Math.min(40, PLACEMENT_HEIGHT - frame.height),
         width: frame.width, height: frame.height, z_order: Math.min(255, Math.max(0, ...elements.map(item => item.z_order)) + 1),
         layer: "SCENE", visible: true }, animationId);
-      if (added) setSpritePickerOpen(false);
+      if (added) closePlacementAssetPicker();
       return;
     }
     if (selectedSceneDocument === null || placementRenderModel === null || frame === null) {
@@ -7371,7 +7449,7 @@ export default function App() {
         setPreview(previewResult);
       }
       setMessage(`${canAutoAnimate ? "Animated sprite" : "Sprite"} added to ${placementEditTargetLabel()}. Save to write it to the project.`);
-      setSpritePickerOpen(false);
+      closePlacementAssetPicker();
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -7481,6 +7559,10 @@ export default function App() {
     setSelectedPlacementElement(elementId);
     if (placementRenderModel !== null) {
       setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+    } else if (objectSceneSelected) {
+      setSceneSelection(placementStateId === null
+        ? { kind: "scene" }
+        : { kind: "state", id: placementStateId });
     }
   };
   const selectPlacementBase = (elementId?: string) => {
@@ -8265,7 +8347,7 @@ export default function App() {
       );
     };
     const commitBoundsInput = (axis: "width" | "height", value: string) => {
-      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null || targetStateIds.length > 0) {
+      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null) {
         return;
       }
       const parsed = Math.round(Number(value));
@@ -8311,6 +8393,23 @@ export default function App() {
         commands,
         `Visibility updated for ${placementEditTargetLabel()}. Save to write it to the project.`,
         targetStateIds.length === 1 ? { kind: "state", id: targetStateIds[0] } : { kind: "render", id: placementRenderModel.visual_id },
+      );
+    };
+    const setElementFilled = (filled: boolean) => {
+      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null || targetStateIds.length > 0) {
+        return;
+      }
+      const elementKind = shapeKindWithFill(selectedElement.kind, filled);
+      if (elementKind === null || service?.state_scene_presentation.element_commands.includes("render_element.set_kind") !== true) {
+        return;
+      }
+      void applyRenderElementCommand(
+        "Changing fill",
+        selectedSceneDocument.scene_id,
+        placementRenderModel.visual_id,
+        selectedElement.element_id,
+        { kind: "render_element.set_kind", element_kind: elementKind },
+        "Fill updated. Save to write it to the project.",
       );
     };
     return (
@@ -8432,6 +8531,19 @@ export default function App() {
                     />
                   </label>
                 </>
+              )}
+              {isFillableShapeKind(selectedElement.kind) && (
+                <label className="placement-toggle-row" title={service?.state_scene_presentation.element_commands.includes("render_element.set_kind") === true
+                  ? "Fill this shape"
+                  : "Fill editing is not available in this project version"}>
+                  <input
+                    type="checkbox"
+                    checked={selectedElement.kind === "filled_rect" || selectedElement.kind === "filled_circle" || selectedElement.kind === "filled_ellipse"}
+                    disabled={busy !== null || service?.state_scene_presentation.element_commands.includes("render_element.set_kind") !== true}
+                    onChange={(event) => setElementFilled(event.target.checked)}
+                  />
+                  Filled
+                </label>
               )}
               <label>
                 Layer

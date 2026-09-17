@@ -570,6 +570,8 @@ Agreed delivery order:
    complete cell, so 2x2 doubles and 4x4 quadruples both sheet and frame dimensions.
    Expanded frames must still fit the target's 168x144 object bounds; oversized
    sheets are rejected before allocating the converted canvas.
+   Source and converted previews overlay sharp bright-green guides at the current
+   row/column boundaries. These guides are editor-only and never enter the PNG.
    Source-colour and final black/white/transparent counts remain visible beside
    the full-size live preview. Import still writes the existing masked 1bpp PNG
    and asset record; no parallel runtime format or GUI-side package model exists.
@@ -1203,6 +1205,13 @@ OS recorded the following as separate backend increments:
 - Expanded timer nodes require a shared execution contract before controls are
   enabled. Sequential checks, fallback/all-pass selection and ordered actions
   must be unambiguous and must not imply parallel execution.
+- Shape fill is an object property in Studio, not a separate palette tool or a
+  temporary creation prompt. Selecting a rectangle, circle or oval exposes a
+  Filled checkbox in its normal object inspector; sprites, lines and text do
+  not expose it. API 46 supplies reference-safe `object.set_kind` and
+  `render_element.set_kind` commands. They only switch outline/filled variants
+  within the existing shape family and preserve IDs, overrides, animation
+  bindings, layer, draw order, undo/redo and save/reload.
 
 Studio enables each increment only from its dedicated hello/per-scene
 capabilities and supported-command lists. A service API-version increase alone
