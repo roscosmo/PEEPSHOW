@@ -22,7 +22,7 @@ from .audio_assets import (
     pcm16_wav,
 )
 from .compatibility import build_compatibility_report
-from .v2_export import PROFILE_ID as V2_EXPORT_PROFILE_ID, public_v2_export_profile
+from .v2_export import PROFILE_ID as V2_EXPORT_PROFILE_ID, public_v2_export_profile, public_v2_audio_profile
 from .compiler import EggCompileError, build_egg, build_preview_package, build_readiness_issues
 from .egg_format import EggFormatError, parse_egg
 from .project import (
@@ -59,7 +59,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 44
+SERVICE_API_VERSION = 45
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -161,6 +161,7 @@ def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
             "scene_entry_modes": ["fresh_default"],
             "scene_exit_action_kinds": [] if scene["schema_version"] == 2 else ["play_sfx"],
             "multi_scene_export": True,
+            "audio_export": public_v2_audio_profile() if scene["schema_version"] == 2 else None,
             "route_destination_kinds": ["state", "system_exit", "scene"],
         } for scene in bundle.scenes
     }
@@ -380,6 +381,7 @@ class AuthoringService:
                 "scene_entry_modes": ["fresh_default"],
                 "scene_exit_action_kinds": [],
                 "multi_scene_export": True,
+                "audio_export": public_v2_audio_profile(),
                 "route_destination_kinds": ["state", "system_exit", "scene"],
             },
             "target_profiles": {

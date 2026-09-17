@@ -4,6 +4,10 @@ Status: 2026-09-17, service API 44 and Studio integration complete. The pinned
 Studio-exported egg passed the installed hardware behavior and reboot checks
 below. This is a bounded-subset result, not full V1/V2 feature parity.
 
+The capability contract below records API 44/profile revision 2. API 45/profile
+revision 3 supersedes its audio exclusion only with resident sampled SFX; see
+[[Peep_Studio_V2_Audio_Export_Handoff]]. Other restrictions remain unchanged.
+
 This extends the existing development-restricted resident export profile, not
 the firmware format or the full V2 feature set. No firmware code, wire IDs,
 source schema, canonical target-profile constants or GUI files changed.

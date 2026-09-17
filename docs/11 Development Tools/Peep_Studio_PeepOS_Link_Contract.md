@@ -63,16 +63,22 @@ validated authoring example.
 
 ## Current Capability
 
-Authoring service API 44 enables bounded multi-scene V2 export through the
+Authoring service API 45 adds resident sampled-SFX export to the API 44 bounded
+multi-scene V2 profile. Discover `v2_profile.audio_profile` and V2 per-scene
+`audio_export`, then require whole-project `export_ready`. Local input/timer
+`play_sfx` is supported; the total 65536-byte package ceiling and action-free
+scene exits remain. See [[Peep_Studio_V2_Audio_Export_Handoff]]. Runtime text,
+music/resumable audio, scene memory and parallel regions remain unavailable.
+
+API 44 enables bounded multi-scene V2 export through the
 existing public build operation. Discover `multi_scene_export` and whole-project
 `export_ready`; the profile admits up to eight resident scenes, checks every
 scene's budgets and permits only action-free fresh-default scene exits. See
 [[Peep_Studio_Multiscene_V2_Export_Handoff]] for the exact capability/report
-contract, restrictions and pending Studio-generated hardware test.
+contract, restrictions and passed Studio-generated hardware test.
 API 43's connection commands and reference lifetimes remain unchanged; see
 [[Peep_Studio_Scene_Object_Ownership_Handoff]], Native V2 Scene Connections.
-Scene memory and parallel regions remain design-only. V2 audio, runtime text
-and shipping support are not implied by this export increment.
+Shipping support is not implied by either export increment.
 
 Restricted ordinary V2 build/export introduced in API 42 remains available.
 See [[Peep_Studio_Restricted_V2_Export_Handoff]] for its single-scene subset,

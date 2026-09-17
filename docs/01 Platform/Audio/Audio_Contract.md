@@ -136,9 +136,10 @@ V2 package ceiling. Scene exits remain action-free. The runtime/mixer ownership
 and stop-and-discard semantics below are unchanged. The installed animated
 HOME/AWAY test confirmed audible SFX across scene replacement, shell stop without
 replay on Resume, and fresh playback after wake. See [[V2_Installed_SFX_Test]]
-for evidence and remaining coverage. Public API 44 V2 export still advertises
-audio unavailable until the separate backend capability increment. This does not admit nonresident V2
-audio, music, resumable playback or new clock/voice limits.
+for evidence and remaining coverage. Public service API 45 now advertises this
+resident subset through export-profile revision 3; see
+[[Peep_Studio_V2_Audio_Export_Handoff]]. This does not admit nonresident V2 audio,
+music, resumable playback or new clock/voice limits.
 
 These shell/package semantics are separate from power-requested suspension:
 power admission retains its existing subsequent owner-quiesce barrier. It must

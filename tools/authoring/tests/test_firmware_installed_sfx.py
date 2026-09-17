@@ -1,4 +1,4 @@
-"""Resident installed V2 audio admission, with public audio export still blocked."""
+"""Resident installed V2 audio admission using the public compiler output."""
 from copy import deepcopy
 from dataclasses import replace
 import hashlib
@@ -9,8 +9,8 @@ import unittest
 import test_firmware_object_scene_replacement as replacement
 from test_object_egg import repair
 from build_installed_sfx_fixture import installed_sfx_bundle
-from peepshow_authoring.compiler import build_development_egg_v2, build_readiness_issues, build_egg, EggCompileError
-from peepshow_authoring.egg_format import parse_egg, EggFormatError, HEADER, CHUNK_ENTRY
+from peepshow_authoring.compiler import build_development_egg_v2, build_readiness_issues, build_egg
+from peepshow_authoring.egg_format import parse_egg, HEADER, CHUNK_ENTRY
 from peepshow_authoring.v2_export import public_v2_export_profile
 
 
@@ -19,7 +19,7 @@ class InstalledSfxTests(unittest.TestCase):
     def setUpClass(cls):
         replacement.ObjectSceneReplacementTests.setUpClass.__func__(cls)
         cls.bundle = installed_sfx_bundle()
-        cls.blob = build_development_egg_v2(cls.bundle)
+        cls.blob = build_egg(cls.bundle)
 
     def run_blob(self, blob, *args):
         path = self.work / "installed_sfx.egg"
@@ -34,13 +34,13 @@ class InstalledSfxTests(unittest.TestCase):
         self.assertLessEqual(len(self.blob), 65536)
         self.assertIn("atomic effects and catalog lifetime passed", self.run_blob(self.blob, "audio"))
 
-    def test_public_audio_capability_stays_off_pending_hardware(self):
-        self.assertFalse(public_v2_export_profile()["audio"])
-        self.assertIn("V2_AUDIO_UNSUPPORTED", {i["code"] for i in build_readiness_issues(self.bundle)})
-        with self.assertRaises(EggCompileError):
-            build_egg(self.bundle)
-        with self.assertRaises(EggFormatError):
-            parse_egg(self.blob)
+    def test_public_audio_matches_hardware_tested_bytes(self):
+        self.assertTrue(public_v2_export_profile()["audio"])
+        self.assertEqual([], build_readiness_issues(self.bundle))
+        self.assertEqual(build_development_egg_v2(self.bundle), self.blob)
+        self.assertEqual("af1fe2d09a3b527b47a640a355be318f29a37380315c9ee5e7ad53cea5feff9c",
+                         hashlib.sha256(self.blob).hexdigest())
+        self.assertEqual(2, len(parse_egg(self.blob).audio_assets))
 
     def test_invalid_audio_bytes_and_cue_are_rejected_before_activation(self):
         package = parse_egg(self.blob, _development_v2=True)

@@ -1,9 +1,10 @@
 # Installed V2 Resident SFX Test
 
 Status: 2026-09-17, firmware admission and native tests implemented; installed
-audible behavior confirmed on hardware as recorded below. Service API 44 still advertises audio=false and public
-build/parser paths still reject V2 audio. This is an OS bench fixture, not a
-Studio export workaround or a claim of shipping-profile support.
+audible behavior confirmed on hardware as recorded below. That firmware milestone
+kept public API 44 audio export disabled. The subsequent API 45 increment enables
+the resident subset; see [[Peep_Studio_V2_Audio_Export_Handoff]]. This is an OS
+bench fixture, not a Studio export workaround or shipping-profile claim.
 
 ## Scope
 
@@ -85,7 +86,7 @@ send/wait/owner statuses are expected; Resume clears blocked. NOT_RUN before any
 request is not a completed-work failure. Counters are cumulative, and neither
 dispatch nor sleep counters prove audible output or measured low current.
 
-## Native Evidence
+## Firmware Milestone Native Evidence
 
 47 focused tests passed across installed SFX, V2 profiles/scene candidates,
 installed replacement, object timers and the public export boundary. The Debug
@@ -106,7 +107,8 @@ raster admission and installed entry in the native harness. Tests verify:
   and allows another local cue in the destination;
 - malformed ADPCM/cue metadata, exit SFX and local shell-exit actions reject;
 - an audio package at 65536 bytes admits, while one above that ceiling rejects;
-- the ordinary service profile and public parser/compiler still reject audio.
+- at the API 44 firmware checkpoint, the public parser/compiler still rejected
+  audio. API 45 instead verifies the same bytes through the public build path.
 
 Native stubs do not produce sound or exercise physical SAI/DMA, shell audio
 quiesce or current draw. Existing timer/SFX dispatch and failure tests supplement
@@ -147,5 +149,6 @@ ADPCM bytes, package-backed=0 (fully resident).
 This validates installed resident SFX with the exercised animated scene changes
 and shell lifetime behavior. Full five-voice concurrent-display stress, priority
 preemption, current/energy measurement, and an explicit reboot confirmation for
-this audio egg are not established by this capture. Public audio export and a
-normal Studio-generated audio artifact remain the next integration increment.
+this audio egg are not established by this capture. API 45 subsequently enables
+public resident audio export; a normal Studio-generated audio artifact remains
+the next hardware integration test.
