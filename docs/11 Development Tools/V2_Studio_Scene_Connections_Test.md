@@ -1,9 +1,9 @@
 # Studio V2 Scene Connections Hardware Test
 
 Status (2026-09-17): installed navigation/rendering and static held-frame STOP2
-functional PASS after the fix. Current measurement, quiet battery wake on this
-fixture and animated hardware regression remain pending. Public multi-scene
-export remains disabled.
+functional PASS after the fix. The shortened quiet battery wake also passed on
+this fixture. Current measurement and animated hardware regression remain
+pending. Public multi-scene export remains disabled.
 
 ## Hardware Result (2026-09-17)
 
@@ -66,7 +66,7 @@ deadline. Resume untouched for 20 seconds, then wake normally and capture
 `__fw0_battery_wake_prints.gdb`: require positive expiry and successful-due-read
 deltas and unchanged visuals. Do not lower battery voltage for this test.
 Finally regress the installed HOME/AWAY egg's animation and timer exits on the
-same firmware. Quiet battery wake and animated hardware regression remain pending.
+same firmware. Animated hardware regression remains pending.
 
 ### Static Hardware Retest Result (2026-09-17)
 
@@ -84,6 +84,29 @@ are zero as expected for this fixture. This closes functional static sleep and
 button-driven scene replacement; no measured current is claimed on the battery
 unit. Repeated diagnostic lines were duplicate print statements only and were
 removed without changing firmware or requiring another reflash.
+
+### Quiet Battery Wake Result (2026-09-17)
+
+On firmware checkpoint `15164d0`, the shortened deadline test recorded arms=1,
+request=0, expiry delta=1 and successful-due-read delta=1. RTC expiry/due-wake
+counts were 1/1; battery reading 4041 mV, valid=1, snapshot status=0 and clock
+failures=0. This proves a real successful battery read following the safety
+deadline, not merely a scheduled thread or selected RTC source.
+
+STOP2/WFI/measured/reconciled counts were 9/9/9/9. The next sleep retained a
+179973-tick battery deadline and recorded 6596 elapsed ticks, consistent with
+returning to sleep after the successful reading refreshed the normal deadline.
+HELD_FRAME requested/selected/status/ready remained 1/1/0/1, publication=0.
+Five scene replacements completed without failure; display completion=6/6,
+status/fault=0/0. The current automatic blocker 0x800 is INPUT_PENDING after
+the user's button wake; entry status NOT_RUN is not a completed-entry failure.
+
+Acquisition attempts/successes/failures=13/12/1 are cumulative since boot.
+No before-test failure count was supplied, so that failure cannot be dated to
+this test and is not erased or presented as zero failures. The explicit test
+deltas prove the successful due read. No new visual observation, current
+measurement, real 30-minute interval qualification or low-voltage shipment
+test is claimed from these prints. No battery policy was changed.
 
 ## Source And Artifact
 
