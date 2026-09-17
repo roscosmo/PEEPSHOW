@@ -2,7 +2,9 @@ set pagination off
 printf "--- HW6 one-press TraceX capture ---\n"
 p g_ps_object_trace_probe
 printf "Trace buffer bytes / running = %u / %u\n", g_ps_hw6_tracex_buffer_bytes, g_ps_hw6_tracex_runtime_enabled
-printf "Expected: request/armed/active=0, complete=1, arm/freeze=0, sequence>0, marker_errors=0. Counter before/after must differ.\n"
+printf "Expected: api=2, request/armed/active=0, complete=1, arm/freeze=0, sequence>0, marker_errors=0. Counter before/after must differ.\n"
+printf "Installed/development V2 captures leave STOP2 policy unchanged. hclk_start is sampled at ARM, not necessarily RECEIVE.\n"
+printf "Use matching RECEIVE/DONE markers and their clock records for the transaction. Do not convert preceding sleep or wake history using DWT cycles.\n"
 printf "At unchanged 24 MHz: 24000 timestamp counts = 1 ms. Verify hclk_start/end and clock events; do not apply one scale across clock changes.\n"
 printf "Ring wraps are not automatically loss: confirm matching 0x5172 RECEIVE/DONE markers remain in the dump.\n"
 printf "0x5170: runtime stage, sequence, candidate token, HCLK. Stage IDs follow __fw0_object_latency_prints.gdb.\n"

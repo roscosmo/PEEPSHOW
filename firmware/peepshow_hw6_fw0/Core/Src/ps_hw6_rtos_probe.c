@@ -539,6 +539,7 @@ static void PS_HW6_RTOS_RuntimePackageReplacementFail(void);
 static UINT PS_HW6_RTOS_ObjectPresent(void);
 static uint32_t PS_HW6_RTOS_ObjectAdvance(uint32_t now_tick);
 static void PS_HW6_RTOS_ObjectService(uint32_t now_tick);
+static void PS_HW6_RTOS_ObjectTraceService(void);
 static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
   uint32_t size, const ps_scene_objects_t *objects);
 static uint32_t PS_HW6_RTOS_ObjectSceneCheck(const uint8_t *blob,
@@ -2318,6 +2319,10 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
     if ((PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_lifecycle != PS_HW6_RUNTIME_LIFECYCLE_RUNNING))
     { return; }
+    /* A debugger request may have waited through STOP2. Arm before receiving
+     * this press, not after the scene transaction it was intended to capture. */
+    if (event == PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+    { PS_HW6_RTOS_ObjectTraceService(); }
     if ((event == PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) &&
         (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
         (g_ps_object_candidate_probe.leased == 0UL) &&
@@ -9124,12 +9129,12 @@ static void PS_HW6_RTOS_CandidateService(void)
   PS_HW6_RTOS_CandidateBegin(g_ps_object_development_egg, g_ps_object_development_egg_size, mode);
 }
 
-static void PS_HW6_RTOS_ObjectService(uint32_t now_tick)
+static void PS_HW6_RTOS_ObjectTraceService(void)
 {
   if (g_ps_object_trace_probe.request != 0UL)
   {
     uint32_t allowed = (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
-      (g_ps_object_lpbam_probe.enabled == 0UL) &&
+      (g_ps_hw6_rtos_probe.runtime_lifecycle == PS_HW6_RUNTIME_LIFECYCLE_RUNNING) &&
       (g_ps_ui_router_probe.current_page == PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
       (g_ps_object_latency_probe.active == 0UL) && (g_ps_object_latency_probe.request == 0UL) &&
       (g_ps_object_candidate_probe.leased == 0UL) &&
@@ -9137,6 +9142,11 @@ static void PS_HW6_RTOS_ObjectService(uint32_t now_tick)
       (g_ps_object_development_probe.render_request == g_ps_object_development_probe.render_complete);
     if (PS_HW6_TraceObjectArm(allowed) != 0UL) { g_ps_object_latency_probe.request = 1UL; }
   }
+}
+
+static void PS_HW6_RTOS_ObjectService(uint32_t now_tick)
+{
+  PS_HW6_RTOS_ObjectTraceService();
   if (g_ps_object_development_request != 0UL)
   {
     uint32_t blockers = 0UL;

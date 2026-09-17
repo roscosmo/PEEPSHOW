@@ -173,6 +173,31 @@ and pixel parity between exact host preview and production C rasterization.
 Hardware acceptance of the new line direction and fills remains pending.
 See [[Peep_Studio_Shape_Primitives_Handoff]].
 
+## Private Candidate Raster Regions (2026-09-17)
+
+The V2 candidate frame cache recomposes changed old/new object rectangles without
+expanding them to the full bounds of unchanged overlapping objects. Contained
+and duplicate rectangles are discarded; the retained region count is bounded by
+twice the existing render-element limit. Each region is independently cleared
+and recomposed in existing layer/z order. Intersections may be processed twice,
+but writes cannot escape the current region. Large borders or backgrounds must
+not turn a small animation change into a full-scene redraw.
+
+Package sprites clip source iteration while preserving masked transparency and
+opaque white pixels. Primitive drawing clips writes without changing diagonal
+or ellipse rasterization. Legacy text retains full-frame fallback because its
+declared bounds do not constrain all glyph writes. Full model/asset validation,
+including hidden assets, remains required before cache reuse.
+
+The clip is a synchronous display-owner scope over the existing private raster,
+not the live framebuffer or SRAM4. No additional framebuffer, heap, clock claim,
+power policy or package capability is introduced. The cache's `elements_drawn`
+counts element draw calls per region, not changed pixels or unique objects;
+an intersecting outline can legitimately produce no pixels in an interior clip.
+Raster CLEAR/DRAW trace pairs can repeat within a reused frame, with VALIDATE
+nested in DRAW. Native checks require parity with full frames and LPBAM payloads;
+hardware timing and visual acceptance remain separate evidence.
+
 ## DMA-Safe Buffer Placement
 
 HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous arena. This allocation model is validated on HW5 and target-proven on HW6. At the current `250 ms` cadence, the eight-row cursor program averages `56 uA` over five minutes and the guaranteed three-full-panel-state program averages `85 uA`. These establish sparse and maximum-guaranteed-coverage average-current endpoints; pulse shape, intermediate coverage, and alternate cadence scaling remain provisional.

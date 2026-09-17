@@ -113,7 +113,7 @@ class ObjectAwakeTests(unittest.TestCase):
         self.assertEqual(build_egg(bundle), build_development_egg_v2(bundle))
 
     def test_launch_completes_ui_handoff_and_keeps_animating(self):
-        self.run_rtos_harness("launch", ("ObjectService",))
+        self.run_rtos_harness("launch", ("ObjectTraceService", "ObjectService"))
 
     def test_bounded_display_handoff_quarantines_timeout(self):
         self.run_rtos_harness("handoff", ("ObjectLatencyStamp", "ObjectLatencyBegin",

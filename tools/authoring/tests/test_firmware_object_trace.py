@@ -28,6 +28,9 @@ class ObjectTraceTests(unittest.TestCase):
                         firmware_function((firmware / "Core/Src/ps_hw6_owner_state_machines.c").read_text(), name)
                         for name in ("PS_HW6_SM_SuspendThreadXSystick", "PS_HW6_SM_RestoreThreadXSystick")),
                 encoding="ascii")
+            (work / "trace_service_under_test.inc").write_text(firmware_function(
+                (firmware / "Core/Src/ps_hw6_rtos_probe.c").read_text(),
+                "PS_HW6_RTOS_ObjectTraceService"), encoding="ascii")
             exe = work / "trace.exe"
             result = subprocess.run([compiler,
                 "-std=c11", "-Wall", "-Wextra", "-Werror", "-O2", "-I", str(firmware / "Core/Inc"),
@@ -37,6 +40,22 @@ class ObjectTraceTests(unittest.TestCase):
             result = subprocess.run([str(exe)], capture_output=True, text=True, timeout=10, env=env)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
+    def test_installed_request_is_serviced_before_runtime_receipt_without_sleep_override(self):
+        firmware = Path(__file__).resolve().parents[3] / "firmware/peepshow_hw6_fw0"
+        source = (firmware / "Core/Src/ps_hw6_rtos_probe.c").read_text()
+        body = firmware_function(source, "PS_HW6_RTOS_HandleRuntimeInput")
+        self.assertLess(body.index("PS_HW6_RTOS_ObjectTraceService();"),
+                        body.index("PS_HW6_RTOS_ObjectLatencyBegin("))
+        service = firmware_function(source, "PS_HW6_RTOS_ObjectTraceService")
+        self.assertNotIn("g_ps_object_lpbam_probe", service)
+        self.assertNotIn("RequestRuntimeClock", service)
+        self.assertIn("PS_HW6_RTOS_ObjectTraceService();",
+                      firmware_function(source, "PS_HW6_RTOS_ObjectService"))
+        helper = (firmware / "__fw0_object_trace_enable.gdb").read_text()
+        self.assertIn("g_ps_object_trace_probe.api_version != 2", helper)
+        self.assertNotIn("g_ps_object_lpbam_probe.enabled", helper)
+        self.assertEqual(["set pagination off", "set g_ps_object_trace_probe.request = 1"],
+                         [line.strip() for line in helper.splitlines() if line.strip().startswith("set ")])
     def test_owner_markers_enclose_actual_driver_calls(self):
         root = Path(__file__).resolve().parents[3] / "firmware/peepshow_hw6_fw0/Core/Src"
         power = firmware_function((root / "ps_hw6_owner_services.c").read_text(),

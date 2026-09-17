@@ -47,6 +47,7 @@ static void cached_frame_matches(ps_scene_frame_cache_t *cache,
   assert(DisplayRenderer_CopyCandidateSceneFrameCached(frame_model, catalog, cache, actual, sizeof(actual)));
   assert(s_display_draw_framebuffer == s_display_framebuffer);
   assert(raster_copy_groups == 1); /* Only the completed frame goes to the packer. */
+  assert(s_display_draw_clip == NULL);
   assert(s_rotate_ccw == rotation);
   raster_observe = 0;
   assert(memcmp(actual, expected, sizeof(actual)) == 0);
@@ -193,6 +194,78 @@ static void raster_cache_equivalence(void)
   cached_frame_matches(&cache, &m, &catalog);
   s_rotate_ccw = 1;
   puts("cached pixels match full raster: motion, overlap, masks, layers, removal and invalidation");
+}
+
+static void clipped_regions_equivalence(void)
+{
+  static ps_scene_frame_cache_t cache;
+  uint8_t record[PS_EGG_ASSET_RECORD_SIZE] = {0}, payload[78];
+  ps_egg_sprite_catalog_t catalog = {record, payload, sizeof(payload), 1};
+  ps_scene_render_model_t m = {.api_version=PS_SCENE_RENDER_MODEL_API_VERSION,
+    .scene_id=1, .element_count=10};
+  record[4] = 17; record[6] = 13; record[8] = 3;
+  record[20] = 39; record[24] = 39; record[28] = 39;
+  for (uint32_t i = 0; i < sizeof(payload); ++i) { payload[i] = (uint8_t)(i * 37U + 19U); }
+  m.elements[0] = (ps_scene_render_element_t){.element_id=1, .visible=1,
+    .type=PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT, .x=4, .y=4, .width=160, .height=136};
+  m.elements[1] = (ps_scene_render_element_t){.element_id=2, .visible=1, .z_order=1,
+    .type=PS_SCENE_RENDER_ELEMENT_FILLED_RECT, .x=72, .y=32, .width=24, .height=24};
+  for (uint32_t i = 2; i < m.element_count; ++i)
+  {
+    m.elements[i] = (ps_scene_render_element_t){.element_id=i+1, .visible=1, .z_order=1,
+      .type=PS_SCENE_RENDER_ELEMENT_FILLED_RECT, .x=(uint16_t)(10+16*i),
+      .y=100, .width=8, .height=8};
+  }
+  cached_frame_matches(&cache, &m, &catalog);
+  for (uint32_t i = 0; i < 4; ++i)
+  {
+    m.elements[1].type = (i & 1) ? PS_SCENE_RENDER_ELEMENT_FILLED_RECT :
+      PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT;
+    cached_frame_matches(&cache, &m, &catalog);
+  }
+  assert(cache.full_frames == 1 && cache.reused_frames == 4);
+  /* Ten initially; only border + digit intersect each subsequent clip. The
+   * border's edges are outside the clip and cannot damage unchanged pixels. */
+  assert(cache.elements_drawn == 18);
+
+  const uint32_t shapes[] = {PS_SCENE_RENDER_ELEMENT_LINE, PS_SCENE_RENDER_ELEMENT_LINE_UP_RIGHT,
+    PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE, PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT,
+    PS_SCENE_RENDER_ELEMENT_FILLED_RECT, PS_SCENE_RENDER_ELEMENT_CIRCLE,
+    PS_SCENE_RENDER_ELEMENT_ELLIPSE, PS_SCENE_RENDER_ELEMENT_FILLED_CIRCLE,
+    PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE};
+  m.element_count = 3;
+  m.elements[1] = (ps_scene_render_element_t){.element_id=2, .visible=1, .layer=1,
+    .type=PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP, .asset_id=65537, .width=17, .height=13};
+  m.elements[2] = (ps_scene_render_element_t){.element_id=3, .visible=1, .layer=2,
+    .type=PS_SCENE_RENDER_ELEMENT_LINE_UP_RIGHT, .x=30, .y=30, .width=90, .height=90};
+  for (uint32_t shape = 0; shape < sizeof(shapes) / sizeof(shapes[0]); ++shape)
+  {
+    m.elements[0] = (ps_scene_render_element_t){.element_id=1, .visible=1,
+      .type=shapes[shape], .x=50, .y=40, .width=51, .height=51};
+    for (uint32_t opaque = 0; opaque < 2; ++opaque)
+    {
+      record[32] = opaque ? PS_EGG_ASSET_FLAG_OPAQUE : 0;
+      cache.valid = 0;
+      for (uint32_t pos = 0; pos <= 151; ++pos)
+      {
+        m.elements[1].x = (uint16_t)pos;
+        m.elements[1].y = (uint16_t)(pos % 132);
+        cached_frame_matches(&cache, &m, &catalog);
+      }
+      /* Multiple changed regions, visibility, geometry, ordering and one-pixel damage. */
+      m.elements[0].width = 1; m.elements[0].height = 1;
+      m.elements[0].type = PS_SCENE_RENDER_ELEMENT_FILLED_RECT;
+      m.elements[2].visible ^= 1;
+      cached_frame_matches(&cache, &m, &catalog);
+      m.elements[0].x++; m.elements[0].y++;
+      m.elements[0].layer = 3;
+      cached_frame_matches(&cache, &m, &catalog);
+      m.elements[0].type = shapes[shape];
+      m.elements[0].width = 51; m.elements[0].height = 51;
+      m.elements[0].layer = 0;
+    }
+  }
+  puts("clipped regions match full raster: border 18 not 50 draws, partial shapes and masked/opaque sprites");
 }
 
 static uint32_t full_frame_oracle(void *context, uint32_t step, uint8_t *destination, uint32_t capacity)
@@ -391,6 +464,7 @@ int main(int argc, char **argv)
   if (argc == 1) { band_equivalence(); return 0; }
   if (argc == 2 && strcmp(argv[1], "raster-cache") == 0) { raster_cache_equivalence(); return 0; }
   if (argc == 2 && strcmp(argv[1], "clear-rect") == 0) { clear_rect_equivalence(); return 0; }
+  if (argc == 2 && strcmp(argv[1], "clip-regions") == 0) { clipped_regions_equivalence(); return 0; }
   assert(argc == 4);
   expected_failure = (uint32_t)atoi(argv[3]);
   baseline_size = read_blob(argv[1], baseline);

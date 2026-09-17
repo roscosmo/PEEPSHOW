@@ -229,3 +229,97 @@ final responsiveness acceptance. Kernel resolution is 10 ms and stage elapsed
 times include preemption; totals overlap. No isolated CPU, current/energy or
 physical-button-to-panel measurement is claimed. Full GUI audio-lifetime and
 reboot acceptance still require explicit observations beyond these timing runs.
+
+### TraceX Border Redraw Diagnosis and Region Correction
+
+The frozen `__fw0_tracex_snapshot_20260917_202542.trx` contains matching sequence-1
+RECEIVE/DONE markers, zero ring wraps/marker errors, and 24 MHz marker/clock
+samples throughout the transaction with no SysTick retune records. DWT elapsed
+time is 311.35 ms RECEIVE to DONE and 308.33 ms RECEIVE to panel completion.
+Candidate decode spans 49.27 ms, raster/packing 147.24 ms, and the panel
+render/transfer stage 59.00 ms. These are elapsed intervals, not isolated CPU
+time or physical-button latency; nested intervals must not be summed.
+
+Within candidate raster/packing, the first full composition spans 20.19 ms.
+Four reused frames spend 20.82 ms clearing and 76.10 ms drawing; five cache/output
+copies total 4.52 ms. Recorded scheduling interruptions in this stage are brief;
+unmarked ISR and observer overhead remain included. The retained counter reports
+one full/four reused frames and fifty element draws.
+
+The source fixture's 160x136 border contains every object within its bounding
+rectangle. The previous whole-object overlap closure therefore propagates a
+digit change to all ten visible objects, although the digit does not touch any
+border line. The original source commit's object geometry was checked against
+the current project and matches. The operator confirmed that GUI replaced the
+original audio with real audio; the artifact at the original path now has a
+different digest. This trace is not evidence of the original egg's exact bytes.
+
+The correction keeps only changed old/new rectangles, removes contained or
+duplicate regions, and clips ordered recomposition to each remaining region.
+Sprite transparency/opaque-white writes and primitive edge pixels are preserved;
+no dirty region grows merely because it intersects a border or background.
+Full validation and legacy-text cold fallback remain. Only existing private
+candidate-cache pixels are modified; the published frame, active DMA payloads,
+clock policy and audio behavior are unchanged.
+
+Native regression reproduces the border mechanism: one full/four reused frames
+now issue eighteen rather than fifty element draw calls with identical pixels.
+The eighteen include four border calls clipped entirely out of the digit region;
+draw counts are not pixel counts. Further parity tests cover partially clipped
+shapes, masked/opaque sprites, motion, visibility, overlap, layer/order changes,
+one-pixel regions, removal and invalidation. Complete four/eight-frame payloads,
+including wrap, must match the uncached compositor. Hardware timing after the
+correction and operator regression confirmation are recorded below.
+
+Verification: 30 focused native/host tests passed across display admission,
+awake rendering, shape parity, trace capture and candidate queue ownership.
+Debug build passed with RAM 553640 bytes (+8), ROM 886120 bytes and SRAM4 15480
+bytes (unchanged). Diff whitespace checks passed. No target timing improvement
+is claimed from host execution or build success.
+
+For the comparison, keep the currently installed GUI audio egg unchanged and
+flash normal Debug firmware only. In quiet Lobby, halt and source
+`__fw0_object_trace_enable.gdb`, resume and press A once. Observe Garden without
+halting; allow its timer cue to finish, then halt and source
+`__fw0_object_trace_prints.gdb` and `__fw0_tracex_dump.gdb`. Confirm all border,
+label and marker pixels, animation continuity, timer reveal and SFX behavior.
+The trace freezes on transaction completion, before the later timer cue. CLEAR
+and DRAW phase pairs may now repeat per region within one reused frame. Do not
+enable a development scene or separately arm the latency helper for this test.
+
+### Hardware Timing After Clipped Regions
+
+The frozen `__fw0_tracex_snapshot_20260917_205119.trx` contains one matching
+sequence-1 RECEIVE/DONE pair, zero wraps/marker errors, all runtime-stage and
+clock-policy samples at 24 MHz, and no SysTick retune triples. Button A changes
+Lobby 2 to Garden 1 with event/status/panel 1/0/0. One full/four reused frames
+now report eighteen element draw calls, matching the native regression.
+
+| Elapsed work | Before clipping | After clipping |
+|---|---:|---:|
+| Candidate decode | 49.27 ms | 49.23 ms |
+| Candidate raster/packing | 147.24 ms | 61.54 ms |
+| First full composition | 20.19 ms | 20.74 ms |
+| Four cached-region clears | 20.82 ms | 0.43 ms |
+| Four cached-region draws | 76.10 ms | 10.66 ms |
+| Five raster-cache/output copies | 4.52 ms | 4.51 ms |
+| Panel render/transfer stage | 59.00 ms | 59.65 ms |
+| RECEIVE to panel completion | 308.33 ms | 222.84 ms |
+
+Candidate preparation is about 58 percent shorter; receipt-to-panel elapsed time
+is about 28 percent shorter. The clear/draw reduction accounts for nearly all of
+the saving, while decode and panel-stage costs are essentially unchanged.
+These nested intervals cannot be added together. DWT transaction completion is
+approximately 226.1 ms after RECEIVE; the coarse kernel report is 220 ms.
+Both measurements exclude physical input, debounce and pre-runtime wake latency,
+and include observer/preemption effects. Clock samples and absence of retune
+records support this conversion, not a claim of isolated CPU or energy use.
+
+Full candidate package loads remain 5, with metadata hits/misses 1/3. Trace and
+panel completion prove real preparation/presentation work, but the supplied
+capture does not itself confirm intact borders/labels, marker motion, animation
+continuity or audio lifetime. After reviewing this result, the operator explicitly
+confirmed unchanged borders, labels, L/R movement, animation, timer and audio
+behavior ("yes everything acts as before"). This closes the exercised hardware
+regression check for clipped candidate composition. It does not establish
+physical-button latency, current/energy savings, or final responsiveness targets.

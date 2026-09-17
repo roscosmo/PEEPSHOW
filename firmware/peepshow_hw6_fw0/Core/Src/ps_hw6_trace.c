@@ -7,7 +7,8 @@
 #include <string.h>
 
 volatile ps_hw6_trace_probe_t g_ps_hw6_trace_probe;
-volatile ps_hw6_object_trace_probe_t g_ps_object_trace_probe = {.api_version = 1UL};
+volatile ps_hw6_object_trace_probe_t g_ps_object_trace_probe =
+  {.api_version = PS_HW6_OBJECT_TRACE_API_VERSION};
 
 extern volatile UINT g_ps_hw6_tracex_enable_status;
 extern volatile ULONG g_ps_hw6_tracex_runtime_enabled;
@@ -79,7 +80,7 @@ uint32_t PS_HW6_TraceObjectArm(uint32_t allowed)
       (g_ps_object_trace_probe.armed != 0UL))
   { g_ps_object_trace_probe.arm_status = TX_NOT_DONE; return 0UL; }
   (void)memset((void *)&g_ps_object_trace_probe, 0, sizeof(g_ps_object_trace_probe));
-  g_ps_object_trace_probe.api_version = 1UL;
+  g_ps_object_trace_probe.api_version = PS_HW6_OBJECT_TRACE_API_VERSION;
   g_ps_object_trace_probe.arm_status = TX_FEATURE_NOT_ENABLED;
   g_ps_object_trace_probe.freeze_status = PS_HW6_TRACE_STATUS_NOT_RUN;
   if ((KNOB_DEBUG_TRACEX_ENABLE == 0UL) || (KNOB_DEBUG_TRACEX_USER_EVENTS_ENABLE == 0UL) ||

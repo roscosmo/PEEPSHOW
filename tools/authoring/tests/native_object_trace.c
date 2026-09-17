@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "ps_hw6_trace.h"
+#include "ps_hw6_object_latency.h"
 typedef uint32_t UINT;
 typedef uintptr_t ULONG;
 typedef void VOID;
@@ -65,6 +66,67 @@ static UINT tx_trace_user_event_insert(ULONG event, ULONG a, ULONG b, ULONG c, U
 static uint32_t HAL_RCC_GetHCLKFreq(void) { return hclk_hz; }
 static uint32_t tx_time_get(void) { return kernel_tick; }
 #include "trace_under_test.inc"
+
+#define PS_HW6_RUNTIME_LIFECYCLE_RUNNING 2U
+#define PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF 6U
+static uint32_t object_active;
+static uint32_t PS_SceneRuntime_DevelopmentObjectsActive(void) { return object_active; }
+static struct { uint32_t runtime_lifecycle; } g_ps_hw6_rtos_probe;
+static struct { uint32_t current_page; } g_ps_ui_router_probe;
+static struct { uint32_t leased; } g_ps_object_candidate_probe;
+static struct { uint32_t lease_fault, render_request, render_complete; } g_ps_object_development_probe;
+static struct { uint32_t enabled; } g_ps_object_lpbam_probe;
+volatile ps_hw6_object_latency_probe_t g_ps_object_latency_probe;
+#include "trace_service_under_test.inc"
+
+static void test_runtime_arm_eligibility(void)
+{
+  struct { volatile uint32_t *field; uint32_t blocked; } cases[] = {
+    {&object_active, 0},
+    {&g_ps_hw6_rtos_probe.runtime_lifecycle, 3},
+    {&g_ps_ui_router_probe.current_page, 2},
+    {&g_ps_object_latency_probe.active, 1},
+    {&g_ps_object_latency_probe.request, 1},
+    {&g_ps_object_candidate_probe.leased, 1},
+    {&g_ps_object_development_probe.lease_fault, 1},
+    {&g_ps_object_development_probe.render_request, 1}
+  };
+  object_active = 1;
+  g_ps_hw6_rtos_probe.runtime_lifecycle = 2;
+  g_ps_ui_router_probe.current_page = 6;
+  for (uint32_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index)
+  {
+    uint32_t old = *cases[index].field;
+    *cases[index].field = cases[index].blocked;
+    uint32_t latency_request = g_ps_object_latency_probe.request;
+    g_ps_object_trace_probe.request = 1;
+    PS_HW6_RTOS_ObjectTraceService();
+    assert(!g_ps_object_trace_probe.request && !g_ps_object_trace_probe.armed);
+    assert(g_ps_object_trace_probe.arm_status == TX_NOT_DONE);
+    assert(g_ps_object_latency_probe.request == latency_request);
+    *cases[index].field = old;
+  }
+  for (uint32_t autonomous = 0; autonomous <= 1; ++autonomous)
+  {
+    g_ps_object_lpbam_probe.enabled = autonomous;
+    g_ps_object_trace_probe.request = 1;
+    PS_HW6_RTOS_ObjectTraceService();
+    assert(g_ps_object_trace_probe.api_version == 2);
+    assert(g_ps_object_trace_probe.armed && g_ps_object_latency_probe.request);
+    assert(g_ps_object_lpbam_probe.enabled == autonomous);
+    uint32_t saved_events = events;
+    g_ps_object_trace_probe.request = 1; /* Pending capture cannot be replaced. */
+    PS_HW6_RTOS_ObjectTraceService();
+    assert(events == saved_events && g_ps_object_trace_probe.armed);
+    g_ps_object_latency_probe.request = 0;
+    PS_HW6_TraceObjectBegin(11 + autonomous);
+    PS_HW6_TraceObjectStage(0, 0, 24000000);
+    PS_HW6_TraceObjectEnd(autonomous);
+    assert(g_ps_object_trace_probe.complete && !running);
+    assert(last_a == 3 && last_b == 11 + autonomous && last_d == autonomous);
+    assert(g_ps_object_lpbam_probe.enabled == autonomous);
+  }
+}
 
 int main(void)
 {
@@ -211,5 +273,6 @@ int main(void)
   assert(systick.LOAD == 239999U && systick.VAL == 0U);
   insert_fail = 0U;
   PS_HW6_TraceObjectEnd(0);
+  test_runtime_arm_eligibility();
   return 0;
 }
