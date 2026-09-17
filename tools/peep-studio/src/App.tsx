@@ -24,6 +24,7 @@ import {
   Plus,
   RectangleHorizontal,
   RotateCcw,
+  Search,
   SquareMousePointer,
   Trash2,
   Type,
@@ -163,6 +164,7 @@ function readableTextForColor(hex: string): string {
   return luminance > 0.62 ? "#111613" : "#f5fbff";
 }
 type AssetTab = "sprite" | "audio" | "font";
+type SpriteAssetFilter = "all" | "static" | "animation" | "text";
 type AssetSelection =
   | { kind: "animation"; clipId: string }
   | { kind: "animation-draft"; clip: AuthoredClip }
@@ -838,6 +840,8 @@ export default function App() {
   useEffect(() => setCombineFrameIds([]), [projectPath]);
   const [animationNormalizeDraft, setAnimationNormalizeDraft] = useState<AnimationNormalizeDraft | null>(null);
   const [assetTab, setAssetTab] = useState<AssetTab>("sprite");
+  const [assetSearchQuery, setAssetSearchQuery] = useState("");
+  const [spriteAssetFilter, setSpriteAssetFilter] = useState<SpriteAssetFilter>("all");
   const [fontAssets, setFontAssets] = useState<FontAssetRecord[]>([]);
   const [fontPreviewFamilies, setFontPreviewFamilies] = useState<Record<string, string>>({});
   const [bakedTextSources, setBakedTextSources] = useState<BakedTextSourceRecord[]>([]);
@@ -6139,6 +6143,49 @@ export default function App() {
     const spriteImportActive = assetTab === "sprite" && pendingSpriteImport !== null;
     const assetTabs: AssetTab[] = ["sprite", "audio", "font"];
     const fontPreviewText = preferences.fontPreviewText.trim() || DEFAULT_FONT_PREVIEW_TEXT;
+    const normalizedAssetSearch = assetSearchQuery.trim().toLocaleLowerCase();
+    const matchesAssetSearch = (displayName: string) => normalizedAssetSearch === ""
+      || displayName.toLocaleLowerCase().includes(normalizedAssetSearch);
+    const filteredAnimationClips = spriteAssetFilter === "all" || spriteAssetFilter === "animation"
+      ? animationClips.filter((clip) => matchesAssetSearch(animationLabel(clip)))
+      : [];
+    const filteredSourceSpriteGroups = sourceSpriteGroups.flatMap((sourceGroup) => {
+      const textGroup = sourceGroup.label === "Text sprite" || sourceGroup.label === "Text";
+      const typeVisible = spriteAssetFilter === "all"
+        || (spriteAssetFilter === "text" && textGroup)
+        || (spriteAssetFilter === "static" && !textGroup);
+      if (!typeVisible) return [];
+      const items = sourceGroup.items.filter((group) => matchesAssetSearch(assetById.get(group.assetId)?.display_name ?? group.assetId));
+      if (items.length === 0) return [];
+      return [{
+        ...sourceGroup,
+        detail: `${items.length} asset${items.length === 1 ? "" : "s"}`,
+        items,
+      }];
+    });
+    const filteredAudioCueGroups = audioCueGroups.flatMap((cueGroup) => {
+      const items = cueGroup.items.filter((cue) => matchesAssetSearch(audioCueDisplayName(cue)));
+      if (items.length === 0) return [];
+      return [{
+        ...cueGroup,
+        detail: `${items.length} cue${items.length === 1 ? "" : "s"}`,
+        items,
+      }];
+    });
+    const filteredFontAssets = fontAssets.filter((font) => matchesAssetSearch(font.display_name));
+    const sourceSpriteCount = sourceSpriteGroups.reduce((total, group) => total + group.items.length, 0);
+    const filteredSourceSpriteCount = filteredSourceSpriteGroups.reduce((total, group) => total + group.items.length, 0);
+    const totalAssetCount = assetTab === "sprite"
+      ? animationClips.length + sourceSpriteCount
+      : assetTab === "audio"
+        ? audioCues.length
+        : fontAssets.length;
+    const matchingAssetCount = assetTab === "sprite"
+      ? filteredAnimationClips.length + filteredSourceSpriteCount
+      : assetTab === "audio"
+        ? filteredAudioCueGroups.reduce((total, group) => total + group.items.length, 0)
+        : filteredFontAssets.length;
+    const hasMatchingAssets = matchingAssetCount > 0;
     const assetLibraryZoom = preferences.assetLibraryZoom;
     const assetLibraryZoomPercent = Math.round(assetLibraryZoom * 100);
     const assetLibraryZoomStyle = {
@@ -6264,6 +6311,43 @@ export default function App() {
               </>}
             </div>
           </div>
+          <div className="asset-library-tools" onClick={(event) => event.stopPropagation()}>
+            <label className="asset-library-search">
+              <Search size={16} aria-hidden="true" />
+              <input
+                type="search"
+                value={assetSearchQuery}
+                onChange={(event) => setAssetSearchQuery(event.target.value)}
+                placeholder={`Search ${assetTab === "sprite" ? "sprites" : assetTab === "audio" ? "SFX" : "fonts"}`}
+                aria-label={`Search ${assetTab === "sprite" ? "sprites" : assetTab === "audio" ? "SFX" : "fonts"}`}
+              />
+              {assetSearchQuery !== "" && <button
+                className="asset-library-search-clear"
+                type="button"
+                title="Clear asset search"
+                aria-label="Clear asset search"
+                onClick={() => setAssetSearchQuery("")}
+              >
+                <X size={15} aria-hidden="true" />
+              </button>}
+            </label>
+            {assetTab === "sprite" && <div className="asset-library-filters" role="group" aria-label="Filter sprite assets">
+              {(["all", "static", "animation", "text"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  className={spriteAssetFilter === filter ? "active" : ""}
+                  aria-pressed={spriteAssetFilter === filter}
+                  onClick={() => setSpriteAssetFilter(filter)}
+                >
+                  {filter === "all" ? "All" : filter === "animation" ? "Animated" : filter[0].toUpperCase() + filter.slice(1)}
+                </button>
+              ))}
+            </div>}
+            <span className="asset-library-match-count">
+              {matchingAssetCount === totalAssetCount ? totalAssetCount : `${matchingAssetCount} of ${totalAssetCount}`}
+            </span>
+          </div>
           <div id="asset-library-panel" role="tabpanel" aria-labelledby={`asset-tab-${assetTab}`}>
           {assetTab === "audio" && pendingAudioImport !== null ? (
             renderAudioImportPanel(canEditAssets)
@@ -6275,25 +6359,25 @@ export default function App() {
           {assetTab === "sprite" && renderSpriteImportPanel(canEditAssets)}
           {assetTab === "sprite" && renderAnimationNormalizePanel(canEditAssets)}
           <div className="asset-group-stack">
-            {assetTab === "sprite" && animationClips.length > 0 && <section className="asset-group-panel">
+            {assetTab === "sprite" && filteredAnimationClips.length > 0 && <section className="asset-group-panel">
               <div className="asset-group-heading">
                 <strong>Animated sprites</strong>
-                <span>{animationClips.length} animation{animationClips.length === 1 ? "" : "s"}</span>
+                <span>{filteredAnimationClips.length} animation{filteredAnimationClips.length === 1 ? "" : "s"}</span>
               </div>
-              <div className="asset-frame-gallery animation-asset-gallery">{animationClips.map(clip => <SpriteAssetCard key={clip.animation_id}
+              <div className="asset-frame-gallery animation-asset-gallery">{filteredAnimationClips.map(clip => <SpriteAssetCard key={clip.animation_id}
                 frames={clip.frame_refs.flatMap(id => compiledAssetFrameById.get(id) ? [compiledAssetFrameById.get(id)!] : [])}
                 durations={clip.frame_duration_ms} name={animationLabel(clip)}
                 selected={assetSelection?.kind === "animation" && assetSelection.clipId === clip.animation_id}
                 playback={preferences.thumbnailPlayback} onSelect={() => selectAssetRecord({kind:"animation",clipId:clip.animation_id})} />)}</div>
             </section>}
-            {assetTab === "sprite" && visibleCompiledAssetFrameGroups.length > 0 && (
+            {assetTab === "sprite" && filteredSourceSpriteCount > 0 && (
               <section className="asset-group-panel">
                 <div className="asset-group-heading">
-                  <strong>Static sprites</strong>
-                  <span>{visibleCompiledAssetFrameGroups.length} sprite{visibleCompiledAssetFrameGroups.length === 1 ? "" : "s"}</span>
+                  <strong>{spriteAssetFilter === "text" ? "Text sprites" : "Static sprites"}</strong>
+                  <span>{filteredSourceSpriteCount} sprite{filteredSourceSpriteCount === 1 ? "" : "s"}</span>
                 </div>
                 <div className="asset-subgroup-stack">
-                  {sourceSpriteGroups.map((sourceGroup) => (
+                  {filteredSourceSpriteGroups.map((sourceGroup) => (
                     <section className="asset-subgroup" key={sourceGroup.key}>
                       <div className="asset-subgroup-heading">
                         <strong>{sourceGroup.label}</strong>
@@ -6357,14 +6441,14 @@ export default function App() {
                 </div>
               </section>
             )}
-            {assetTab === "audio" && audioCues.length > 0 && (
+            {assetTab === "audio" && matchingAssetCount > 0 && (
               <section className="asset-group-panel">
                 <div className="asset-group-heading">
                   <strong>Sampled SFX</strong>
-                  <span>{audioCues.length} cue{audioCues.length === 1 ? "" : "s"}</span>
+                  <span>{matchingAssetCount} cue{matchingAssetCount === 1 ? "" : "s"}</span>
                 </div>
                 <div className="asset-subgroup-stack">
-                  {audioCueGroups.map((cueGroup) => (
+                  {filteredAudioCueGroups.map((cueGroup) => (
                     <section className="asset-subgroup" key={cueGroup.key}>
                       <div className="asset-subgroup-heading">
                         <strong>{cueGroup.label}</strong>
@@ -6420,14 +6504,14 @@ export default function App() {
                 </div>
               </section>
             )}
-            {assetTab === "font" && fontAssets.length > 0 && (
+            {assetTab === "font" && filteredFontAssets.length > 0 && (
               <section className="asset-group-panel">
                 <div className="asset-group-heading">
                   <strong>Imported fonts</strong>
-                  <span>{fontAssets.length} font{fontAssets.length === 1 ? "" : "s"}</span>
+                  <span>{filteredFontAssets.length} font{filteredFontAssets.length === 1 ? "" : "s"}</span>
                 </div>
                 <div className="font-asset-list">
-                  {fontAssets.map(font => {
+                  {filteredFontAssets.map(font => {
                     const previewFamily = fontPreviewFamilies[font.font_id];
                     const previewStyle: CSSProperties | undefined = previewFamily !== undefined && previewFamily !== ""
                       ? { fontFamily: `"${previewFamily}"` }
@@ -6456,6 +6540,18 @@ export default function App() {
                 <StudioIcon name={assetTab === "sprite" ? "sprite" : assetTab === "audio" ? "sfx" : "text"} className="studio-ui-icon-empty" />
                 <strong>{assetTab === "sprite" ? "No sprites" : assetTab === "audio" ? "No audio assets" : "No fonts"}</strong>
                 {assetTab === "font" && <span>Import a custom font once, then generate text sprites from it.</span>}
+              </div>
+            )}
+            {hasTabAssets && !hasMatchingAssets && (
+              <div className="asset-workspace-empty">
+                <Search size={30} aria-hidden="true" />
+                <strong>No matching assets</strong>
+                <span>Try another name or clear the current filter.</span>
+                <button className="button secondary" type="button" onClick={(event) => {
+                  event.stopPropagation();
+                  setAssetSearchQuery("");
+                  setSpriteAssetFilter("all");
+                }}>Clear filters</button>
               </div>
             )}
           </div>

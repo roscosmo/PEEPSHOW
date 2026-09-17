@@ -551,6 +551,11 @@ Agreed delivery order:
    filtered import controls, independent empty states and keyboard navigation.
    Switching tabs clears the previous asset selection and stops its preview;
    project data is unchanged. Group assets using tags; an asset may have multiple tags.
+   The library also provides case-insensitive display-name search on every tab.
+   Sprites can be narrowed to Static, Animated or Text without reordering items,
+   changing selection, or modifying project data. A visible match count and a
+   dedicated clear control keep filtered results explicit. Library-background
+   clicks still clear asset selection but do not clear search or type filters.
    Coordinate persistent tag metadata with the shared authoring contract before
    adding fields or commands. Current typed sprite/audio records have no tag
    field; the contract's entity-definition tags are not an asset-tag contract.
