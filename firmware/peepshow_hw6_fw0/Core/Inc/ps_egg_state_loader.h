@@ -160,7 +160,7 @@ typedef struct
 } ps_egg_v2_profile_result_t;
 
 /* thRuntime only; shares the serialized candidate scratch/HASH path.
- * Checks integrity and the first single-scene V2 feature profile. Does not
+ * Checks integrity and the resident single-scene V2 feature profile. Does not
  * activate, publish catalogs, retain blob pointers, or authorize installation.
  * Returns 0 on profile success, 1 on rejection. result must be non-NULL.
  * Production ValidatePackage intentionally continues rejecting V2.
@@ -173,15 +173,17 @@ uint32_t PS_EggStateLoader_ValidateV2Profile(const uint8_t *blob, uint32_t size,
 uint32_t PS_EggStateLoader_DecodeV2Candidate(const uint8_t *blob, uint32_t size,
   ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
   ps_egg_v2_profile_result_t *result);
-/* Preparation only, thRuntime only, using the same serialized scratch/HASH path.
+/* thRuntime only, using the same serialized scratch/HASH path.
  * Validates every scene against the resident V2 subset, allowing action-free
  * exits to another scene's default entry. scene_id=0 selects package entry.
  * Uses the existing loader scene-count and resident-byte bounds. No mixed
- * models, audio, history/resume, activation or display/LPBAM admission.
+ * models, history/resume, activation or display/LPBAM admission. Resident sampled
+ * SFX catalogs and local PLAY_SFX actions are allowed; exit actions remain empty.
  * On success result->scene_count supplies the graph-validation bound; descriptor
  * and catalog borrow blob bytes, which must remain immutable until released.
  * On rejection both outputs are cleared. Neither the active loader nor its
- * catalog changes. Existing installed/export admission remains single-scene.
+ * catalog changes. Installation additionally requires exact owner admission;
+ * public export capabilities are a separate, hardware-qualified subset.
  */
 uint32_t PS_EggStateLoader_DecodeV2SceneCandidate(const uint8_t *blob, uint32_t size,
   uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,

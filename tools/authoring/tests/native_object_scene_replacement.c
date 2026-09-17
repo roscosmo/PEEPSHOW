@@ -136,6 +136,84 @@ static void hardware_fixture(void)
   puts("labelled HOME/AWAY fixture: real owner raster admission and fresh replacement passed");
 }
 
+static void installed_sfx(uint32_t size)
+{
+  uint32_t cue, timer, epoch, next;
+  ps_egg_state_loader_audio_cue_t short_cue, long_cue, after;
+  memcpy(baseline, candidate, size);
+  baseline_size = size;
+  PS_SceneRuntime_SetObjectSceneAdmission(PS_HW6_RTOS_ObjectSceneCheck);
+  installed_preflight(size);
+  assert(PS_SceneRuntime_EnterStateScene() != PS_SCENE_RUNTIME_INDEX_INVALID);
+  assert(PS_SceneRuntime_InstalledObjectsActive());
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0);
+  assert(PS_SceneRuntime_AdvanceDevelopmentObjects(650) == 0);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0);
+  save_source();
+  inject_missing_scene = 1;
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 4) == PS_SCENE_RUNTIME_INPUT_ERROR);
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0);
+  /* A rejected local candidate uses the snapshot scratch, not the live bank. */
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0);
+  source_unchanged();
+  inject_missing_scene = 0;
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 4) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 1);
+  assert(PS_EggStateLoader_GetAudioCue(cue, &short_cue) == 1);
+  assert(short_cue.sample_count == 1280 && short_cue.duration_ms == 80);
+  assert(short_cue.priority == 1 && short_cue.volume == 96);
+  assert(short_cue.package_backed == 0 && short_cue.adpcm >= baseline &&
+         short_cue.adpcm + short_cue.adpcm_size <= baseline + size);
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0);
+  assert(s_ps_object_graph.objects.elapsed_ms == 650);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0);
+  assert(s_ps_object_snapshot.objects[0].step == 1 &&
+         s_ps_object_snapshot.objects[0].remaining_ms == 150);
+  assert(s_ps_object_snapshot.objects[1].effective.x == 120);
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 4) == PS_SCENE_RUNTIME_INPUT_IGNORED);
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0);
+  for (timer = 0; timer < s_ps_scene_runtime_state_scene->event_binding_count; ++timer)
+  {
+    if (s_ps_scene_runtime_state_scene->event_bindings[timer].event_class ==
+        PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) { break; }
+  }
+  assert(timer < s_ps_scene_runtime_state_scene->event_binding_count);
+  epoch = PS_SceneRuntime_StateActivation();
+  assert(PS_SceneRuntime_HandleStateSceneEvent(timer) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(PS_SceneRuntime_StateActivation() == epoch);
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 1);
+  assert(PS_EggStateLoader_GetAudioCue(cue, &long_cue) == 1);
+  assert(long_cue.sample_count == 96000 && long_cue.duration_ms == 6000);
+  assert(long_cue.priority == 1 && long_cue.volume == 96 && long_cue.package_backed == 0);
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0);
+  assert(s_ps_object_snapshot.objects[2].effective.flags & 1);
+  assert(s_ps_object_graph.objects.elapsed_ms == 650);
+  save_source();
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(ps_package_validation_status == 0);
+  source_unchanged();
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 1) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(g_ps_scene_runtime_probe.scene_id == 2);
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0);
+  assert(PS_EggStateLoader_GetAudioCue(long_cue.cue_index, &after) == 1);
+  assert(after.adpcm == long_cue.adpcm && after.adpcm_size == long_cue.adpcm_size);
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 4) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 1);
+  assert(PS_EggStateLoader_GetAudioCue(cue, &after) == 1);
+  assert(after.adpcm == short_cue.adpcm && after.volume == short_cue.volume);
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0);
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 2) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(g_ps_scene_runtime_probe.scene_id == 1 && g_ps_scene_runtime_probe.state_id == 1);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0);
+  assert(s_ps_object_snapshot.objects[0].step == 0 &&
+         s_ps_object_snapshot.objects[1].effective.x == 32 &&
+         !(s_ps_object_snapshot.objects[2].effective.flags & 1));
+  assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0);
+  PS_SceneRuntime_ExitStateScene();
+  puts("installed resident SFX: owner admission, atomic effects and catalog lifetime passed");
+}
+
 int main(int argc, char **argv)
 {
   uint32_t size, result, next, trial, token;
@@ -152,6 +230,11 @@ int main(int argc, char **argv)
   {
     assert(size == 3440);
     hardware_fixture();
+    return 0;
+  }
+  if (argc == 3 && strcmp(argv[2], "audio") == 0)
+  {
+    installed_sfx(size);
     return 0;
   }
   installed_test = argc == 3;

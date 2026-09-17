@@ -79,7 +79,12 @@ class V2ProfileTests(unittest.TestCase):
         scene = deepcopy(gui.scenes[0])
         scene["interaction_policy"].update(mode="timeout", inactive_route="preserve_scene")
         fixture("timeout", build_development_egg_v2(replace(gui, scenes=(scene,))), 6)
-        fixture("audio", build_development_egg_v2(sfx_fixture_bundle()), 7)
+        audio = sfx_fixture_bundle()
+        audio_scene = deepcopy(audio.scenes[0])
+        for route in audio_scene["routes"]:
+            route["actions"] = [action for action in route["actions"]
+                                if action["kind"] != "exit_to_shell"]
+        fixture("resident_audio", build_development_egg_v2(replace(audio, scenes=(audio_scene,))))
         fixture("shell_action", build_development_egg_v2(fixture_bundle()), 10, item=0)
         corrupt = bytearray(good)
         corrupt[-1] ^= 1

@@ -3104,10 +3104,8 @@ static uint32_t PS_EggCheckV2Profile(ps_egg_context_t *context,
   { result->reason = PS_EGG_V2_PROFILE_MODEL; return 1UL; }
   if (scene->interaction_mode != PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS)
   { result->reason = PS_EGG_V2_PROFILE_INTERACTION; return 1UL; }
-  if ((PS_EggCountChunks(context, PS_EGG_CHUNK_AUDIO_ASSETS) != 0UL) ||
-      (PS_EggCountChunks(context, PS_EGG_CHUNK_AUDIO_BANK) != 0UL) ||
-      (PS_EggCountChunks(context, PS_EGG_CHUNK_AUDIO_CUES) != 0UL))
-  { result->reason = PS_EGG_V2_PROFILE_AUDIO; return 1UL; }
+  /* The loader has validated complete resident audio and cue references.
+   * Profile entry points still reject packages above the resident ceiling. */
   for (index = 0UL; index < scene->event_binding_count; ++index)
   {
     if ((scene->event_bindings[index].event_class != PS_SCENE_RUNTIME_EVENT_CLASS_INPUT) &&
@@ -3135,6 +3133,7 @@ static uint32_t PS_EggCheckV2Profile(ps_egg_context_t *context,
     uint32_t kind = scene->actions[index].kind;
     if ((kind != PS_SCENE_RUNTIME_ACTION_OBJECT_OPERATION) &&
         (kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_PLAY_SFX) &&
         (kind != PS_SCENE_RUNTIME_ACTION_START_TIMER) &&
         (kind != PS_SCENE_RUNTIME_ACTION_RESTART_TIMER) &&
         (kind != PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER))
