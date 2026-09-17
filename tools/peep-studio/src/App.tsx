@@ -232,6 +232,8 @@ type PendingAudioImport = {
   suggestedTrimEndMs: number;
   trimStartMs: number;
   trimEndMs: number;
+  appliedTrimStartMs?: number;
+  appliedTrimEndMs?: number;
 };
 
 function audioCueDisplayName(cue: Pick<AudioCueRecord, "cue_id" | "display_name">): string {
@@ -2325,6 +2327,39 @@ export default function App() {
     }
   };
 
+  const playAudioData = async (
+    cueId: string,
+    wavBase64: string,
+    durationMs: number,
+    status: string,
+    message: string,
+  ) => {
+    const audio = new Audio(`data:audio/wav;base64,${wavBase64}`);
+    audioPlaybackRef.current = audio;
+    let progressFrame = 0;
+    const updateProgress = () => {
+      if (audioPlaybackRef.current !== audio) return;
+      const fallbackDuration = Math.max(0.001, durationMs / 1000);
+      const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : fallbackDuration;
+      setAudioAuditionProgress({ cueId, progress: Math.min(1, Math.max(0, audio.currentTime / duration)) });
+      if (!audio.paused && !audio.ended) progressFrame = window.requestAnimationFrame(updateProgress);
+    };
+    audio.addEventListener("ended", () => {
+      if (audioPlaybackRef.current === audio) {
+        audioPlaybackRef.current = null;
+        setAudioAuditionProgress({ cueId, progress: 1 });
+        window.setTimeout(() => {
+          setAudioAuditionProgress((current) => current?.cueId === cueId && current.progress >= 1 ? null : current);
+        }, 250);
+      }
+      window.cancelAnimationFrame(progressFrame);
+    }, { once: true });
+    await audio.play();
+    progressFrame = window.requestAnimationFrame(updateProgress);
+    setAudioAuditionStatus(status);
+    setMessage(message);
+  };
+
   const auditionAudioCue = async (cueId: string) => {
     if (bridge === undefined || project === null || busy !== null || service?.operations.includes("project.audio_audition") !== true) {
       return;
@@ -2338,35 +2373,42 @@ export default function App() {
         cue_id: cueId,
       });
       const cueLabel = audioCueDisplayName(audioCues.find((cue) => cue.cue_id === cueId) ?? { cue_id: cueId });
-      const audio = new Audio(`data:audio/wav;base64,${result.audio.wav_base64}`);
-      audioPlaybackRef.current = audio;
-      let progressFrame = 0;
-      const updateProgress = () => {
-        if (audioPlaybackRef.current !== audio) {
-          return;
-        }
-        const fallbackDuration = Math.max(0.001, result.audio.duration_ms / 1000);
-        const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : fallbackDuration;
-        setAudioAuditionProgress({ cueId, progress: Math.min(1, Math.max(0, audio.currentTime / duration)) });
-        if (!audio.paused && !audio.ended) {
-          progressFrame = window.requestAnimationFrame(updateProgress);
-        }
-      };
-      audio.addEventListener("ended", () => {
-        if (audioPlaybackRef.current === audio) {
-          audioPlaybackRef.current = null;
-          setAudioAuditionProgress({ cueId, progress: 1 });
-          window.setTimeout(() => {
-            setAudioAuditionProgress((current) => current?.cueId === cueId && current.progress >= 1 ? null : current);
-          }, 250);
-        }
-        window.cancelAnimationFrame(progressFrame);
-      }, { once: true });
-      await audio.play();
-      progressFrame = window.requestAnimationFrame(updateProgress);
+      await playAudioData(
+        cueId,
+        result.audio.wav_base64,
+        result.audio.duration_ms,
+        `Played packaged ${result.audio.duration_ms} ms cue at ${result.audio.sample_rate_hz} Hz.`,
+        `Auditioned ${cueLabel} from packaged ADPCM bytes.`,
+      );
       selectAssetRecord({ kind: "audio", cueId });
-      setAudioAuditionStatus(`Played packaged ${result.audio.duration_ms} ms cue at ${result.audio.sample_rate_hz} Hz.`);
-      setMessage(`Auditioned ${cueLabel} from packaged ADPCM bytes.`);
+    } catch (error) {
+      const text = errorText(error);
+      setAudioAuditionStatus(`Audition failed: ${text}`);
+      setMessage(text);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const auditionSelectedAudioTrim = async () => {
+    if (bridge === undefined || projectPath === null || selectedAudioCue === null || selectedAudioTrim === null || busy !== null) return;
+    setBusy("Auditioning selection");
+    setPlaying(false);
+    stopAudioPlayback();
+    try {
+      const result = await bridge.previewAudioWav(projectPath, selectedAudioTrim.sourcePath, {
+        normalize: normalizeAudioImports,
+        targetPeakDbfs: audioImportPeakDbfs,
+        trimStartMs: selectedAudioTrim.trimStartMs,
+        trimEndMs: selectedAudioTrim.trimEndMs,
+      });
+      await playAudioData(
+        selectedAudioCue.cue_id,
+        result.wavBase64,
+        result.durationMs,
+        `Auditioning ${Math.round(selectedAudioTrim.trimStartMs)}-${Math.round(selectedAudioTrim.trimEndMs)} ms.`,
+        `Auditioned the current trim selection for ${audioCueDisplayName(selectedAudioCue)}.`,
+      );
     } catch (error) {
       const text = errorText(error);
       setAudioAuditionStatus(`Audition failed: ${text}`);
@@ -4324,7 +4366,11 @@ export default function App() {
     if (bridge === undefined || projectPath === null || selectedAudioAsset === null) return () => { cancelled = true; };
     void bridge.inspectProjectAudioWav(projectPath, selectedAudioAsset.source_path)
       .then((selected) => {
-        if (!cancelled) setSelectedAudioTrim({ ...selected, trimStartMs: 0, trimEndMs: selected.durationMs });
+        if (!cancelled) setSelectedAudioTrim({
+          ...selected,
+          appliedTrimStartMs: selected.trimStartMs,
+          appliedTrimEndMs: selected.trimEndMs,
+        });
       })
       .catch((error) => {
         if (!cancelled) setSelectedAudioTrimError(errorText(error));
@@ -6796,7 +6842,8 @@ export default function App() {
                     disabled={busy !== null
                       || service?.state_scene_audio.asset_commands.includes("audio_asset.upsert") !== true
                       || selectedAudioTrim.trimEndMs - selectedAudioTrim.trimStartMs < 1
-                      || (selectedAudioTrim.trimStartMs === 0 && selectedAudioTrim.trimEndMs === selectedAudioTrim.durationMs)}
+                      || (selectedAudioTrim.trimStartMs === selectedAudioTrim.appliedTrimStartMs
+                        && selectedAudioTrim.trimEndMs === selectedAudioTrim.appliedTrimEndMs)}
                     onClick={() => void applySelectedAudioTrim()}>Apply trim</button>
                 </div>
                 <span>{Math.round(selectedAudioTrim.trimEndMs - selectedAudioTrim.trimStartMs)} ms retained of {Math.round(selectedAudioTrim.durationMs)} ms</span>
@@ -6806,11 +6853,11 @@ export default function App() {
             <button
               className="button primary"
               type="button"
-              disabled={busy !== null || !project?.valid || service?.operations.includes("project.audio_audition") !== true}
-              onClick={() => void auditionAudioCue(selectedAudioCue.cue_id)}
+              disabled={busy !== null || selectedAudioTrim === null}
+              onClick={() => void auditionSelectedAudioTrim()}
             >
               <Play size={15} aria-hidden="true" />
-              Audition
+              Audition selection
             </button>
             <span>{audioAuditionStatus}</span>
           </div>

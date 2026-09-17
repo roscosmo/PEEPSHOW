@@ -1,5 +1,11 @@
 const assert = require("node:assert/strict");
 const { inspectPcmWave, normalizePcmWave, preparePcmWave } = require("../dist-electron/audioNormalization.js");
+const {
+  findAudioEditVersion,
+  parseAudioEditCatalog,
+  serializeAudioEditCatalog,
+  upsertAudioEditVersion,
+} = require("../dist-electron/audioLineage.js");
 
 function pcmWave(bitsPerSample, samples, channels = 1, format = 1) {
   const bytesPerSample = bitsPerSample / 8;
@@ -86,4 +92,25 @@ assert.doesNotThrow(() => preparePcmWave(unpaddedWave, {
   normalize: true, targetPeakDbfs: -6, trimStartMs: 0, trimEndMs: unpaddedInspection.durationMs,
 }));
 
-console.log("PCM WAV normalization and frame-aligned trimming passed for supported depths, stereo, silence, and invalid inputs");
+const firstEdit = {
+  output_source_path: "assets/sound_2.wav",
+  original_source_path: "assets/audio/sources/sound.wav",
+  trim_start_ms: 120,
+  trim_end_ms: 900,
+  normalized: true,
+  target_peak_dbfs: -6,
+};
+const resetEdit = {
+  ...firstEdit,
+  output_source_path: "assets/sound_3.wav",
+  trim_start_ms: 0,
+  trim_end_ms: 1200,
+};
+const lineage = upsertAudioEditVersion(upsertAudioEditVersion([], firstEdit), resetEdit);
+const reopened = parseAudioEditCatalog(serializeAudioEditCatalog(lineage));
+assert.deepEqual(findAudioEditVersion(reopened, firstEdit.output_source_path), firstEdit);
+assert.deepEqual(findAudioEditVersion(reopened, resetEdit.output_source_path), resetEdit);
+assert.equal(findAudioEditVersion(reopened, "assets/sound.wav"), null);
+assert.deepEqual(parseAudioEditCatalog('{"versions":[{"output_source_path":"../escape.wav"}]}'), []);
+
+console.log("PCM WAV normalization, trimming, and non-destructive audio lineage checks passed");

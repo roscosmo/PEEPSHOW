@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld("peepStudio", {
   chooseAudioWav: (projectPath: string) => ipcRenderer.invoke("peep:choose-audio-wav", projectPath),
   inspectProjectAudioWav: (projectPath: string, sourcePath: string) =>
     ipcRenderer.invoke("peep:inspect-project-audio-wav", projectPath, sourcePath),
+  previewAudioWav: (projectPath: string, sourcePath: string, options: { normalize: boolean; targetPeakDbfs: number; trimStartMs: number; trimEndMs: number }) =>
+    ipcRenderer.invoke("peep:preview-audio-wav", projectPath, sourcePath, options),
   importAudioWav: (projectPath: string, sourcePath: string, options: { normalize: boolean; targetPeakDbfs: number; trimStartMs: number; trimEndMs: number }) =>
     ipcRenderer.invoke("peep:import-audio-wav", projectPath, sourcePath, options),
   audioThumbnailSource: (projectPath: string, sourcePath: string) => ipcRenderer.invoke("peep:audio-thumbnail-source", projectPath, sourcePath),

@@ -58,6 +58,13 @@ interface PeepStudioBridge {
     waveformPeaks: number[];
     suggestedTrimStartMs: number;
     suggestedTrimEndMs: number;
+    trimStartMs: number;
+    trimEndMs: number;
+  }>;
+  previewAudioWav(projectPath: string, sourcePath: string, options: { normalize: boolean; targetPeakDbfs: number; trimStartMs: number; trimEndMs: number }): Promise<{
+    wavBase64: string;
+    durationMs: number;
+    sampleRateHz: number;
   }>;
   importAudioWav(projectPath: string, sourcePath: string, options: { normalize: boolean; targetPeakDbfs: number; trimStartMs: number; trimEndMs: number }): Promise<{
     assetId: string;

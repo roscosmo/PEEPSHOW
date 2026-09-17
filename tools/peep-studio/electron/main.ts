@@ -4,6 +4,13 @@ import { cp, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import {
+  findAudioEditVersion,
+  parseAudioEditCatalog,
+  serializeAudioEditCatalog,
+  upsertAudioEditVersion,
+  type AudioEditVersion,
+} from "./audioLineage.js";
 import { readThumbnailAudio } from "./audioThumbnail.js";
 import { inspectPcmWave, preparePcmWave } from "./audioNormalization.js";
 
@@ -282,6 +289,46 @@ async function writeFontCatalog(projectRoot: string, fonts: FontAssetRecord[]): 
 
 function bakedTextCatalogPath(projectRoot: string): string {
   return path.join(projectRoot, "assets", "text", "catalog.json");
+}
+
+function audioEditCatalogPath(projectRoot: string): string {
+  return path.join(projectRoot, "assets", "audio", "catalog.json");
+}
+
+async function readAudioEditCatalog(projectRoot: string): Promise<AudioEditVersion[]> {
+  try {
+    return parseAudioEditCatalog(await readFile(audioEditCatalogPath(projectRoot), "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+async function writeAudioEditCatalog(projectRoot: string, versions: AudioEditVersion[]): Promise<void> {
+  await mkdir(path.dirname(audioEditCatalogPath(projectRoot)), { recursive: true });
+  await writeFile(audioEditCatalogPath(projectRoot), serializeAudioEditCatalog(versions), "utf-8");
+}
+
+function relativeProjectPath(projectRoot: string, absolutePath: string): string | null {
+  const relative = path.relative(projectRoot, absolutePath);
+  return relative.startsWith("..") || path.isAbsolute(relative) ? null : relative.replace(/\\/g, "/");
+}
+
+async function preserveAudioOriginal(projectRoot: string, sourcePath: string): Promise<{ absolutePath: string; relativePath: string }> {
+  const existingRelative = relativeProjectPath(projectRoot, sourcePath);
+  if (existingRelative !== null) return { absolutePath: sourcePath, relativePath: existingRelative };
+  const sourceRoot = path.join(projectRoot, "assets", "audio", "sources");
+  const base = assetIdFromFilename(sourcePath, "audio_source");
+  await mkdir(sourceRoot, { recursive: true });
+  for (let index = 0; index < 1000; index += 1) {
+    const suffix = index === 0 ? "" : `_${index + 1}`;
+    const filename = `${base}${suffix}.wav`;
+    const absolutePath = path.join(sourceRoot, filename);
+    if (!(await pathExists(absolutePath))) {
+      await cp(sourcePath, absolutePath);
+      return { absolutePath, relativePath: `assets/audio/sources/${filename}` };
+    }
+  }
+  throw new Error("Could not preserve the original audio source");
 }
 
 function validBakedTextSource(record: Partial<BakedTextSourceRecord>): record is BakedTextSourceRecord {
@@ -931,12 +978,45 @@ ipcMain.handle("peep:inspect-project-audio-wav", async (_event, projectPath: unk
   if (!projectRoot.endsWith(".peepproj") || path.extname(sourcePathValue).toLowerCase() !== ".wav") {
     throw new Error("Project audio source must be a WAV inside a .peepproj directory");
   }
-  const sourcePath = resolveProjectRelativePath(projectRoot, sourcePathValue);
+  const versions = await readAudioEditCatalog(projectRoot);
+  const version = findAudioEditVersion(versions, sourcePathValue);
+  const originalSourcePath = version?.original_source_path ?? sourcePathValue.replace(/\\/g, "/");
+  const sourcePath = resolveProjectRelativePath(projectRoot, originalSourcePath);
   const inspection = inspectPcmWave(await readFile(sourcePath));
   return {
     sourcePath,
-    sourceName: path.basename(sourcePathValue),
+    sourceName: path.basename(originalSourcePath),
     ...inspection,
+    trimStartMs: version?.trim_start_ms ?? 0,
+    trimEndMs: version?.trim_end_ms ?? inspection.durationMs,
+  };
+});
+
+ipcMain.handle("peep:preview-audio-wav", async (_event, projectPath: unknown, sourcePathValue: unknown, options: unknown) => {
+  if (typeof projectPath !== "string" || typeof sourcePathValue !== "string") {
+    throw new Error("Invalid audio preview request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) throw new Error("Audio preview target must be a .peepproj directory");
+  const sourcePath = path.resolve(sourcePathValue);
+  if (relativeProjectPath(projectRoot, sourcePath) === null || path.extname(sourcePath).toLowerCase() !== ".wav") {
+    throw new Error("Audio preview source must be a project WAV");
+  }
+  const requested = options !== null && typeof options === "object"
+    ? options as { normalize?: unknown; targetPeakDbfs?: unknown; trimStartMs?: unknown; trimEndMs?: unknown }
+    : {};
+  const source = await readFile(sourcePath);
+  const inspection = inspectPcmWave(source, 1);
+  const prepared = preparePcmWave(source, {
+    normalize: requested.normalize !== false,
+    targetPeakDbfs: typeof requested.targetPeakDbfs === "number" ? requested.targetPeakDbfs : -6,
+    trimStartMs: typeof requested.trimStartMs === "number" ? requested.trimStartMs : 0,
+    trimEndMs: typeof requested.trimEndMs === "number" ? requested.trimEndMs : inspection.durationMs,
+  });
+  return {
+    wavBase64: prepared.wav.toString("base64"),
+    durationMs: prepared.outputDurationMs,
+    sampleRateHz: prepared.sampleRateHz,
   };
 });
 
@@ -948,17 +1028,18 @@ ipcMain.handle("peep:import-audio-wav", async (_event, projectPath: unknown, sou
   if (!projectRoot.endsWith(".peepproj")) {
     throw new Error("Audio import target must be a .peepproj directory");
   }
-  const sourcePath = path.resolve(sourcePathValue);
-  if (path.extname(sourcePath).toLowerCase() !== ".wav") {
+  const requestedSourcePath = path.resolve(sourcePathValue);
+  if (path.extname(requestedSourcePath).toLowerCase() !== ".wav") {
     throw new Error("Audio import source must be a WAV file");
   }
-  const destination = await uniqueAssetPath(projectRoot, sourcePath, "audio");
+  const preserved = await preserveAudioOriginal(projectRoot, requestedSourcePath);
+  const destination = await uniqueAssetPath(projectRoot, preserved.absolutePath, "audio");
   const requested = options !== null && typeof options === "object"
     ? options as { normalize?: unknown; targetPeakDbfs?: unknown; trimStartMs?: unknown; trimEndMs?: unknown }
     : {};
   const shouldNormalize = requested.normalize !== false;
   const targetPeakDbfs = typeof requested.targetPeakDbfs === "number" ? requested.targetPeakDbfs : -6;
-  const source = await readFile(sourcePath);
+  const source = await readFile(preserved.absolutePath);
   const inspection = inspectPcmWave(source, 1);
   const prepared = preparePcmWave(source, {
     normalize: shouldNormalize,
@@ -967,6 +1048,17 @@ ipcMain.handle("peep:import-audio-wav", async (_event, projectPath: unknown, sou
     trimEndMs: typeof requested.trimEndMs === "number" ? requested.trimEndMs : inspection.durationMs,
   });
   await writeFile(destination.destinationPath, prepared.wav);
+  const trimStartMs = typeof requested.trimStartMs === "number" ? requested.trimStartMs : 0;
+  const trimEndMs = typeof requested.trimEndMs === "number" ? requested.trimEndMs : inspection.durationMs;
+  const versions = await readAudioEditCatalog(projectRoot);
+  await writeAudioEditCatalog(projectRoot, upsertAudioEditVersion(versions, {
+    output_source_path: destination.relativePath.replace(/\\/g, "/"),
+    original_source_path: preserved.relativePath,
+    trim_start_ms: trimStartMs,
+    trim_end_ms: trimEndMs,
+    normalized: shouldNormalize,
+    target_peak_dbfs: targetPeakDbfs,
+  }));
   return {
     assetId: destination.assetId,
     sourcePath: destination.relativePath,

@@ -616,8 +616,15 @@ Agreed delivery order:
    in the inspector; there is no separate edit workspace. Applying a trim writes
    a versioned project WAV and updates the existing audio asset, preserving its
    cue ID, authored volume/priority and all references. Service Undo restores the
-   previous source. WAV parsing accepts both standard RIFF odd-chunk padding and
-   real-world metadata chunks that omit the optional pad byte.
+   previous source. Studio preserves an untouched project-local WAV and records
+   append-only generated-source lineage in `assets/audio/catalog.json`; lineage
+   is keyed by active source path so Undo/Redo and reopen recover the matching
+   trim range without mirroring backend history. Reset selects the complete
+   untouched source even after an edit has been applied. Inspector audition
+   renders only the current uncommitted handle range and animates progress between
+   those handles; library-card audition remains the committed packaged cue.
+   WAV parsing accepts both standard RIFF odd-chunk padding and real-world
+   metadata chunks that omit the optional pad byte.
 5. Project settings and per-asset controls are separate authoring scopes. The
    project-root inspector owns defaults and package-wide policy such as the SFX
    import normalization target and, when supported, inactivity policy. An audio

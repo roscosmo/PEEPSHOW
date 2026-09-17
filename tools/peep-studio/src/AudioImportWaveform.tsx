@@ -43,7 +43,7 @@ export function AudioImportWaveform({ peaks, durationMs, startMs, endMs, progres
     if (progress !== null) {
       context.strokeStyle = "#16727a";
       context.lineWidth = 3;
-      const progressX = Math.max(0, Math.min(1, progress)) * width;
+      const progressX = startX + Math.max(0, Math.min(1, progress)) * (endX - startX);
       context.beginPath();
       context.moveTo(progressX, 0);
       context.lineTo(progressX, height);
