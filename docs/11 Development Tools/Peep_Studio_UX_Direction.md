@@ -1212,12 +1212,14 @@ their existing capability-gated export path.
 The separate source fixture
 `examples/authoring/native_v2_lobby_garden_audio.peepproj` preserves the passed
 audio-free Lobby/Garden fixture unchanged. Matched Garden L/R state changes play
-a short cue without restarting the numbered animation. The targetless two-second
-scene-timer handler reveals TIMER and starts an approximately six-second cue.
+a prepared real UI cue without restarting the numbered animation. The targetless
+two-second scene-timer handler reveals TIMER and starts a prepared six-second SFX.
 Lobby/Garden scene-exit actions remain empty. The repeatable host check at
 `tools/peep-studio/tests/native-lobby-garden-audio-fixture.cjs` verifies those
 semantics, fresh Garden entry, capability agreement and normal public service
-export without using the development encoder.
+export without using the development encoder. Fixture WAVs are trimmed and
+normalized from `assets/audio/UI_Hover.wav` and `assets/audio/SFX_menuloop.wav`
+through Studio's existing audio preparation path rather than generated tones.
 
 ### Countdown Node Design (2026-09-12)
 

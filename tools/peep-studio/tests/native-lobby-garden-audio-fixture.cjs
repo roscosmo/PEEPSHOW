@@ -71,7 +71,7 @@ function object(snapshot, objectId) {
   assert.deepEqual(loaded.build_issues, []);
   assert.equal(loaded.document.audio_assets.length, 2);
   assert.equal(loaded.document.audio_cues.length, 2);
-  assert.deepEqual(loaded.document.audio_assets.map((asset) => asset.duration_ms), [100, 6000]);
+  assert.deepEqual(loaded.document.audio_assets.map((asset) => asset.duration_ms), [191, 6000]);
   for (const capability of Object.values(loaded.scene_capabilities)) {
     assert.equal(capability.export_ready, true);
     assert.equal(capability.export_readiness_scope, 'whole_project');

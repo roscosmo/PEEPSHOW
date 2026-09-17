@@ -95,7 +95,7 @@
     },
     {
       "cue_id": "garden_timer_tone.cue",
-      "display_name": "Garden timer tone",
+      "display_name": "Garden timer effect",
       "asset_ref": "garden_timer_tone",
       "priority": 112,
       "volume": 192
