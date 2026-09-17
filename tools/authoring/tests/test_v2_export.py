@@ -39,9 +39,9 @@ class V2ExportTests(unittest.TestCase):
     def test_service_build_exact_hardware_fixture_and_capabilities(self):
         service = AuthoringService()
         hello = service.handle(ServiceRequest("hello", "service.hello", {}))
-        self.assertEqual(44, hello["service_api_version"])
+        self.assertEqual(45, hello["service_api_version"])
         self.assertTrue(hello["scene_object_authoring"]["multi_scene_export"])
-        self.assertEqual(2, hello["package_export"]["v2_profile"]["profile_revision"])
+        self.assertEqual(3, hello["package_export"]["v2_profile"]["profile_revision"])
         self.assertEqual(PROFILE_ID, hello["package_export"]["v2_profile"]["profile_id"])
         loaded = service.handle(ServiceRequest("load", "project.load", {"path": str(FIXTURE)}))
         self.assertEqual([], loaded["build_issues"])
@@ -68,9 +68,9 @@ class V2ExportTests(unittest.TestCase):
         with self.assertRaises(ProtocolError):
             service.handle(ServiceRequest("stale", "project.build_package", {"project_revision": params["project_revision"] - 1}))
 
-    def test_audio_and_mixed_projects_are_readiness_errors(self):
+    def test_audio_does_not_admit_shell_actions_or_mixed_projects(self):
         audio = sfx_fixture_bundle()
-        self.assertIn("V2_AUDIO_UNSUPPORTED", {i["code"] for i in build_readiness_issues(audio)})
+        self.assertIn("V2_ACTION_UNSUPPORTED", {i["code"] for i in build_readiness_issues(audio)})
         mixed = replace(self.bundle, scenes=(*self.bundle.scenes, *self.bundle.scenes))
         self.assertIn("V2_SCENE_PROFILE", {i["code"] for i in build_readiness_issues(mixed)})
         with self.assertRaises(EggCompileError):
@@ -201,7 +201,7 @@ class V2ExportTests(unittest.TestCase):
             self.assertIn("V2_CAPACITY", self.codes(package))
 
     def test_reject_actions_interaction_and_events(self):
-        for kind in (2, 7, 8):
+        for kind in (2, 8):
             scene, package = self.edited_scene()
             scene["graph"]["routes"][0]["operations"] = ({"kind": kind},)
             self.assertIn("V2_ACTION_UNSUPPORTED", self.codes(package))

@@ -213,8 +213,14 @@ preview reuses the graph/timer executor with a labeled internal adapter, not a
 new executable package decoder. API 42 introduced ordinary V2 build/export for
 the restricted `hw6_v2_resident_v1` profile. API 44 expands its advertised
 `profile_revision` to 2: one to eight resident V2 scenes, input/timers/objects,
-action-free fresh scene exits, no audio, and conservative per-scene animation
-checks. Discover support
+action-free fresh scene exits and conservative per-scene animation checks.
+API 45 advances the profile to revision 3 and adds resident sampled SFX on local
+transitions/timer handlers. Discover `v2_profile.audio_profile` and V2 per-scene
+`audio_export`; audio shares the total 65536-byte package ceiling, not the
+legacy 4 MiB audio-bank allowance. Scene-exit actions remain empty; shell
+suspension stops/discards SFX and Resume never replays it. Music, looping and
+resumable playback remain unsupported. The exact handoff is
+`docs/11 Development Tools/Peep_Studio_V2_Audio_Export_Handoff.md`. Discover support
 through hello and per-scene capabilities; require whole-project `export_ready`
 and inspect `build_issues`. Unsupported drafts retain editing/preview. Legacy
 projects are not implicitly migrated. Export limits and GUI integration:

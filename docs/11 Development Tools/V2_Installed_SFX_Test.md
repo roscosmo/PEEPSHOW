@@ -1,0 +1,154 @@
+# Installed V2 Resident SFX Test
+
+Status: 2026-09-17, firmware admission and native tests implemented; installed
+audible behavior confirmed on hardware as recorded below. That firmware milestone
+kept public API 44 audio export disabled. The subsequent API 45 increment enables
+the resident subset; see [[Peep_Studio_V2_Audio_Export_Handoff]]. This is an OS
+bench fixture, not a Studio export workaround or shipping-profile claim.
+
+## Scope
+
+The resident V2 firmware profile now accepts validated audio catalogs and local
+PLAY_SFX actions, including targetless timer handlers. Existing loader validation
+checks the complete ADPCM bank, cue metadata and graph cue references before
+admission. Total package size, including footer, remains at most 65536 bytes.
+The existing target audio counts, codec, sample rate, cue volume and priority
+validation apply; no new firmware tuning values or buffers are introduced.
+
+All scenes still require exact owner raster/payload admission. Cross-scene exits
+remain action-free; shell-exit actions, mixed execution models and nonresident
+V2 audio remain rejected. The profile-reason enum retains its old AUDIO value
+for stable numeric diagnostics; malformed catalogs are loader AUDIO failures.
+
+The existing runtime commits SFX effects only after successful admission.
+`thAudio` owns decode, mixer, SAI/DMA and amplifier control; `thPower` owns clock
+and sleep decisions. No driver, clock policy, STOP2 or FileX behavior changes.
+Local changes and same-package scene replacement do not stop current SFX.
+Shell suspension stops and discards SFX; resume accepts new cues without replay.
+Music, fades, resumable audio and cross-scene exit effects remain excluded.
+
+## Fixture
+
+Generator: `tools/authoring/build_installed_sfx_fixture.py`. It reuses the
+structured HOME/AWAY visuals and the previously audible development tone data,
+without changing the linked embedded egg or any GUI project.
+
+```powershell
+python tools/authoring/build_installed_sfx_fixture.py --egg-output firmware/peepshow_hw6_fw0/build/Debug/installed_v2_sfx.egg
+```
+
+- Egg: `firmware/peepshow_hw6_fw0/build/Debug/installed_v2_sfx.egg`.
+- Size: 54696 bytes; two scenes, two sampled assets and two cues.
+- SHA-256: `af1fe2d09a3b527b47a640a355be318f29a37380315c9ee5e7ad53cea5feff9c`.
+- HOME=1, AWAY=2; initial scene HOME.
+- Both scenes show numbered 1-2-3-4 frames at 400 ms and fixed L/R slots.
+- L/R changes selection once and plays an 80 ms tone without restarting digits.
+  Selecting the already-selected side has no route and plays nothing.
+- HOME's bottom square appears once after two seconds, starting a six-second
+  tone. Local selection changes must not truncate it.
+- A enters AWAY; B returns HOME. Exits have empty action lists and play no new
+  sound. A running tone must continue across the scene change.
+- AWAY has no timer and no automatic return. Returning HOME is fresh, so its
+  two-second timer and subsequent tone start again.
+
+## Hardware Procedure
+
+This increment changes firmware, unlike the previous API 44 export test.
+Build/flash the ordinary `HW6 FW0: Debug with ST-LINK` launch configuration
+(prelaunch task `Build HW6 FW0 (Debug)`), then resume boot. Do not use the
+battery-shutdown-test configuration. Install the egg above through USB MSC and
+the shell, then PLAY. Do not run an embedded-install or development-enable helper.
+
+1. Observe the digits and HOME reveal; hear the long tone. Alternate L/R during
+   playback: short tones should overlap it, without animation restart or glitches.
+2. On a fresh HOME visit, wait for the long tone, then press A while it is still
+   sounding. AWAY must appear and the same tone must finish naturally. AWAY
+   must not trigger a new timer tone or return by itself.
+3. Return HOME with B. When its long tone starts, immediately HOLD START to open
+   the shell. The tone must stop early. Wait beyond its original end, then
+   Resume: no sound should restart. A fresh L/R change must still play a cue.
+4. Let all voices drain, release controls, and allow normal low-power animation.
+   Wake normally with a selection change; hear another cue, then let it drain.
+5. Deliberately reboot: HOME must load normally and its one-shot reveal/tone
+   must work again. Debugger reconnection alone is not this reboot test.
+
+Never halt during audible playback. Once quiet, halt and collect:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_installed_sfx_prints.gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_object_installed_prints.gdb
+```
+
+Require audible cues and positive decoded/refill work, zero underruns and package
+audio faults, and drained voices/outstanding requests/clock-held values of zero.
+After shell stop, blocked=1 and matching stop request/completion with zero
+send/wait/owner statuses are expected; Resume clears blocked. NOT_RUN before any
+request is not a completed-work failure. Counters are cumulative, and neither
+dispatch nor sleep counters prove audible output or measured low current.
+
+## Firmware Milestone Native Evidence
+
+47 focused tests passed across installed SFX, V2 profiles/scene candidates,
+installed replacement, object timers and the public export boundary. The Debug
+firmware build passed: RAM 553632 bytes, ROM 884624 bytes, SRAM4 15480 bytes.
+RAM and SRAM4 use are unchanged by this admission-only firmware increment.
+
+The exact generated bytes exercise normal installed preflight, real private
+raster admission and installed entry in the native harness. Tests verify:
+
+- rejected local admission leaves the live object graph and catalog unchanged
+  and produces no SFX request;
+- a successful local move commits one cue with expected samples, volume and
+  priority while retaining the numbered animation phase;
+- a targetless timer handler reveals the square and commits the long cue
+  without local state re-entry;
+- successful candidate preflight does not alter the active audio catalog;
+- same-package replacement retains resident cue pointers, emits no exit cue,
+  and allows another local cue in the destination;
+- malformed ADPCM/cue metadata, exit SFX and local shell-exit actions reject;
+- an audio package at 65536 bytes admits, while one above that ceiling rejects;
+- at the API 44 firmware checkpoint, the public parser/compiler still rejected
+  audio. API 45 instead verifies the same bytes through the public build path.
+
+Native stubs do not produce sound or exercise physical SAI/DMA, shell audio
+quiesce or current draw. Existing timer/SFX dispatch and failure tests supplement
+this fixture. The hardware observations below do not expand the public V2
+audio export subset by themselves.
+
+## Hardware Result (2026-09-17)
+
+The user reported the expected fixture behavior and explicitly confirmed:
+
+- the long tone continued across HOME to AWAY;
+- opening the shell stopped the long tone early, and Resume did not replay it;
+- fresh selection presses produced tones, confirming the requested post-sleep
+  playback check.
+
+The supplied capture shows installed source 3, execution model 2, 54696 bytes,
+slot 0, generation 20, active in AWAY/state 2. Two assets/two cues contain 50924
+ADPCM bytes, package-backed=0 (fully resident).
+
+- Audio dispatch/owner counts 20/20, send/owner statuses 0; outstanding requests
+  and clock-held both 0.
+- Package audio blocked/fault 0/0 after Resume, stop request/completion 6/6,
+  status/send/wait/owner all 0. No halted shell snapshot is claimed; early audible
+  stop and silent Resume were confirmed by the operator.
+- Voice active/peak/completed 0/3/3, refill/decoded/underrun 5/3840/0. This proves
+  actual decoder/refill work in the retained measurement, not just dispatch.
+  It is not a complete sample-count account of all twenty requests or proof of
+  the six-second cue's duration. Long-tone continuity relies on observation.
+- Three scene replacements, zero failures; candidate token/completion 31/31,
+  lease 0, profile/schedule/display statuses 0; payload eight chunks/4672 bytes.
+- Display request/completion 26/26, result/fault 0/0. Timer due/applied/error
+  2/2/0; RTC timer selections 2.
+- Four-step/400 ms LPBAM schedule with publication/fault 0/0. Selected backend
+  2, backend status 0. WFI returns/measured/reconciled 16/17/17, clock status 0,
+  automatic STOP2 entries 19. These counters are not treated as identical-scope
+  per-action deltas or measured current. The current STOP2 status was NOT_RUN.
+
+This validates installed resident SFX with the exercised animated scene changes
+and shell lifetime behavior. Full five-voice concurrent-display stress, priority
+preemption, current/energy measurement, and an explicit reboot confirmation for
+this audio egg are not established by this capture. API 45 subsequently enables
+public resident audio export; a normal Studio-generated audio artifact remains
+the next hardware integration test.

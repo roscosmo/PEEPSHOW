@@ -105,7 +105,7 @@ def _scene_report(scene: dict[str, Any], valid: bool) -> dict[str, Any]:
     has_waiting = bool(scene.get("waiting_visuals"))
     has_sfx = any(
         action.get("kind") == "play_sfx"
-        for route in scene.get("routes", [])
+        for route in (*scene.get("routes", []), *scene.get("event_handlers", []))
         for action in route.get("actions", [])
         if isinstance(action, dict)
     )
@@ -276,7 +276,7 @@ def build_compatibility_report(
         for scene in bundle.scenes
         if any(
             action.get("kind") == "play_sfx"
-            for route in scene.get("routes", [])
+            for route in (*scene.get("routes", []), *scene.get("event_handlers", []))
             for action in route.get("actions", [])
             if isinstance(action, dict)
         )
@@ -332,6 +332,8 @@ def build_compatibility_report(
         else None
     )
     audio_bytes = sum(len(asset.adpcm) for asset in bundle.audio_assets)
+    if has_objects and audio_limit is not None:
+        audio_limit = min(audio_limit, V2_LIMITS["package_bytes"])
     budgets["audio"] = {
         "used_bytes": audio_bytes,
         "limit_bytes": audio_limit,
@@ -341,6 +343,13 @@ def build_compatibility_report(
             else "blocked" if bundle.issues else "pending_validation"
         ),
     }
+    if has_objects:
+        budgets["audio"].update({
+            "residency": "whole_package", "shared_with": "package_size",
+            "independent_budget": False,
+            "status": "passed" if package is not None and not readiness else
+                      "blocked" if readiness or bundle.issues else "pending_validation",
+        })
     budgets["package_size"] = {
         "used_bytes": package_bytes,
         "limit_bytes": package_limit,

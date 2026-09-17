@@ -129,6 +129,18 @@ package voices.
 
 ### Package Suspension Semantics
 
+V2 resident install milestone (2026-09-17): firmware profile admission now
+accepts fully validated resident audio catalogs and local `play_sfx` actions,
+including targetless scene-timer handlers, within the existing 65536-byte total
+V2 package ceiling. Scene exits remain action-free. The runtime/mixer ownership
+and stop-and-discard semantics below are unchanged. The installed animated
+HOME/AWAY test confirmed audible SFX across scene replacement, shell stop without
+replay on Resume, and fresh playback after wake. See [[V2_Installed_SFX_Test]]
+for evidence and remaining coverage. Public service API 45 now advertises this
+resident subset through export-profile revision 3; see
+[[Peep_Studio_V2_Audio_Export_Handoff]]. This does not admit nonresident V2 audio,
+music, resumable playback or new clock/voice limits.
+
 These shell/package semantics are separate from power-requested suspension:
 power admission retains its existing subsequent owner-quiesce barrier. It must
 not wait inside the power thread for an audio clock-release request addressed

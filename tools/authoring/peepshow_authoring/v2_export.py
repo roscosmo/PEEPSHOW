@@ -8,7 +8,7 @@ Firmware still performs exact owner-side admission before install/transactions.
 from copy import deepcopy
 from math import gcd, lcm
 
-from .target_profile import TARGET_PROFILE, TARGET_STATE_SCENE_EVENTS
+from .target_profile import TARGET_PROFILE, TARGET_STATE_SCENE_EVENTS, TARGET_SAMPLED_SFX
 
 
 PROFILE_ID = "hw6_v2_resident_v1"
@@ -21,15 +21,39 @@ LIMITS = {
     "combined_steps": 12, "chunks": 18, "payload_bytes": 10512,
     "band_rows": 28, "band_slot_bytes": 584, "canvas_width": 168,
     "tick_ms": 10, "frame_duration_max_ms": 2000,
+    "audio_assets": TARGET_SAMPLED_SFX["maximum_assets"],
+    "audio_cues": TARGET_SAMPLED_SFX["maximum_cues"],
 }
+
+
+def public_v2_audio_profile():
+    return {
+        "supported": True, "capability": "audio.sampled_sfx",
+        "action_kinds": ["play_sfx"],
+        "action_contexts": ["local_transition", "local_timer_handler"],
+        "compiled_format": TARGET_SAMPLED_SFX["compiled_format"],
+        "sample_rate_hz": TARGET_SAMPLED_SFX["sample_rate_hz"],
+        "channels": TARGET_SAMPLED_SFX["channels"],
+        "block_samples": TARGET_SAMPLED_SFX["block_samples"],
+        "maximum_assets": LIMITS["audio_assets"], "maximum_cues": LIMITS["audio_cues"],
+        "voice_limit": TARGET_SAMPLED_SFX["voice_limit"],
+        "cue_volume": True, "cue_priority": True,
+        "residency": "whole_package", "shared_package_limit_bytes": LIMITS["package_bytes"],
+        "survives_local_state_change": True, "survives_same_package_scene_replacement": True,
+        "package_suspend": "stop_and_discard", "package_resume": "new_requests_only",
+        "package_exit_or_replacement": "stop_and_discard",
+        "unsupported": ["music", "looping", "procedural_audio", "pause_resume",
+                        "fades", "runtime_volume_controls", "nonresident_audio", "scene_exit_actions"],
+    }
 
 
 def public_v2_export_profile():
     return {
-        "profile_id": PROFILE_ID, "profile_revision": 2, "container_version": 2,
+        "profile_id": PROFILE_ID, "profile_revision": 3, "container_version": 2,
         "status": "development_restricted", "execution_model": "scene_objects",
         "limits": deepcopy(LIMITS), "interaction_modes": ["continuous"],
-        "event_classes": ["input", "timer"], "audio": False,
+        "event_classes": ["input", "timer"], "audio": True,
+        "audio_profile": public_v2_audio_profile(),
         "scene_connections": True, "scene_entry_modes": ["fresh_default"],
         "scene_exit_action_kinds": [], "self_scene_exits": False,
         "system_exit_actions": False,
@@ -39,7 +63,7 @@ def public_v2_export_profile():
         "device_exact_admission_required": True,
         "admission_scope": "all_scenes_including_unreachable",
         "limit_scopes": {
-            "package": ["package_bytes", "scenes", "strings"],
+            "package": ["package_bytes", "scenes", "strings", "audio_assets", "audio_cues"],
             "scene": ["objects", "states", "variables", "bindings", "transitions", "guards",
                       "actions", "animated_objects", "combined_steps", "chunks", "payload_bytes"],
             "clip": ["clip_steps", "clip_distinct_frames", "frame_duration_max_ms"],
@@ -67,9 +91,11 @@ def source_issues(bundle):
     if bundle.project.get("validation", {}).get("build_profile") == "shipping":
         issues.append(issue("V2_SHIPPING_UNAVAILABLE", "validation.build_profile",
                             "Restricted V2 export is development-only; select the development build profile."))
-    if bundle.audio_assets or bundle.audio_cues:
-        issues.append(issue("V2_AUDIO_UNSUPPORTED", "assets",
-                            "Remove audio assets and cues for restricted V2 export; package audio is not supported in this profile."))
+    if (bundle.audio_assets or bundle.audio_cues) and not (
+            1 <= len(bundle.audio_assets) <= LIMITS["audio_assets"] and
+            1 <= len(bundle.audio_cues) <= LIMITS["audio_cues"]):
+        issues.append(issue("V2_AUDIO_CATALOG", "assets",
+                            "V2 audio requires 1..32 sampled assets and 1..64 cues, within the shared resident package budget."))
     for scene in bundle.scenes:
         if scene.get("schema_version") != 2:
             continue
@@ -99,8 +125,11 @@ def package_admission(package, size):
     if not package.scenes or any(scene.get("execution_model") != 2 for scene in package.scenes):
         issues.append(issue("V2_SCENE_PROFILE", "scenes", "V2 export requires only scenes using scene-owned objects."))
         return {"issues": issues, "animation_budget": None, "scene_animation_budgets": {}}
-    if package.audio_assets or package.audio_cues or any(c.chunk_type in {10, 11, 12} for c in package.chunks):
-        issues.append(issue("V2_AUDIO_UNSUPPORTED", "assets", "V2 export does not support audio chunks."))
+    if (package.audio_assets or package.audio_cues or any(c.chunk_type in {10, 11, 12} for c in package.chunks)) and not (
+            1 <= len(package.audio_assets) <= LIMITS["audio_assets"] and
+            1 <= len(package.audio_cues) <= LIMITS["audio_cues"]):
+        issues.append(issue("V2_AUDIO_CATALOG", "assets",
+                            "V2 audio requires 1..32 sampled assets and 1..64 cues, within the shared resident package budget."))
     scene_budgets = {}
     for scene in package.scenes:
         result = _scene_admission(package, scene)
@@ -143,9 +172,9 @@ def _scene_admission(package, scene):
                 issues.append(issue("V2_SCENE_EXIT_UNSUPPORTED", route_path,
                                     "Use an action-free exit to another scene's default entry.", sid))
         for index, op in enumerate(route["operations"]):
-            if op["kind"] not in {1, 9, 10, 11, 12}:
+            if op["kind"] not in {1, 7, 9, 10, 11, 12}:
                 issues.append(issue("V2_ACTION_UNSUPPORTED", route_path + f".actions[{index}]",
-                    "Use object, variable or timer actions only; audio, render requests and shell exits are not supported in this export profile.", sid))
+                    "Use local object, variable, timer or play_sfx actions; render requests and shell exits are not supported in this export profile.", sid))
 
     animated = [(i, obj, package.animations[obj["clip_index"]])
                 for i, obj in enumerate(scene["objects"]) if obj["clip_index"] != 0xffff]

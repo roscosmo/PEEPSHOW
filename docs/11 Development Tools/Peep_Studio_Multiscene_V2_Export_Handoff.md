@@ -1,7 +1,12 @@
 # Multi-scene V2 Export Handoff
 
-Status: 2026-09-17, shared backend implemented in service API 44. Studio
-integration and the new Studio-generated egg's hardware run remain pending.
+Status: 2026-09-17, service API 44 and Studio integration complete. The pinned
+Studio-exported egg passed the installed hardware behavior and reboot checks
+below. This is a bounded-subset result, not full V1/V2 feature parity.
+
+The capability contract below records API 44/profile revision 2. API 45/profile
+revision 3 supersedes its audio exclusion only with resident sampled SFX; see
+[[Peep_Studio_V2_Audio_Export_Handoff]]. Other restrictions remain unchanged.
 
 This extends the existing development-restricted resident export profile, not
 the firmware format or the full V2 feature set. No firmware code, wire IDs,
@@ -85,11 +90,12 @@ The ordinary `project.build_package` result is:
 Those exact public-service bytes passed native normal install preflight and
 installed entry selection (Lobby runtime ID 2, Garden ID 1). Host clock/storage
 substitutes are not physical USB, flash, display or current measurements.
-OS did not generate a replacement embedded C fixture or change the device's
-installed package. Studio must still produce the final artifact through its
-own normal build/export flow; no development encoder workaround is needed.
+For that native check, OS did not generate a replacement embedded C fixture or
+change the device's installed package. Studio subsequently produced the same
+artifact through its normal public build/export flow, without a development
+encoder workaround; see the hardware result below.
 
-## Verification and Next Test
+## Verification and Hardware Procedure
 
 179 focused tests pass across public export/parser/readiness, service and V1
 regressions, V2 objects/creation/graphs/connections, native installed replacement
@@ -98,9 +104,8 @@ entry, independent scene timing budgets, bad unreachable scenes, forbidden
 exit actions, whole-project readiness and unchanged single-scene egg bytes.
 The native installed replacement test now consumes the public compiler output.
 
-After GUI integrates this commit, enable controls from the capabilities above,
-build the pinned fixture and return the artifact path, byte count and SHA-256.
-Do not change fixture content for this checkpoint. Hardware steps:
+The completed integration used the capabilities above and the unchanged pinned
+fixture. Repeatable hardware steps:
 
 1. Transfer the Studio egg via USB, install through the shell and select PLAY.
 2. Confirm static Lobby, A into Garden, continuous 1-2-3-4 across L/R selection,
@@ -112,6 +117,42 @@ Do not change fixture content for this checkpoint. Hardware steps:
 Use `__fw0_object_installed_prints.gdb` for generic source/model/admission,
 render and sleep evidence. Its older size-specific fixture text does not
 describe this new egg. Reconnecting GDB alone is not reboot evidence.
+
+## Studio Export Hardware Result (2026-09-17)
+
+Backend commit: `007029606a9807d7d46e66e3424f2b827491a3d2` (API 44).
+GUI reported normal public `project.build_package` export at:
+`G:/PEEPSHOW-PeepStudio/tools/peep-studio/dist/api44-multiscene-export/native_v2_lobby_garden_integration.egg`.
+OS independently hashed that file and confirmed the pinned SHA-256 above.
+
+The user installed the Studio artifact through the USB/shell flow and confirmed
+the requested visible behavior: Lobby/Garden navigation, numbered animation
+continuity across L/R, timer reveal, fresh Garden re-entry and deliberate reboot
+back into Lobby. No firmware reflash or development scene-enable helper was
+required for this checkpoint.
+
+Captured installed/runtime evidence:
+
+- Installed source 3, execution model 2, size 3944, slot 0, generation 18;
+  active scene 1 (Garden), two scenes, activation status 0.
+- Three scene replacements, zero failures, last replacement status 0.
+- Admission token/completion 20/20, lease 0; profile, schedule and display
+  statuses 0. Exact candidate payload: eight chunks / 4672 bytes.
+- Display request/completion 15/15, result 0, lease fault 0. These indicate
+  completed display work, not merely owner scheduling; visible behavior was
+  separately confirmed by the user.
+- Garden schedule four steps / 400 ms, publication status 0, LPBAM fault 0.
+  WFI returns/measured/reconciled 7/7/7 with clock status 0; automatic STOP2
+  entry count 13. Current backend status 1 and blockers 0x1080 were captured
+  after wake and are not a completed sleep-admission success snapshot.
+- Timer due/dispatch/applied 3/3/3, ignored/error 0/0, RTC timer selections 4;
+  the timer was inactive and unpaused at capture.
+
+Counters are cumulative, not isolated before/after deltas for every action.
+The supplied capture is Garden, not a separate Lobby HOLD-backend capture.
+It supports successful sleep returns but does not measure low-current
+residency. No new current measurement or broad timer capability promotion is
+claimed. Static HOLD and quiet battery wake have separate earlier validation.
 
 Runtime text, persisted project settings, object names, asset tags, expanded
 timer nodes and V2 audio remain separate requested increments, not prerequisites
