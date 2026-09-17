@@ -1,4 +1,4 @@
-import type { EditorNodePosition, EditorRouteRail, EditorRouteTokenPositions, InputAction, ProjectEditorData, SceneDocument, SceneExitRecord, StateAction, StateGuard, StateRecord, StateRoute } from "./types";
+import type { EditorNodePosition, EditorRouteRail, EditorRouteTokenPositions, EventBinding, EventHandler, InputAction, ProjectEditorData, SceneDocument, SceneExitRecord, StateAction, StateGuard, StateRecord, StateRoute } from "./types";
 
 export type StateGraphExitSide = "left" | "right" | "top" | "bottom";
 export type StateGraphEntrySide = "left" | "right" | "top" | "bottom";
@@ -143,6 +143,30 @@ export type GraphTransitionEdge = {
   targetKind?: "state" | "scene_exit" | "system_exit";
 };
 
+export type GraphTimerNode = {
+  id: string;
+  bindingId: string;
+  eventType: string;
+  label: string;
+  detail: string;
+  x: number;
+  y: number;
+};
+
+export type GraphTimerEdge = {
+  id: string;
+  source: string;
+  target: string;
+  bindingId: string;
+  handlerId: string;
+  guards: StateGuard[];
+  actions: StateAction[];
+  effectLabels: string[];
+  targetHandle?: StateGraphEntryHandle;
+  targetSide?: StateGraphEntrySide;
+  targetKind?: "state" | "scene_exit";
+};
+
 export type GraphSceneEndpointNode = {
   id: string;
   kind: "entry" | "exit" | "system";
@@ -158,6 +182,8 @@ export type GraphSceneEndpointNode = {
 
 export type StateGraphModel = {
   nodes: GraphStateNode[];
+  timerNodes: GraphTimerNode[];
+  timerEdges: GraphTimerEdge[];
   endpoints: GraphSceneEndpointNode[];
   edges: GraphTransitionEdge[];
   entryEdge?: {
@@ -357,8 +383,12 @@ export function stateActionDescription(action: StateAction): string | null {
   return "Advanced effect";
 }
 
+function visibleActions(actions: StateAction[]): StateAction[] {
+  return actions.filter((action) => action.kind !== "request_render" && action.kind !== "exit_to_shell");
+}
+
 export function visibleStateActions(route: StateRoute): StateAction[] {
-  return route.actions.filter((action) => action.kind !== "request_render" && action.kind !== "exit_to_shell");
+  return visibleActions(route.actions);
 }
 
 const GUARD_DESCRIPTION_OPERATORS: Record<string, string> = {
@@ -375,10 +405,14 @@ export function stateGuardDescription(guard: StateGuard): string {
   return `${displayRefName(guard.variable_ref, "variable")} ${operator} ${guard.value}`;
 }
 
-function routeEffectLabels(route: StateRoute): string[] {
-  return visibleStateActions(route)
+function actionEffectLabels(actions: StateAction[]): string[] {
+  return visibleActions(actions)
     .map(stateActionDescription)
     .filter((label): label is string => label !== null);
+}
+
+function routeEffectLabels(route: StateRoute): string[] {
+  return actionEffectLabels(route.actions);
 }
 
 function visibleActionCount(route: StateRoute): number {
@@ -388,6 +422,30 @@ function visibleActionCount(route: StateRoute): number {
 function routeLabel(route: StateRoute, inputActions: InputAction[]): string {
   const badges = [countLabel(route.guards.length, "rule"), countLabel(visibleActionCount(route), "effect")].filter(Boolean);
   return [inputLabel(inputActions, route.action_ref ?? route.event_ref ?? ""), ...badges].join(" - ");
+}
+
+const SCENE_TIMER_EVENT = "time.scene_elapsed";
+
+function timerBindingLabel(binding: EventBinding): string {
+  return binding.event_type === SCENE_TIMER_EVENT ? "Scene timer" : "State-entry timer";
+}
+
+function timerBindingDetail(binding: EventBinding): string {
+  const delay = typeof binding.configuration.delay_ms === "number" ? `${binding.configuration.delay_ms} ms` : "delay unset";
+  if (binding.event_type !== SCENE_TIMER_EVENT) {
+    return delay;
+  }
+  return binding.configuration.start_policy === "action" ? `${delay} / by action` : `${delay} / on scene entry`;
+}
+
+function routeTriggerLabel(route: StateRoute, inputActions: InputAction[], eventBindings: Map<string, EventBinding>): string {
+  if (route.event_ref !== undefined) {
+    const binding = eventBindings.get(route.event_ref);
+    if (binding !== undefined) {
+      return timerBindingLabel(binding);
+    }
+  }
+  return inputLabel(inputActions, route.action_ref ?? route.event_ref ?? "");
 }
 
 function statePosition(
@@ -1415,12 +1473,15 @@ export function planStateTransitionRoutes(
 export function buildStateGraphModel(scene: SceneDocument | null, editor?: ProjectEditorData): StateGraphModel {
   const states = scene?.states ?? [];
   const routes = scene?.routes ?? [];
+  const eventBindings = scene?.event_bindings ?? [];
+  const eventHandlers = scene?.event_handlers ?? [];
   const declaredSceneExits = scene?.scene_exits ?? [];
   const inputActions = scene?.input_actions ?? [];
   const entryState = scene?.entry_state ?? null;
   const columns = Math.max(1, Math.ceil(Math.sqrt(states.length)));
   const stateIds = new Set(states.map((state) => state.state_id));
   const stateLabels = new Map(states.map((state) => [state.state_id, state.display_name]));
+  const eventBindingById = new Map(eventBindings.map((binding) => [binding.binding_id, binding]));
   const outputsByState = new Map<string, GraphStateOutput[]>();
   const variableRefsByState = new Map<string, Set<string>>();
   const savedPositions =
@@ -1471,7 +1532,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
         outputs.push({
           id: `${route.route_id}:${source}`,
           routeId: route.route_id,
-          label: inputLabel(inputActions, route.action_ref ?? route.event_ref ?? ""),
+          label: routeTriggerLabel(route, inputActions, eventBindingById),
           guardCount: route.guards.length,
           actionCount: effectLabels.length,
           effectLabels,
@@ -1610,8 +1671,60 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
       });
   });
 
+  const sceneTimerBindings = eventBindings.filter((binding) => binding.event_type === SCENE_TIMER_EVENT);
+  const handlerByEventRef = new Map(eventHandlers.map((handler) => [handler.event_ref, handler]));
+  const exitForHandler = (handler: EventHandler): SceneExitRecord | undefined => {
+    if (handler.scene_exit_ref !== undefined) {
+      return declaredSceneExits.find((sceneExit) => sceneExit.scene_exit_id === handler.scene_exit_ref);
+    }
+    return declaredSceneExits.find((sceneExit) => sceneExit.target_scene === handler.target_scene);
+  };
+  const timerNodes: GraphTimerNode[] = sceneTimerBindings.map((binding, index) => {
+    const id = `timer-${binding.binding_id}`;
+    const savedPosition = savedPositions?.[id];
+    return {
+      id,
+      bindingId: binding.binding_id,
+      eventType: binding.event_type,
+      label: timerBindingLabel(binding),
+      detail: timerBindingDetail(binding),
+      x: savedPosition?.x ?? leftmostX + index * 220,
+      y: savedPosition?.y ?? topmostY - 180,
+    };
+  });
+  const timerEdges: GraphTimerEdge[] = timerNodes.flatMap((timerNode) => {
+    const handler = handlerByEventRef.get(timerNode.bindingId);
+    if (handler === undefined) {
+      return [];
+    }
+    const declaredExit = exitForHandler(handler);
+    const targetEndpoint = declaredExit === undefined ? undefined : endpointByExitId.get(declaredExit.scene_exit_id);
+    const target = handler.target_state !== undefined && stateIds.has(handler.target_state)
+      ? handler.target_state
+      : targetEndpoint?.id;
+    if (target === undefined) {
+      return [];
+    }
+    const targetState = handler.target_state !== undefined && stateIds.has(handler.target_state);
+    return [{
+      id: `${handler.handler_id}:${timerNode.bindingId}->${target}`,
+      source: timerNode.id,
+      target,
+      bindingId: timerNode.bindingId,
+      handlerId: handler.handler_id,
+      guards: handler.guards,
+      actions: visibleActions(handler.actions),
+      effectLabels: actionEffectLabels(handler.actions),
+      targetHandle: targetState ? "entry-top-left" : undefined,
+      targetSide: targetState ? "left" : undefined,
+      targetKind: targetState ? "state" as const : "scene_exit" as const,
+    }];
+  });
+
   return {
     nodes,
+    timerNodes,
+    timerEdges,
     endpoints,
     edges,
     entryEdge: entryState !== null && statePositions.has(entryState)

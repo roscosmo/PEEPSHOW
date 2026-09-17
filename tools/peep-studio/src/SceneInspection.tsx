@@ -30,7 +30,6 @@ import {
   ArrowUp,
   CalendarClock,
   Check,
-  Clock,
   ExternalLink,
   Eye,
   Filter,
@@ -77,6 +76,7 @@ import {
   type GraphSceneNode,
   type GraphSceneEndpointNode,
   type GraphStateNode,
+  type GraphTimerNode,
   type StateGraphEntryHandle,
   type StateGraphEntrySide,
   type StateGraphExitSide,
@@ -115,6 +115,8 @@ const SCENE_TOOL_ICONS = {
   newState: "/ui-icons/new_state.png",
   sceneEntry: "/ui-icons/scene_entry.png",
   sceneExit: "/ui-icons/scene_exit.png",
+  sceneTimer: "/ui-icons/scene_timer.png",
+  stateTimer: "/ui-icons/state_timer.png",
 } as const;
 type SceneToolIconName = keyof typeof SCENE_TOOL_ICONS;
 function SceneToolIcon({ name, className = "" }: { name: SceneToolIconName; className?: string }) {
@@ -938,11 +940,45 @@ function SceneEndpointNode({ data, selected }: NodeProps<Node<SceneEndpointNodeD
   );
 }
 
-const STATE_NODE_TYPES = { stateCard: StateCardNode, sceneEndpoint: SceneEndpointNode };
+type TimerGraphNodeData = {
+  timer: GraphTimerNode;
+  onSelect: (timerId: string) => void;
+};
+
+function TimerGraphNode({ data, selected }: NodeProps<Node<TimerGraphNodeData>>) {
+  const { timer, onSelect } = data;
+  const iconName = timer.eventType === "time.scene_elapsed" ? "sceneTimer" : "stateTimer";
+  return (
+    <div
+      className={`state-timer-node ${selected ? "selected" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`${timer.label}: ${timer.detail}`}
+      title={`${timer.bindingId}: ${timer.detail}`}
+      onClick={() => onSelect(timer.bindingId)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(timer.bindingId);
+        }
+      }}
+    >
+      <Handle className="state-timer-node-handle" id="timer-out" type="source" position={Position.Right} isConnectable={false} />
+      <span className="state-timer-node-icon" aria-hidden="true">
+        <SceneToolIcon name={iconName} />
+      </span>
+      <strong>{timer.label}</strong>
+      <small>{timer.detail}</small>
+    </div>
+  );
+}
+
+const STATE_NODE_TYPES = { stateCard: StateCardNode, sceneEndpoint: SceneEndpointNode, timerNode: TimerGraphNode };
 
 type StateTransitionEdgeData = {
   tone?: "blue" | "green";
   route_id?: string;
+  timer_id?: string;
   source_state?: string;
   laneX?: number;
   guards?: StateGuard[];
@@ -960,6 +996,7 @@ type StateTransitionEdgeData = {
   canEdit?: boolean;
   showSectionHandles?: boolean;
   onSetEntryTarget?: (stateId: string, handle: StateGraphEntryHandle, side: StateGraphEntrySide) => void;
+  onSelect?: () => void;
   onSelectRoute?: (routeId: string, sourceState: string) => void;
   onSetRouteLayout?: (
     routeId: string,
@@ -1327,6 +1364,13 @@ function StateTransitionEdge({
 
   const routeId = typeof edgeData?.route_id === "string" ? edgeData.route_id : id;
   const sourceState = typeof edgeData?.source_state === "string" ? edgeData.source_state : "";
+  const selectEdge = () => {
+    if (edgeData?.onSelect !== undefined) {
+      edgeData.onSelect();
+    } else {
+      edgeData?.onSelectRoute?.(routeId, sourceState);
+    }
+  };
   const canEdit = edgeData?.canEdit === true;
   const showSectionHandles = edgeData?.showSectionHandles === true;
   const effectiveTargetHandle = draftTargetHandle ?? persistedTargetHandle;
@@ -1558,7 +1602,7 @@ function StateTransitionEdge({
   const arrowCanMove = canEdit && (edgeData?.targetEntryPorts?.length ?? 0) > 0;
   const beginArrowDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    edgeData?.onSelectRoute?.(routeId, sourceState);
+    selectEdge();
     if (!arrowCanMove) {
       return;
     }
@@ -1641,7 +1685,7 @@ function StateTransitionEdge({
         d={route.path + arrow.leadPath}
         onDoubleClick={(event) => {
           event.stopPropagation();
-          edgeData?.onSelectRoute?.(routeId, sourceState);
+          selectEdge();
           addRouteSection(event.clientX, event.clientY);
         }}
       />
@@ -1674,7 +1718,7 @@ function StateTransitionEdge({
           style={arrow.hitStyle}
           onClick={(event) => {
             event.stopPropagation();
-            edgeData?.onSelectRoute?.(routeId, sourceState);
+            selectEdge();
           }}
           onPointerEnter={() => setArrowHovered(true)}
           onPointerLeave={() => setArrowHovered(false)}
@@ -1698,11 +1742,11 @@ function StateTransitionEdge({
                 aria-label={token.description}
                 onClick={(event) => {
                   event.stopPropagation();
-                  edgeData?.onSelectRoute?.(routeId, sourceState);
+                  selectEdge();
                 }}
                 onPointerDown={(event) => {
                   event.stopPropagation();
-                  edgeData?.onSelectRoute?.(routeId, sourceState);
+                  selectEdge();
                   if (!canEdit) {
                     return;
                   }
@@ -2643,6 +2687,18 @@ export function StateGraphView({
         draggable: canMoveStates,
         connectable: canEdit,
       })),
+      ...graph.timerNodes.map((timer) => ({
+        id: timer.id,
+        type: "timerNode",
+        position: { x: timer.x, y: timer.y },
+        data: {
+          timer,
+          onSelect: (timerId: string) => onSelect({ kind: "timer", id: timerId }),
+        },
+        selected: selected.kind === "timer" && selected.id === timer.bindingId,
+        draggable: canMoveStates,
+        connectable: false,
+      })),
       ...graph.endpoints.map((endpoint) => ({
         id: endpoint.id,
         type: "sceneEndpoint",
@@ -2665,7 +2721,7 @@ export function StateGraphView({
         connectable: endpoint.kind === "exit" ? canConnectScenes : canEdit,
       })),
     ],
-    [activeStateId, canEdit, canMoveStates, canConnectScenes, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
+    [activeStateId, canEdit, canMoveStates, canConnectScenes, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, graph.timerNodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
@@ -2721,6 +2777,9 @@ export function StateGraphView({
                 .filter((edge) => edge.target === graphNode.id)
                 .map((edge) => transitionLayouts[edge.sourceHandle]?.targetHandle)
                 .filter((handle): handle is StateGraphEntryHandle => handle !== undefined),
+              ...graph.timerEdges
+                .filter((edge) => edge.target === graphNode.id && edge.targetHandle !== undefined)
+                .map((edge) => edge.targetHandle!)
             ],
             runtimeActive: activeStateId === graphNode.id,
             canEdit,
@@ -2743,7 +2802,7 @@ export function StateGraphView({
           connectable: canEdit,
         };
       }),
-    [activeStateId, canEdit, canMoveStates, graph.edges, graph.entryEdge?.targetHandle, graphNodeById, nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, positionById, scene?.joystick_policy, selected, transitionLayouts],
+    [activeStateId, canEdit, canMoveStates, graph.edges, graph.entryEdge?.targetHandle, graph.timerEdges, graphNodeById, nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, positionById, scene?.joystick_policy, selected, transitionLayouts],
   );
   useEffect(() => {
     setPendingPhysicalConnection(null);
@@ -3095,6 +3154,48 @@ export function StateGraphView({
           style: { strokeWidth: isSelected ? 4.8 : 4 },
         };
       });
+      const timerEdges = graph.timerEdges.map((edge) => {
+        const targetNode = graphNodeById.get(edge.target);
+        const targetNodePosition = positionById.get(edge.target);
+        const targetEntryPorts = edge.targetKind !== "state" || targetNode === undefined || targetNodePosition === undefined
+          ? undefined
+          : STATE_GRAPH_ENTRY_PORTS.map((port) => ({
+              handle: port.handle,
+              side: port.side,
+              point: stateEntryPortPoint(
+                { ...targetNodePosition, platformOutputCount: targetNode.platformOutputCount },
+                port.handle,
+                port.side,
+              ),
+            }));
+        const targetHandle = edge.targetKind === "state"
+          ? stateEntryPortId(edge.targetHandle ?? "entry-top-left", edge.targetSide ?? "left")
+          : "scene-exit-in";
+        const isSelected = selected.kind === "timer" && selected.id === edge.bindingId;
+        return {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: "timer-out",
+          targetHandle,
+          reconnectable: false,
+          selected: isSelected,
+          className: isSelected ? "state-transition-edge selected" : "state-transition-edge",
+          data: {
+            timer_id: edge.bindingId,
+            guards: edge.guards,
+            actions: edge.actions,
+            targetHandle: edge.targetKind === "state" ? edge.targetHandle ?? "entry-top-left" : undefined,
+            targetSide: edge.targetKind === "state" ? edge.targetSide ?? "left" : "left",
+            targetEntryPorts,
+            canEdit: false,
+            onSelect: () => onSelect({ kind: "timer", id: edge.bindingId }),
+          },
+          label: "",
+          type: "stateTransition",
+          style: { strokeWidth: isSelected ? 4.8 : 4 },
+        };
+      });
       const entryEdge = graph.entryEdge === undefined ? [] : [{
         id: `${graph.entryEdge.source}->${graph.entryEdge.target}`,
         source: graph.entryEdge.source,
@@ -3124,9 +3225,9 @@ export function StateGraphView({
         markerEnd: { type: MarkerType.ArrowClosed, color: "#2f9e44" },
         style: { strokeWidth: 4 },
       }];
-      return [...transitionEdges, ...entryEdge];
+      return [...transitionEdges, ...timerEdges, ...entryEdge];
     },
-    [canEdit, canEditEntry, graph.edges, graph.entryEdge, graph.nodes, graphNodeById, onSelect, onSetEntryConnection, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
+    [canEdit, canEditEntry, graph.edges, graph.entryEdge, graph.nodes, graph.timerEdges, graphNodeById, onSelect, onSetEntryConnection, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
   );
 
   if (scene === null) {
@@ -3178,6 +3279,11 @@ export function StateGraphView({
           onSelect({ kind: "state", id: node.id });
           return;
         }
+        if (node.type === "timerNode") {
+          const timer = (node.data as TimerGraphNodeData | undefined)?.timer;
+          onSelect(timer === undefined ? { kind: "scene" } : { kind: "timer", id: timer.bindingId });
+          return;
+        }
         const endpoint = (node.data as SceneEndpointNodeData | undefined)?.endpoint;
         onSelect(endpoint?.kind === "exit" && endpoint.sceneExitId !== undefined
           ? { kind: "sceneExit", id: endpoint.sceneExitId }
@@ -3186,6 +3292,10 @@ export function StateGraphView({
             : { kind: "scene" });
       }}
       onEdgeClick={(_, edge) => {
+        if (edge.data?.timer_id !== undefined) {
+          onSelect({ kind: "timer", id: String(edge.data.timer_id) });
+          return;
+        }
         if (edge.data?.route_id === undefined) {
           onSelect({ kind: "scene" });
           return;
@@ -3204,9 +3314,9 @@ export function StateGraphView({
     >
       <Background gap={18} size={1} />
       <GraphMiniMap
-        nodes={[...graph.nodes, ...graph.endpoints]}
-        edges={graph.edges}
-        selectedId={selected.kind === "state" ? selected.id : null}
+        nodes={[...graph.nodes, ...graph.timerNodes, ...graph.endpoints]}
+        edges={[...graph.edges, ...graph.timerEdges]}
+        selectedId={selected.kind === "state" ? selected.id : selected.kind === "timer" ? `timer-${selected.id}` : null}
       />
       {pendingPhysicalConnection !== null && (
         <Panel
@@ -3289,7 +3399,7 @@ export function StateGraphView({
           <div className="peepos-trigger-list">
             {timerTypes.map(eventType => <button key={eventType} type="button" onClick={() => {
               onRequestTimer?.(peepOSTriggerStateId, eventType); setPeepOSTriggerStateId(null);
-            }}><Clock size={16} /><span><strong>{eventType === "time.scene_elapsed" ? "Scene timer" : "State-entry timer"}</strong></span></button>)}
+            }}><SceneToolIcon name={eventType === "time.scene_elapsed" ? "sceneTimer" : "stateTimer"} className="peepos-trigger-icon" /><span><strong>{eventType === "time.scene_elapsed" ? "Scene timer" : "State-entry timer"}</strong></span></button>)}
             {peepOSTriggers.filter(trigger => trigger.kind !== "delay_elapsed" || timerTypes.length === 0).map((trigger) => (
               <button
                 disabled
@@ -3327,10 +3437,48 @@ export function StateGraphView({
             setPeepOSTriggerStateId(null);
             onCreateState(scene.scene_id, position.x, position.y);
           }}
-        >
-          <SceneToolIcon name="newState" className="graph-panel-button-icon" />
-          <span className="sr-only">Add state</span>
-        </button>
+          >
+            <SceneToolIcon name="newState" className="graph-panel-button-icon" />
+            <span className="sr-only">Add state</span>
+          </button>
+        {timerTypes.includes("time.scene_elapsed") && (
+          <button
+            className="button secondary"
+            disabled={!canEdit || onRequestTimer === undefined}
+            title="Add scene timer"
+            aria-label="Add scene timer"
+            type="button"
+            onClick={() => {
+              setPendingPhysicalConnection(null);
+              setPeepOSTriggerStateId(null);
+              onRequestTimer?.(selected.kind === "state" ? selected.id : scene.entry_state ?? "", "time.scene_elapsed");
+            }}
+          >
+            <SceneToolIcon name="sceneTimer" className="graph-panel-button-icon" />
+            <span className="sr-only">Add scene timer</span>
+          </button>
+        )}
+        {timerTypes.includes("time.state_entry_elapsed") && (
+          <button
+            className="button secondary"
+            disabled={!canEdit || onRequestTimer === undefined}
+            title={selected.kind === "state" ? "Add state-entry timer" : "Select a state for a state-entry timer"}
+            aria-label="Add state-entry timer"
+            type="button"
+            onClick={() => {
+              setPendingPhysicalConnection(null);
+              if (selected.kind === "state") {
+                setPeepOSTriggerStateId(null);
+                onRequestTimer?.(selected.id, "time.state_entry_elapsed");
+              } else {
+                setPeepOSTriggerStateId(scene.entry_state ?? graph.nodes[0]?.id ?? null);
+              }
+            }}
+          >
+            <SceneToolIcon name="stateTimer" className="graph-panel-button-icon" />
+            <span className="sr-only">Add state-entry timer</span>
+          </button>
+        )}
         {!graph.endpoints.some((endpoint) => endpoint.kind === "system") && (
           <button
             className="button secondary"

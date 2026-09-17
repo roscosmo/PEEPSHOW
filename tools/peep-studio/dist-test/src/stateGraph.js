@@ -179,8 +179,11 @@ function stateActionDescription(action) {
     }
     return "Advanced effect";
 }
+function visibleActions(actions) {
+    return actions.filter((action) => action.kind !== "request_render" && action.kind !== "exit_to_shell");
+}
 function visibleStateActions(route) {
-    return route.actions.filter((action) => action.kind !== "request_render" && action.kind !== "exit_to_shell");
+    return visibleActions(route.actions);
 }
 const GUARD_DESCRIPTION_OPERATORS = {
     eq: "is",
@@ -194,10 +197,13 @@ function stateGuardDescription(guard) {
     const operator = GUARD_DESCRIPTION_OPERATORS[guard.operator] ?? guard.operator;
     return `${displayRefName(guard.variable_ref, "variable")} ${operator} ${guard.value}`;
 }
-function routeEffectLabels(route) {
-    return visibleStateActions(route)
+function actionEffectLabels(actions) {
+    return visibleActions(actions)
         .map(stateActionDescription)
         .filter((label) => label !== null);
+}
+function routeEffectLabels(route) {
+    return actionEffectLabels(route.actions);
 }
 function visibleActionCount(route) {
     return routeEffectLabels(route).length;
@@ -205,6 +211,26 @@ function visibleActionCount(route) {
 function routeLabel(route, inputActions) {
     const badges = [countLabel(route.guards.length, "rule"), countLabel(visibleActionCount(route), "effect")].filter(Boolean);
     return [inputLabel(inputActions, route.action_ref ?? route.event_ref ?? ""), ...badges].join(" - ");
+}
+const SCENE_TIMER_EVENT = "time.scene_elapsed";
+function timerBindingLabel(binding) {
+    return binding.event_type === SCENE_TIMER_EVENT ? "Scene timer" : "State-entry timer";
+}
+function timerBindingDetail(binding) {
+    const delay = typeof binding.configuration.delay_ms === "number" ? `${binding.configuration.delay_ms} ms` : "delay unset";
+    if (binding.event_type !== SCENE_TIMER_EVENT) {
+        return delay;
+    }
+    return binding.configuration.start_policy === "action" ? `${delay} / by action` : `${delay} / on scene entry`;
+}
+function routeTriggerLabel(route, inputActions, eventBindings) {
+    if (route.event_ref !== undefined) {
+        const binding = eventBindings.get(route.event_ref);
+        if (binding !== undefined) {
+            return timerBindingLabel(binding);
+        }
+    }
+    return inputLabel(inputActions, route.action_ref ?? route.event_ref ?? "");
 }
 function statePosition(state, index, columns, savedPositions) {
     return {
@@ -1045,12 +1071,15 @@ function planStateTransitionRoutes(requests, nodes) {
 function buildStateGraphModel(scene, editor) {
     const states = scene?.states ?? [];
     const routes = scene?.routes ?? [];
+    const eventBindings = scene?.event_bindings ?? [];
+    const eventHandlers = scene?.event_handlers ?? [];
     const declaredSceneExits = scene?.scene_exits ?? [];
     const inputActions = scene?.input_actions ?? [];
     const entryState = scene?.entry_state ?? null;
     const columns = Math.max(1, Math.ceil(Math.sqrt(states.length)));
     const stateIds = new Set(states.map((state) => state.state_id));
     const stateLabels = new Map(states.map((state) => [state.state_id, state.display_name]));
+    const eventBindingById = new Map(eventBindings.map((binding) => [binding.binding_id, binding]));
     const outputsByState = new Map();
     const variableRefsByState = new Map();
     const savedPositions = scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.nodes;
@@ -1097,7 +1126,7 @@ function buildStateGraphModel(scene, editor) {
             outputs.push({
                 id: `${route.route_id}:${source}`,
                 routeId: route.route_id,
-                label: inputLabel(inputActions, route.action_ref ?? route.event_ref ?? ""),
+                label: routeTriggerLabel(route, inputActions, eventBindingById),
                 guardCount: route.guards.length,
                 actionCount: effectLabels.length,
                 effectLabels,
@@ -1225,8 +1254,59 @@ function buildStateGraphModel(scene, editor) {
             };
         });
     });
+    const sceneTimerBindings = eventBindings.filter((binding) => binding.event_type === SCENE_TIMER_EVENT);
+    const handlerByEventRef = new Map(eventHandlers.map((handler) => [handler.event_ref, handler]));
+    const exitForHandler = (handler) => {
+        if (handler.scene_exit_ref !== undefined) {
+            return declaredSceneExits.find((sceneExit) => sceneExit.scene_exit_id === handler.scene_exit_ref);
+        }
+        return declaredSceneExits.find((sceneExit) => sceneExit.target_scene === handler.target_scene);
+    };
+    const timerNodes = sceneTimerBindings.map((binding, index) => {
+        const id = `timer-${binding.binding_id}`;
+        const savedPosition = savedPositions?.[id];
+        return {
+            id,
+            bindingId: binding.binding_id,
+            eventType: binding.event_type,
+            label: timerBindingLabel(binding),
+            detail: timerBindingDetail(binding),
+            x: savedPosition?.x ?? leftmostX + index * 220,
+            y: savedPosition?.y ?? topmostY - 180,
+        };
+    });
+    const timerEdges = timerNodes.flatMap((timerNode) => {
+        const handler = handlerByEventRef.get(timerNode.bindingId);
+        if (handler === undefined) {
+            return [];
+        }
+        const declaredExit = exitForHandler(handler);
+        const targetEndpoint = declaredExit === undefined ? undefined : endpointByExitId.get(declaredExit.scene_exit_id);
+        const target = handler.target_state !== undefined && stateIds.has(handler.target_state)
+            ? handler.target_state
+            : targetEndpoint?.id;
+        if (target === undefined) {
+            return [];
+        }
+        const targetState = handler.target_state !== undefined && stateIds.has(handler.target_state);
+        return [{
+                id: `${handler.handler_id}:${timerNode.bindingId}->${target}`,
+                source: timerNode.id,
+                target,
+                bindingId: timerNode.bindingId,
+                handlerId: handler.handler_id,
+                guards: handler.guards,
+                actions: visibleActions(handler.actions),
+                effectLabels: actionEffectLabels(handler.actions),
+                targetHandle: targetState ? "entry-top-left" : undefined,
+                targetSide: targetState ? "left" : undefined,
+                targetKind: targetState ? "state" : "scene_exit",
+            }];
+    });
     return {
         nodes,
+        timerNodes,
+        timerEdges,
         endpoints,
         edges,
         entryEdge: entryState !== null && statePositions.has(entryState)

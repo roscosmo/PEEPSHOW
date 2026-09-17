@@ -1886,8 +1886,147 @@ button:focus-visible {
   margin: 8px 0;
 }
 
+.timer-create-grid {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.timer-create-card {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  min-height: 66px;
+  padding: 8px 10px;
+  border: 1px solid #cbd3ce;
+  border-radius: 7px;
+  background: #f8faf9;
+  color: #2d3631;
+  cursor: pointer;
+  text-align: left;
+}
+
+.timer-create-card:not(:disabled):hover {
+  border-color: #6f9fb7;
+  background: #eef7fb;
+}
+
+.timer-create-card:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.timer-create-card strong,
+.timer-mode-card strong {
+  display: block;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timer-create-card small,
+.timer-mode-card small {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: #6f7b74;
+  font-size: 10px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.timer-create-icon,
+.timer-mode-card > span {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #28332d;
+}
+
+.timer-create-icon {
+  position: relative;
+}
+
+.timer-create-icon svg:first-child {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #f8faf9;
+  color: #17201b;
+}
+
+.timer-mode-card {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin: 12px 0 4px;
+  padding: 10px;
+  border: 1px solid #cbd3ce;
+  border-radius: 7px;
+  background: #f8faf9;
+}
+
+.timer-mode-card.scene > span {
+  background: transparent;
+}
+
+.timer-mode-card.state > span {
+  background: transparent;
+}
+
+.timer-kind-icon {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 3px rgb(20 28 24 / 16%));
+}
+
+.timer-delay-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.timer-delay-field input {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.timer-delay-field span {
+  display: grid;
+  height: 32px;
+  min-width: 36px;
+  place-items: center;
+  border: 1px solid #cbd3ce;
+  border-left: 0;
+  border-radius: 0 5px 5px 0;
+  background: #eef2f0;
+  color: #59635d;
+  font-size: 10px;
+  font-weight: 850;
+}
+
 .timer-inspector .select-field {
   margin-block: 10px;
+}
+
+.timer-field-note {
+  margin-top: -4px;
 }
 
 .project-inspector-title {
@@ -4433,6 +4572,70 @@ button:focus-visible {
     0 5px 12px rgb(55 64 59 / 12%);
 }
 
+.state-timer-node {
+  position: relative;
+  display: grid;
+  width: 196px;
+  min-height: 104px;
+  grid-template-columns: 68px 1fr;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border: 2px solid #303733;
+  border-radius: 8px;
+  background: #fff4d6;
+  color: #17201b;
+  box-shadow: 0 3px 8px rgb(55 64 59 / 10%);
+  cursor: move;
+}
+
+.state-timer-node.selected {
+  box-shadow: 0 0 0 3px #175f8a, 0 3px 8px rgb(55 64 59 / 10%);
+}
+
+.state-timer-node-icon {
+  display: grid;
+  grid-row: span 2;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #17201b;
+}
+
+.state-timer-node-icon .scene-tool-icon {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.state-timer-node > strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.state-timer-node > small {
+  color: #59645e;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.state-timer-node .state-timer-node-handle {
+  right: -7px;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #303733;
+  background: #ffd43b;
+  box-shadow: none;
+}
+
 .state-scene-endpoint {
   position: relative;
   display: grid;
@@ -6054,6 +6257,12 @@ button:focus-visible {
   text-align: left;
 }
 
+.peepos-trigger-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
 .peepos-trigger-list > button:disabled {
   opacity: 1;
 }
@@ -7560,6 +7769,7 @@ button:focus-visible {
 
 .studio-shell[data-theme="dark"] .state-card-node,
 .studio-shell[data-theme="dark"] .scene-card-node,
+.studio-shell[data-theme="dark"] .state-timer-node,
 .studio-shell[data-theme="dark"] .state-scene-endpoint,
 .studio-shell[data-theme="dark"] .scene-reference-node {
   border-color: #43514a;
@@ -7574,6 +7784,7 @@ button:focus-visible {
 
 .studio-shell[data-theme="dark"] .state-card-node.selected,
 .studio-shell[data-theme="dark"] .scene-card-node.selected,
+.studio-shell[data-theme="dark"] .state-timer-node.selected,
 .studio-shell[data-theme="dark"] .state-scene-endpoint.selected,
 .studio-shell[data-theme="dark"] .scene-reference-node.selected {
   border-color: #58a6c8;
@@ -7595,6 +7806,7 @@ button:focus-visible {
 
 .studio-shell[data-theme="dark"] .state-card-name,
 .studio-shell[data-theme="dark"] .scene-card-heading strong,
+.studio-shell[data-theme="dark"] .state-timer-node > strong,
 .studio-shell[data-theme="dark"] .state-scene-endpoint > strong,
 .studio-shell[data-theme="dark"] .scene-exit-row > span:first-child,
 .studio-shell[data-theme="dark"] .scene-new-exit-slot > span:first-of-type {
@@ -7603,9 +7815,20 @@ button:focus-visible {
 
 .studio-shell[data-theme="dark"] .state-output-empty,
 .studio-shell[data-theme="dark"] .state-output-row small,
+.studio-shell[data-theme="dark"] .state-timer-node > small,
 .studio-shell[data-theme="dark"] .state-scene-endpoint.system > span,
 .studio-shell[data-theme="dark"] .state-scene-endpoint.system > small {
   color: #9eada5;
+}
+
+.studio-shell[data-theme="dark"] .state-timer-node-icon {
+  background: transparent;
+}
+
+.studio-shell[data-theme="dark"] .state-timer-node .state-timer-node-handle {
+  border-color: #c7d2cc;
+  background: #f0c94b;
+  color: #121915;
 }
 
 .studio-shell[data-theme="dark"] .state-summary-badge,
@@ -7615,6 +7838,45 @@ button:focus-visible {
   border-color: #48564f;
   background: #18201c;
   color: #e4ebe6;
+}
+
+.studio-shell[data-theme="dark"] .timer-create-card,
+.studio-shell[data-theme="dark"] .timer-mode-card {
+  border-color: #48564f;
+  background: #18201c;
+  color: #e4ebe6;
+}
+
+.studio-shell[data-theme="dark"] .timer-create-card:not(:disabled):hover {
+  border-color: #58a6c8;
+  background: #1b3a47;
+}
+
+.studio-shell[data-theme="dark"] .timer-create-card small,
+.studio-shell[data-theme="dark"] .timer-mode-card small,
+.studio-shell[data-theme="dark"] .timer-delay-field span {
+  color: #9eada5;
+}
+
+.studio-shell[data-theme="dark"] .timer-create-icon,
+.studio-shell[data-theme="dark"] .timer-mode-card > span {
+  border-color: transparent;
+  background: transparent;
+  color: #f2d36b;
+}
+
+.studio-shell[data-theme="dark"] .timer-mode-card.state > span {
+  background: transparent;
+  color: #9bd3ec;
+}
+
+.studio-shell[data-theme="dark"] .timer-create-icon svg:first-child {
+  background: #18201c;
+}
+
+.studio-shell[data-theme="dark"] .timer-delay-field span {
+  border-color: #48564f;
+  background: #151c19;
 }
 
 .studio-shell[data-theme="dark"] .state-add-trigger-row:not(:disabled):hover,
