@@ -1,5 +1,7 @@
 """Opt-in object playback: production compositor, payloads and sleep clock."""
 import os
+from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 import subprocess
 import unittest
@@ -14,6 +16,7 @@ class ObjectStop2Tests(unittest.TestCase):
         prepare.ObjectLpbamPrepareTests.setUpClass.__func__(cls)
         sources = {
             "display_renderer.c": ["DisplayRenderer_ValidateWaitingAnimation",
+                "DisplayRenderer_ClearSceneWaitingVisual",
                 "DisplayRenderer_PublishFullSceneWaiting", "DisplayRenderer_ResolveFullSceneWaiting",
                 "DisplayRenderer_GetGuaranteedWaitingAnimation", "DisplayRenderer_SelectWaitingAnimation",
                 "DisplayRenderer_GetSelectedWaitingAnimation", "DisplayRenderer_CopyWaitingAnimationFrame"],
@@ -23,7 +26,8 @@ class ObjectStop2Tests(unittest.TestCase):
                 "PS_HW6_DisplayOwner_SetObjectFirstInterval"],
             "ps_hw6_rtos_probe.c": ["PS_HW6_RTOS_ObjectRtcMilliseconds",
                 "PS_HW6_RTOS_ObjectSleepClockBegin", "PS_HW6_RTOS_ObjectSleepClockFinish",
-                "PS_HW6_RTOS_ObjectAdvance"],
+                "PS_HW6_RTOS_ObjectAdvance", "PS_HW6_RTOS_Stop2DisplayWaitBackendRequested",
+                "PS_HW6_RTOS_Stop2DisplayHeldFrameReady"],
         }
         functions = []
         for filename, names in sources.items():
@@ -41,6 +45,20 @@ class ObjectStop2Tests(unittest.TestCase):
 
     def test_numbered_frames_partial_commit_and_sleep_reconciliation(self):
         prepare.ObjectLpbamPrepareTests.check(self, prepare.ObjectLpbamPrepareTests.bundle(self))
+
+    def test_static_and_hidden_clip_use_completed_held_frame(self):
+        bundle = prepare.ObjectLpbamPrepareTests.bundle(self)
+        for hidden in (False, True):
+            with self.subTest(hidden_clip=hidden):
+                scene = deepcopy(bundle.scenes[0])
+                if hidden:
+                    scene["objects"][0]["defaults"]["visible"] = False
+                else:
+                    scene["objects"][0].pop("animation_ref")
+                prepare.ObjectLpbamPrepareTests.check(self, replace(bundle, scenes=(scene,)), 2)
+
+    def test_animation_to_hold_and_back_preserves_elapsed_time(self):
+        prepare.ObjectLpbamPrepareTests.check(self, prepare.ObjectLpbamPrepareTests.bundle(self), 3)
 
     def test_runtime_waits_for_display_recovery_before_processing(self):
         text = (self.firmware / "Core/Src/ps_hw6_rtos_probe.c").read_text(encoding="utf-8")

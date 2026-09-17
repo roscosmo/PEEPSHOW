@@ -4830,7 +4830,22 @@ static uint32_t PS_HW6_RTOS_Stop2DisplayWaitBackendRequested(void)
 
   if ((g_ps_object_lpbam_probe.enabled != 0UL) &&
       (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL))
-  { return PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_LPBAM; }
+  {
+    if ((g_ps_object_lpbam_probe.publish_status == 0UL) &&
+        (g_ps_object_lpbam_prepare_probe.schedule_status == PS_OBJECT_WAITING_OK) &&
+        (g_ps_object_lpbam_prepare_probe.request_count != 0UL) &&
+        (g_ps_object_lpbam_prepare_probe.request_count ==
+         g_ps_object_lpbam_prepare_probe.complete_count) &&
+        (ps_object_waiting_lease_request == g_ps_object_development_probe.render_request) &&
+        (g_ps_object_development_probe.render_request ==
+         g_ps_object_development_probe.render_complete) &&
+        (g_ps_object_development_probe.render_status == 0UL) &&
+        (ps_object_waiting_lease.base.activation == PS_SceneRuntime_SceneActivation()) &&
+        (ps_object_waiting_lease.step_count == 1UL) &&
+        (ps_object_waiting_lease.quantum_ms == 0UL))
+    { return PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_HELD_FRAME; }
+    return PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_LPBAM;
+  }
 
   if (ps_stop2_lpbam_abort_late_test_active != 0UL)
   {

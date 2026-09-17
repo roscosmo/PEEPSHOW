@@ -2263,10 +2263,28 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_PublishDevelopmentWaiting(
   uint32_t step;
   if (program == NULL) { program = &ps_hw6_object_waiting; }
   if ((g_ps_object_lpbam_probe.enabled == 0UL) ||
-      (program->quantum_ms == 0UL) ||
-      (((uint64_t)program->quantum_ms * TX_TIMER_TICKS_PER_SECOND) % 1000ULL != 0ULL) ||
       (PS_ObjectWaiting_Project(program, 0UL, &snapshot, &model) != PS_OBJECT_WAITING_OK) ||
       (memcmp(&model, &ps_hw6_development_display_model, sizeof(model)) != 0))
+  { return HAL_ERROR; }
+  if (program->quantum_ms == 0UL)
+  {
+    if ((program->step_count != 1UL) || (program->initial_remaining_ms != 0UL))
+    { return HAL_ERROR; }
+    for (step = 0UL; step < program->base.count; ++step)
+    {
+      if (((program->base.objects[step].effective.flags & 1U) != 0U) &&
+          (program->base.objects[step].animation_visible != 0UL))
+      { return HAL_ERROR; }
+    }
+    /* A held frame has no DMA timeline. Retire any previous animated scene. */
+    if (program != &ps_hw6_object_waiting) { ps_hw6_object_waiting = *program; }
+    ps_hw6_object_animation = (display_renderer_waiting_animation_t){0};
+    DisplayRenderer_ClearSceneWaitingVisual();
+    g_ps_object_lpbam_probe.deadline_tick = 0UL;
+    PS_HW6_DisplayOwner_SnapshotSceneWaitingTimeline();
+    return HAL_OK;
+  }
+  if (((uint64_t)program->quantum_ms * TX_TIMER_TICKS_PER_SECOND) % 1000ULL != 0ULL)
   { return HAL_ERROR; }
   if (program != &ps_hw6_object_waiting)
   {
