@@ -152,3 +152,80 @@ preemption, current/energy measurement, and an explicit reboot confirmation for
 this audio egg are not established by this capture. API 45 subsequently enables
 public resident audio export; a normal Studio-generated audio artifact remains
 the next hardware integration test.
+
+## API 45 Scene-Change Latency (2026-09-17)
+
+Studio supplied `native_v2_lobby_garden_audio.peepproj` from commit
+`efd079120281c11c9c2fd764c74e15fb67cf04f1`, built by public
+`project.build_package`. Artifact:
+`G:/PEEPSHOW-PeepStudio/tools/peep-studio/dist/api45-v2-audio/dev.peepshow.native_v2_lobby_garden_audio.egg`,
+55416 bytes, SHA-256
+`47d25a9528481a9773f45cf9c4e76452f49ea3577d0a8906c3c30f76af4cb53c`.
+
+Installed generation 22, source/model 3/2, twelve successful replacements and
+display completion 114/114 were recorded. The operator reported a scene-change
+delay exceeding one second. Capture sequence 1, button A, Lobby 2 to Garden 1,
+reported 2460 ms runtime receipt to panel completion (2470 ms total), at sampled
+24 MHz. Candidate decode/validation took 1110 ms, admission 1300 ms, event commit
+2400 ms, raster/packing 160 ms, and panel rendering/transfer 50 ms. Totals overlap.
+The approximately 1100 ms outside admission is consistent with the separate
+destination package decode, but that call did not have an isolated timing marker.
+These are elapsed kernel times including scheduling, not isolated CPU time;
+physical input/debounce and pre-runtime wake are excluded. No hardware latency
+pass or complete GUI audio-lifetime acceptance is claimed from this capture.
+
+The correction reuses the already-published immutable package metadata for both
+destination decoding and matching private display candidates. Only the requested
+scene is decoded/checked; unchanged container/audio data and unrelated scenes
+are not revalidated during the transition. Active metadata reuse is revoked on
+exit/reload, and a nonmatching candidate still takes full validation. Existing
+private byte leases, raster admission and atomic rejection remain intact.
+
+52 focused tests passed, including repeated audio scene changes without an
+increase in whole-package load count, private-span rebasing, changed-byte
+rejection, invalid destination, timeout/late completion after source-buffer
+reuse, failed publication and ordinary installed reload. Debug build passed:
+RAM 553632 bytes, ROM 885384 bytes, SRAM4 15480 bytes. RAM/SRAM4 are unchanged.
+Hardware timing after this correction is recorded below; rendering cost remains.
+
+The additional awake-display regression suite needed its host harness brought
+up to date with the existing battery fault-wait probe and `TX_NOT_DONE` constant;
+no battery policy or firmware behavior was changed for that harness repair.
+
+Flash the updated normal Debug firmware, keeping this installed GUI egg. In Lobby,
+halt, source `__fw0_object_latency_enable.gdb`, resume and press A once. Observe
+the change without halting, let the timer cue finish, then halt and source
+`__fw0_object_latency_prints.gdb`. Repeat for B from quiet Garden to Lobby. Confirm
+fresh entry, local animation continuity, timer behavior and existing SFX lifetime
+semantics. Do not use a development scene-enable helper for this installed test.
+
+### Hardware Timing After Metadata Reuse
+
+The operator reported substantially quicker transitions. Captures at sampled
+24 MHz show:
+
+| Direction | Capture | Event commit | Candidate decode | Candidate raster/packing | Panel render/transfer | Receipt to panel | Transaction total |
+|---|---|---|---|---|---|---|---|
+| Lobby to Garden | 1 | 250 ms | 50 ms | 150 ms | 50 ms | 310 ms | 320 ms |
+| Lobby to Garden | 3 | 250 ms | 50 ms | 150 ms | 60 ms | 310 ms | 320 ms |
+| Garden to Lobby, after audio ended | 4 | 110 ms | 40 ms | 20 ms | 50 ms | 160 ms | 160 ms |
+
+All three have event/status/panel result 1/0/0. Full candidate package loads
+remain 5 across captures 1 through 4, despite scene metadata misses increasing
+from 3 to 8. This supports the native evidence that subsequent transitions do
+not reload the whole package. Garden entry improved from 2460 to 310 ms receipt
+to panel completion (about 87 percent less elapsed time).
+
+Capture 2 returned to Lobby in 60 ms, but sampled 160 MHz throughout. It is not
+used as a same-clock comparison; the capture does not identify the clock claimant.
+The 24 MHz captures show candidate preparation for Garden's animated cycle at
+150 ms versus 20 ms for static Lobby. Garden composed five frames including wrap
+(one full, four reused, 50 elements drawn); Lobby composed two (one full, one
+reused, three elements drawn). The helper's four-step expected-call footer does
+not apply to static Lobby.
+
+These results establish the latency correction for the tested transitions, not
+final responsiveness acceptance. Kernel resolution is 10 ms and stage elapsed
+times include preemption; totals overlap. No isolated CPU, current/energy or
+physical-button-to-panel measurement is claimed. Full GUI audio-lifetime and
+reboot acceptance still require explicit observations beyond these timing runs.

@@ -6,10 +6,11 @@ else
     printf "NOT armed: resume until the current transaction completes. Never clear a lease manually.\n"
   else
     if (s_ps_scene_runtime_development_objects == 0) || (g_ps_ui_router_probe.current_page != 6)
-      printf "NOT armed: launch the HOME/AWAY scene and halt while playing.\n"
+      printf "NOT armed: launch an installed or development V2 object scene and halt while playing.\n"
     else
       set g_ps_object_latency_probe.request = 1
-      printf "Armed ONE runtime button press. Resume, press L or R to CHANGE selection, then halt after the visible move.\n"
+      printf "Armed ONE runtime button press. Resume, press one button that changes scene or selection, then halt after the visible change.\n"
+      printf "For GUI Lobby/Garden: A in Lobby measures entry; B in Garden measures return. Do not halt during audio playback.\n"
       printf "Releases and animation will not overwrite it. Source __fw0_object_latency_prints.gdb.\n"
       printf "Measurement begins at runtime receipt: physical edge, debounce and pre-runtime wake time are excluded. Do not halt during the press.\n"
     end

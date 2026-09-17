@@ -1455,6 +1455,7 @@ uint32_t PS_SceneRuntime_EnterDevelopmentSceneSet(const uint8_t *blob, uint32_t 
 static uint32_t PS_SceneRuntime_ReplaceObjectScene(uint32_t target_scene_id,
   uint32_t transition_id)
 {
+  ps_egg_v2_profile_result_t profile;
   uint32_t slot = s_ps_scene_runtime_active_slot ^ 1UL;
   ps_scene_runtime_state_scene_t *target = &s_ps_scene_runtime_scene_slots[slot];
   g_ps_scene_runtime_probe.scene_replace_count++;
@@ -1464,8 +1465,8 @@ static uint32_t PS_SceneRuntime_ReplaceObjectScene(uint32_t target_scene_id,
   if ((s_ps_object_scene_blob == NULL) || (s_ps_object_scene_admission == NULL) ||
       (s_ps_scene_runtime_scene_activation == UINT32_MAX) ||
       (s_ps_scene_runtime_state_activation == UINT32_MAX) ||
-      (PS_EggStateLoader_DecodeDevelopmentScene(s_ps_object_scene_blob,
-        s_ps_object_scene_size, target_scene_id, target) != 0UL) ||
+      (PS_EggStateLoader_DecodeActiveV2Scene(s_ps_object_scene_blob,
+        s_ps_object_scene_size, target_scene_id, target, NULL, &profile) != 0UL) ||
       (PS_SceneObjectGraph_Init(&s_ps_object_destination, target,
         PS_EggStateLoader_SceneCount(), s_ps_scene_runtime_scene_activation + 1UL) != 0UL) ||
       (PS_SceneRuntime_FindStateIndex(target, target->entry_state_id) == PS_SCENE_RUNTIME_INDEX_INVALID) ||
@@ -1506,6 +1507,7 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
   ps_scene_runtime_state_scene_t *validation_scene =
     &s_ps_scene_runtime_scene_slots[1];
 
+  PS_EggStateLoader_ReleaseActiveV2();
   s_ps_scene_runtime_development_objects = 0UL;
   g_ps_scene_runtime_probe.enter_count++;
   g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_NOT_RUN;
@@ -1608,6 +1610,7 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
 
 void PS_SceneRuntime_ExitStateScene(void)
 {
+  PS_EggStateLoader_ReleaseActiveV2();
   s_ps_scene_runtime_development_objects = 0UL;
   s_ps_installed_object_blob = NULL;
   s_ps_installed_object_size = 0UL;

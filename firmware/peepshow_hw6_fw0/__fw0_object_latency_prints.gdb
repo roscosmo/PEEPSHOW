@@ -15,6 +15,7 @@ else
   printf "event result/status/panel status candidate token/count render token = %u/0x%x/0x%x %u/%u %u\n", $ps_latency->event_result, $ps_latency->status, $ps_latency->panel_status, $ps_latency->candidate_token, $ps_latency->candidate_count, $ps_latency->render_token
   printf "tick frequency = %u Hz; zero ms means below tick resolution, not free work.\n", $ps_latency->tick_hz
   printf "Metadata cache hits/misses since boot = %u/%u (cumulative, not this capture alone).\n", ps_candidate_cache_hits, ps_candidate_cache_misses
+  printf "Full candidate package loads since boot = %u (cumulative). A scene metadata miss can now reuse the validated active package without a full load.\n", g_ps_egg_validation_probe.load_count
   printf "Runtime advance: "
   ps_object_latency_row 0 1
   printf "Private copy: "

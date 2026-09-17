@@ -8935,9 +8935,19 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
       ps_candidate_cache_misses++;
       if (mode == 3UL)
       {
-        g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeV2SceneCandidate(
-          ps_candidate_blob, ps_candidate_size, scene_id,
-          &ps_candidate_scene, &ps_candidate_catalog, &profile);
+        g_ps_object_candidate_probe.profile_status = PS_EGG_STATE_LOADER_NOT_ACTIVE;
+        if (objects != NULL)
+        {
+          g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeActiveV2Scene(
+            ps_candidate_blob, ps_candidate_size, scene_id,
+            &ps_candidate_scene, &ps_candidate_catalog, &profile);
+        }
+        if (g_ps_object_candidate_probe.profile_status == PS_EGG_STATE_LOADER_NOT_ACTIVE)
+        {
+          g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeV2SceneCandidate(
+            ps_candidate_blob, ps_candidate_size, scene_id,
+            &ps_candidate_scene, &ps_candidate_catalog, &profile);
+        }
       }
       else
       {
