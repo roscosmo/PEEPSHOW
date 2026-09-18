@@ -82,7 +82,7 @@ class SceneObjectCreationTests(unittest.TestCase):
 
     def test_capabilities_distinguish_creation_state_management_and_graphs(self):
         hello = self.call("service.hello")
-        self.assertEqual(49, SERVICE_API_VERSION)
+        self.assertEqual(50, SERVICE_API_VERSION)
         creation = hello["scene_creation"]
         self.assertEqual("project.create", creation["project_operation"])
         self.assertEqual("scene.add", creation["scene_command"])

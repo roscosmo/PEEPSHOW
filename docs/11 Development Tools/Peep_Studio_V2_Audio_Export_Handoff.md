@@ -1,5 +1,8 @@
 # V2 Resident SFX Export Handoff
 
+Historical API 45 milestone below. API 50/profile revision 5 supersedes its
+action-free exit restriction; see [[Peep_Studio_V2_Scene_Exit_SFX_Handoff]].
+
 Status: 2026-09-17, service API 45 implements public resident V2 sampled-SFX
 export. This follows the installed HOME/AWAY hardware result in
 [[V2_Installed_SFX_Test]]. A Studio-generated audio fixture remains to be tested.

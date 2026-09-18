@@ -141,8 +141,11 @@ multiple cues may overlap under the existing mixer limits.
 Object, variable, timer and shell-exit actions on a scene exit remain rejected.
 Existing same-package voices continue; shell/package suspension still discards
 them. The fixed existing action bounds, resident ceiling, voice limits and clock
-policy are unchanged. Public Studio export remains action-free until HW6 evidence
-and explicit capability advertisement. See [[V2_Scene_Exit_SFX_Validation]].
+policy are unchanged. Following the input-exit HW6 bench result, public service
+API 50/export-profile revision 5 advertises SFX-only input and timer scene exits.
+Timer-exit ordering/rejection is native-tested; physical evidence covers one cue
+per input exit. See [[V2_Scene_Exit_SFX_Validation]] and
+[[Peep_Studio_V2_Scene_Exit_SFX_Handoff]].
 
 V2 resident install milestone (2026-09-17): firmware profile admission now
 accepts fully validated resident audio catalogs and local `play_sfx` actions,

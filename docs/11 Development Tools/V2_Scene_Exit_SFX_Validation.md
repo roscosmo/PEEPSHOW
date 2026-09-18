@@ -1,7 +1,8 @@
 # V2 Scene-Exit SFX Validation
 
-Status: firmware implemented; input-triggered HW6 bench behaviour confirmed. Public export remains
-action-free on scene exits. API 49 advertisement is unchanged.
+Status: firmware implemented; input-triggered HW6 bench behaviour confirmed.
+API 50/profile revision 5 now admits public SFX-only scene exits. See
+[[Peep_Studio_V2_Scene_Exit_SFX_Handoff]].
 
 The Audio Contract defines ordering and failure semantics. Runtime owns the scene
 transaction; thAudio owns playback. Input routes and timer handlers share the
@@ -15,7 +16,7 @@ playlist or wait-for-audio transition. Audio failure does not roll back a scene.
 Native installed-package tests exercise real private raster admission, two ordered
 exit cues, repeated round trips, input and timer exits, destination rejection
 without effects/source mutation, and package audio catalog lifetime.
-Public readiness remains blocked for exits carrying SFX. Existing shell-action
+Public builds now reproduce the tested fixture bytes. Existing shell-action
 and malformed-audio rejection tests remain in place.
 
 ## Bench Fixture
@@ -82,6 +83,6 @@ sleep-entry results; retained completed WFI/reconciliation counts are separate
 evidence. No new current, rail or reboot measurement was supplied. Timer-exit
 SFX and multi-cue ordering remain host-tested rather than physically tested here.
 
-Next: update and test the shared export profile/capability advertisement before
-Studio enables the supported scene-exit action subset. Public export has not
-been widened by recording this result.
+The subsequent API 50 backend increment publishes the supported action subset
+without changing firmware, wire format or source schema. Studio should use the
+advertisement and whole-project readiness, not special-case the fixture.

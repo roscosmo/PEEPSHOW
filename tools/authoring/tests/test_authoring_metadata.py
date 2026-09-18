@@ -115,7 +115,7 @@ class AuthoringMetadataTests(unittest.TestCase):
 
     def test_capabilities(self):
         hello = self.call("service.hello")
-        self.assertEqual(49, hello["service_api_version"])
+        self.assertEqual(50, hello["service_api_version"])
         self.assertFalse(hello["asset_metadata"]["tags"]["runtime_encoded"])
         self.assertEqual(96, hello["scene_object_authoring"]["display_names"]["maximum_length"])
 

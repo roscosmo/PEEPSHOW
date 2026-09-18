@@ -65,13 +65,13 @@ class InstalledSfxTests(unittest.TestCase):
                         {"kind": "play_sfx", "cue_ref": "short.cue"},
                         {"kind": "play_sfx", "cue_ref": "long.cue"}]
         bundle = replace(self.bundle, scenes=scenes)
-        self.assertTrue(build_readiness_issues(bundle))  # Public capability stays closed.
-        blob = build_development_egg_v2(bundle)
+        self.assertEqual([], build_readiness_issues(bundle))
+        blob = build_egg(bundle)
         self.assertIn("exit SFX ordered commit passed", self.run_blob(blob, "exit-audio"))
         scenes[0]["event_handlers"][0].update(target_scene="visit", actions=[
             {"kind": "play_sfx", "cue_ref": "short.cue"},
             {"kind": "play_sfx", "cue_ref": "long.cue"}])
-        blob = build_development_egg_v2(replace(self.bundle, scenes=scenes))
+        blob = build_egg(replace(self.bundle, scenes=scenes))
         self.assertIn("exit SFX ordered commit passed", self.run_blob(blob, "exit-timer"))
 
     def test_audio_does_not_admit_shell_actions(self):
@@ -80,11 +80,11 @@ class InstalledSfxTests(unittest.TestCase):
         blob = build_development_egg_v2(replace(self.bundle, scenes=scenes))
         self.run_blob(blob, "selection", "0", "0")
 
-    def test_exit_bench_fixture_installs_without_public_export(self):
+    def test_exit_bench_fixture_installs_with_public_export(self):
         from build_scene_exit_sfx_fixture import scene_exit_sfx_bundle
         bundle = scene_exit_sfx_bundle()
-        self.assertTrue(build_readiness_issues(bundle))
-        blob = build_development_egg_v2(bundle)
+        self.assertEqual([], build_readiness_issues(bundle))
+        blob = build_egg(bundle)
         self.assertEqual(54660, len(blob))
         self.assertEqual("610119f8944e1965cb4b29e081085eb957469b33db6cc7c0c8fe71849cac0f5c",
                          hashlib.sha256(blob).hexdigest())

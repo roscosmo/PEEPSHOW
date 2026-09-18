@@ -68,7 +68,7 @@ class TimerHandlerLayoutTests(unittest.TestCase):
 
     def test_capabilities_and_export_preview_undo_save_reload(self):
         hello = self.call("service.hello")
-        self.assertEqual(49, hello["service_api_version"])
+        self.assertEqual(50, hello["service_api_version"])
         cap = hello["state_scene_graph"]["scene_timers"]["editor_layout"]
         normalized = self.call("project.normalize")
         scene_cap = normalized["scene_capabilities"][self.scene_id]

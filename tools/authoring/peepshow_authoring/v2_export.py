@@ -30,7 +30,11 @@ def public_v2_audio_profile():
     return {
         "supported": True, "capability": "audio.sampled_sfx",
         "action_kinds": ["play_sfx"],
-        "action_contexts": ["local_transition", "local_timer_handler"],
+        "action_contexts": ["local_transition", "local_timer_handler", "scene_exit", "timer_scene_exit"],
+        "scene_exit_commit": "after_destination_admission_and_commit",
+        "scene_exit_rejection": "no_cues",
+        "action_order": "authored_order", "sequential_playback": False,
+        "audio_failure_after_commit": "report_without_scene_rollback_or_retry",
         "compiled_format": TARGET_SAMPLED_SFX["compiled_format"],
         "sample_rate_hz": TARGET_SAMPLED_SFX["sample_rate_hz"],
         "channels": TARGET_SAMPLED_SFX["channels"],
@@ -43,7 +47,7 @@ def public_v2_audio_profile():
         "package_suspend": "stop_and_discard", "package_resume": "new_requests_only",
         "package_exit_or_replacement": "stop_and_discard",
         "unsupported": ["music", "looping", "procedural_audio", "pause_resume",
-                        "fades", "runtime_volume_controls", "nonresident_audio", "scene_exit_actions"],
+                        "fades", "runtime_volume_controls", "nonresident_audio", "scene_exit_mutations"],
     }
 
 
@@ -73,14 +77,14 @@ def public_v2_text_profile():
 
 def public_v2_export_profile():
     return {
-        "profile_id": PROFILE_ID, "profile_revision": 4, "container_version": 2,
+        "profile_id": PROFILE_ID, "profile_revision": 5, "container_version": 2,
         "status": "development_restricted", "execution_model": "scene_objects",
         "limits": deepcopy(LIMITS), "interaction_modes": ["continuous"],
         "event_classes": ["input", "timer"], "audio": True,
         "audio_profile": public_v2_audio_profile(),
         "runtime_text": public_v2_text_profile(),
         "scene_connections": True, "scene_entry_modes": ["fresh_default"],
-        "scene_exit_action_kinds": [], "self_scene_exits": False,
+        "scene_exit_action_kinds": ["play_sfx"], "self_scene_exits": False,
         "system_exit_actions": False,
         "mixed_execution_models": False, "shipping_build": False,
         "budget_method": "conservative_all_clips_and_positions",
@@ -193,9 +197,10 @@ def _scene_admission(package, scene):
         route_path = path + f".routes[{route['route_id']}]"
         if route["target_scene"] is not None:
             if (route["target_scene"] == sid or route["target_scene"] not in
-                    {candidate["scene_id"] for candidate in package.scenes} or route["operations"]):
+                    {candidate["scene_id"] for candidate in package.scenes} or
+                    any(op["kind"] != 7 for op in route["operations"])):
                 issues.append(issue("V2_SCENE_EXIT_UNSUPPORTED", route_path,
-                                    "Use an action-free exit to another scene's default entry.", sid))
+                                    "Exit to another scene's default entry with only play_sfx actions or no actions.", sid))
         for index, op in enumerate(route["operations"]):
             if op["kind"] not in {1, 7, 9, 10, 11, 12}:
                 issues.append(issue("V2_ACTION_UNSUPPORTED", route_path + f".actions[{index}]",
