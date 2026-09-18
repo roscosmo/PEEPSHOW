@@ -1,5 +1,14 @@
 # Native V2 Menu
 
+The default Peep Studio example. Menu labels are genuine API 49 runtime text
+objects; only the numbered continuity counter uses sprite assets.
+
+- Up/Down cycles through menu states and plays a short navigation SFX.
+- A enters the selected scene through an action-free named exit.
+- B returns to a freshly created Main Menu scene.
+- A scene-entry timer reveals `A: OPEN` after two seconds.
+- The numbered animation continues across local menu state changes.
+
 Open this directory in Peep Studio to inspect native scene ownership, placement
 and a vertically arranged local state graph. This is a separate authoring example,
 not a replacement for the legacy multi-scene example or a hardware test fixture.

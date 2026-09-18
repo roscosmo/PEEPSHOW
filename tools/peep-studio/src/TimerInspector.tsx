@@ -196,7 +196,7 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
         {timerRoutes.map(item => <button className="record-row" key={item.route_id} type="button"
           onClick={() => onSelect({ kind: "route", id: item.route_id, sourceState: item.from_states[0] })}>
           <strong>{item.from_states.map(id => stateName(scene, id)).join(", ")}</strong>
-          <small>expires to {stateName(scene, item.target_state) ?? item.route_id}</small>
+          <small>expires to {stateName(scene, item.target_state) ?? "timer actions"}</small>
         </button>)}
       </div>}
       <button className="button secondary" type="button" disabled={externalReferences || !deletion.every(item => supports(String(item.kind)))}

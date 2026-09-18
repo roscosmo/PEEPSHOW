@@ -5797,7 +5797,7 @@ export default function App() {
                           width: `${(width / 168) * 100}%`,
                           height: `${(height / 144) * 100}%`,
                         }}
-                        title={`${element.element_id}: ${x},${y} ${width}x${height}`}
+                        title={`${placementObjectDisplayName(element)}: ${x},${y} ${width}x${height}`}
                         onPointerDown={(event) => {
                           if (placementRenderModel !== null || sceneObjectMoveSupported) {
                             startPlacementDrag(event, element, placementRenderModel?.visual_id ?? null);
@@ -5809,7 +5809,7 @@ export default function App() {
                           selectPlacementElement(element.element_id);
                         }}
                       >
-                        <span>{element.element_id}</span>
+                        <span>{placementObjectDisplayName(element)}</span>
                         {canResize && (
                           <>
                             <i
@@ -7498,6 +7498,11 @@ export default function App() {
       : compiledAssetFrameById.get(element.visual_ref) ?? null;
     return frame === null ? "Sprite" : assetDisplayName(frame.asset_id);
   };
+  const placementObjectDisplayName = (element: RenderElement) => {
+    const displayName = placementOwnershipScene?.objects
+      ?.find((object) => object.object_id === element.element_id)?.display_name?.trim();
+    return displayName || placementObjectLabelBase(element);
+  };
   const nextPlacementElementId = (kind: string, elements: RenderElement[]) => {
     const prefix = kind.replaceAll("-", "_");
     const existing = new Set(elements.map((element) => element.element_id));
@@ -8125,7 +8130,7 @@ export default function App() {
                 });
                 const groupId = JSON.stringify([scene.scene_id, "object", element.element_id]);
                 const objectExpanded = !collapsedHierarchyIds.includes(groupId);
-                const label = objectLabelById.get(element.element_id) ?? element.element_id;
+                const label = objectLabelById.get(element.element_id) ?? placementObjectLabelBase(element);
                 return <section className="native-object-branch" key={element.element_id} data-object-id={element.element_id}>
                   <div className="native-object-row">
                     {overrides.length > 0 ? <button className="hierarchy-disclosure-control" type="button"
@@ -8638,7 +8643,6 @@ export default function App() {
               <div><dt>Width</dt><dd>{selectedElement.width}</dd></div>
               <div><dt>Height</dt><dd>{selectedElement.height}</dd></div>
               <div><dt>Draw order</dt><dd>{selectedElement.z_order}</dd></div>
-              <div><dt>Internal ID</dt><dd>{selectedElement.element_id}</dd></div>
             </dl>
             {targetStateIds.length > 0 && (
               <div className="placement-override-status">
@@ -9529,8 +9533,9 @@ export default function App() {
                 <p className="muted">Start a scene preview to inspect its runtime state.</p>
               ) : (
                 <dl className="inspector-list">
-                  <div><dt>Scene</dt><dd>{preview.scene.scene_id}</dd></div>
-                  <div><dt>State</dt><dd>{preview.scene.state_id}</dd></div>
+                  <div><dt>Scene</dt><dd>{scenes.find(scene => scene.scene_id === preview.scene.scene_id)?.display_name ?? "Unknown scene"}</dd></div>
+                  <div><dt>State</dt><dd>{scenes.find(scene => scene.scene_id === preview.scene.scene_id)?.states
+                    ?.find(state => state.state_id === preview.scene.state_id)?.display_name ?? "Unknown state"}</dd></div>
                   {preview.timeline.ownership === "scene_objects" ? (
                     <div><dt>Scene time</dt><dd>{preview.timeline.elapsed_ms} ms</dd></div>
                   ) : <>

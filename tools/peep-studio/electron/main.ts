@@ -187,11 +187,11 @@ class AuthoringSidecar {
 
 const repositoryRoot = path.resolve(__dirname, "..", "..", "..");
 const sidecar = new AuthoringSidecar(repositoryRoot);
-const exampleProject = path.join(repositoryRoot, "examples", "authoring", "state_slice.peepproj");
+const exampleProject = path.join(repositoryRoot, "examples", "authoring", "native_v2_menu.peepproj");
 
 async function createWritableExampleCopy(): Promise<string> {
   const parent = await mkdtemp(path.join(os.tmpdir(), "peep-studio-example-"));
-  const destination = path.join(parent, "menu_selection.peepproj");
+  const destination = path.join(parent, "menu_selection_v2.peepproj");
   await cp(exampleProject, destination, { recursive: true });
   return destination;
 }

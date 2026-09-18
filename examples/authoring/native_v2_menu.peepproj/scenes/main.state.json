@@ -16,9 +16,18 @@
       "action_id": "joy_up_press",
       "logical_source": "JOY_UP",
       "event_kind": "press"
+    },
+    {
+      "action_id": "button_a_press",
+      "logical_source": "BUTTON_A",
+      "event_kind": "press"
     }
   ],
-  "scene_exits": [],
+  "scene_exits": [
+    {"scene_exit_id":"to_start_game","display_name":"Start Game","target_scene":"start_game"},
+    {"scene_exit_id":"to_settings","display_name":"Settings","target_scene":"settings"},
+    {"scene_exit_id":"to_credits","display_name":"Credits","target_scene":"credits"}
+  ],
   "routes": [
     {
       "route_id": "start_joy_down_press",
@@ -27,7 +36,7 @@
         "start"
       ],
       "guards": [],
-      "actions": [],
+      "actions": [{"kind":"play_sfx","cue_ref":"menu_select.cue"}],
       "target_state": "settings"
     },
     {
@@ -37,7 +46,7 @@
         "start"
       ],
       "guards": [],
-      "actions": [],
+      "actions": [{"kind":"play_sfx","cue_ref":"menu_select.cue"}],
       "target_state": "credits"
     },
     {
@@ -47,7 +56,7 @@
         "settings"
       ],
       "guards": [],
-      "actions": [],
+      "actions": [{"kind":"play_sfx","cue_ref":"menu_select.cue"}],
       "target_state": "credits"
     },
     {
@@ -57,7 +66,7 @@
         "settings"
       ],
       "guards": [],
-      "actions": [],
+      "actions": [{"kind":"play_sfx","cue_ref":"menu_select.cue"}],
       "target_state": "start"
     },
     {
@@ -67,7 +76,7 @@
         "credits"
       ],
       "guards": [],
-      "actions": [],
+      "actions": [{"kind":"play_sfx","cue_ref":"menu_select.cue"}],
       "target_state": "start"
     },
     {
@@ -77,8 +86,20 @@
         "credits"
       ],
       "guards": [],
-      "actions": [],
+      "actions": [{"kind":"play_sfx","cue_ref":"menu_select.cue"}],
       "target_state": "settings"
+    },
+    {
+      "route_id":"choose_start","action_ref":"button_a_press","from_states":["start"],"guards":[],"actions":[],
+      "scene_exit_ref":"to_start_game","target_scene":"start_game"
+    },
+    {
+      "route_id":"choose_settings","action_ref":"button_a_press","from_states":["settings"],"guards":[],"actions":[],
+      "scene_exit_ref":"to_settings","target_scene":"settings"
+    },
+    {
+      "route_id":"choose_credits","action_ref":"button_a_press","from_states":["credits"],"guards":[],"actions":[],
+      "scene_exit_ref":"to_credits","target_scene":"credits"
     }
   ],
   "reactive_wait_default": {
@@ -86,7 +107,9 @@
     "hold_fallback_allowed": true,
     "event_interests": [
       "joy_down_press",
-      "joy_up_press"
+      "joy_up_press",
+      "button_a_press",
+      "ready_timer"
     ]
   },
   "interaction_policy": {
@@ -94,12 +117,14 @@
     "mode": "continuous",
     "meaningful_activity_actions": [
       "joy_down_press",
-      "joy_up_press"
+      "joy_up_press",
+      "button_a_press"
     ]
   },
   "objects": [
     {
       "object_id": "menu_border",
+      "display_name": "Menu border",
       "kind": "outline_rect",
       "width": 160,
       "height": 136,
@@ -113,6 +138,7 @@
     },
     {
       "object_id": "menu_divider",
+      "display_name": "Title divider",
       "kind": "filled_rect",
       "width": 144,
       "height": 1,
@@ -126,7 +152,12 @@
     },
     {
       "object_id": "menu_title",
-      "kind": "sprite",
+      "display_name": "Menu title",
+      "kind": "text",
+      "text": "MENU",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "scale": 2,
+      "alignment": "left",
       "width": 64,
       "height": 16,
       "z_order": 2,
@@ -134,13 +165,17 @@
       "defaults": {
         "x": 16,
         "y": 12,
-        "visible": true,
-        "visual_ref": "menu_title.frame"
+        "visible": true
       }
     },
     {
       "object_id": "start_label",
-      "kind": "sprite",
+      "display_name": "Start Game label",
+      "kind": "text",
+      "text": "Start Game",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "scale": 1,
+      "alignment": "left",
       "width": 80,
       "height": 8,
       "z_order": 2,
@@ -148,13 +183,17 @@
       "defaults": {
         "x": 24,
         "y": 46,
-        "visible": true,
-        "visual_ref": "start_label.frame"
+        "visible": true
       }
     },
     {
       "object_id": "settings_label",
-      "kind": "sprite",
+      "display_name": "Settings label",
+      "kind": "text",
+      "text": "Settings",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "scale": 1,
+      "alignment": "left",
       "width": 64,
       "height": 8,
       "z_order": 2,
@@ -162,13 +201,17 @@
       "defaults": {
         "x": 24,
         "y": 78,
-        "visible": true,
-        "visual_ref": "settings_label.frame"
+        "visible": true
       }
     },
     {
       "object_id": "credits_label",
-      "kind": "sprite",
+      "display_name": "Credits label",
+      "kind": "text",
+      "text": "Credits",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "scale": 1,
+      "alignment": "left",
       "width": 56,
       "height": 8,
       "z_order": 2,
@@ -176,12 +219,12 @@
       "defaults": {
         "x": 24,
         "y": 110,
-        "visible": true,
-        "visual_ref": "credits_label.frame"
+        "visible": true
       }
     },
     {
       "object_id": "selection_outline",
+      "display_name": "Selection outline",
       "kind": "outline_rect",
       "width": 144,
       "height": 24,
@@ -195,6 +238,7 @@
     },
     {
       "object_id": "continuity_counter",
+      "display_name": "Animation continuity",
       "kind": "sprite",
       "width": 8,
       "height": 8,
@@ -207,6 +251,11 @@
         "visual_ref": "counter_1.frame"
       },
       "animation_ref": "menu_counter_loop"
+    },
+    {
+      "object_id":"ready_hint","display_name":"Timer reveal","kind":"text","text":"A: OPEN","font_id":"peepshow.system.8x8.basic.v1",
+      "scale":1,"alignment":"right","width":64,"height":8,"z_order":4,"layer":"UI",
+      "defaults":{"x":92,"y":128,"visible":false}
     }
   ],
   "states": [
@@ -240,5 +289,11 @@
         }
       ]
     }
+  ],
+  "event_bindings":[
+    {"binding_id":"ready_timer","event_type":"time.scene_elapsed","configuration":{"delay_ms":2000,"start_policy":"scene_entry"}}
+  ],
+  "event_handlers":[
+    {"handler_id":"ready_timer_expired","event_ref":"ready_timer","guards":[],"actions":[{"kind":"object.set_visibility","object_ref":"ready_hint","visible":true}]}
   ]
 }

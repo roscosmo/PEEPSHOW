@@ -5,7 +5,7 @@ export const ObjectActionContext = createContext<{
   scene: SceneDocument | null;
   preview: PreviewSnapshot | null;
   label: (element: RenderElement) => string;
-}>({ scene: null, preview: null, label: element => element.element_id });
+}>({ scene: null, preview: null, label: element => element.kind === "sprite" ? "Sprite" : "Object" });
 
 export function ObjectActionPosition({ objectId, action, targetState }: {
   objectId: string;
@@ -27,13 +27,13 @@ export function ObjectActionPosition({ objectId, action, targetState }: {
   return <div className="object-action-position">
     {object ? <>
       <dl className="inspector-list" title="Screen coordinates in pixels: X from left, Y from top">
-        <div><dt>Emulator state</dt><dd>{activeState?.display_name ?? live?.scene.state_id}</dd></div>
+        <div><dt>Emulator state</dt><dd>{activeState?.display_name ?? "Unknown state"}</dd></div>
         <div><dt>Stored position</dt><dd>X {object.underlying.x}, Y {object.underlying.y}</dd></div>
         <div><dt>On-screen position</dt><dd>X {object.effective.x}, Y {object.effective.y}</dd></div>
       </dl>
       {masked && <p className="plain-rule-note">{masked} {masked.includes("/") ? "are" : "is"} fixed by this state; movement still updates the stored position.</p>}
     </> : <p className="plain-rule-note">No current emulator position for this object.</p>}
     {destinationMasked && targetState?.state_id !== activeState?.state_id &&
-      <p className="plain-rule-note">In {targetState?.display_name ?? targetState?.state_id}, {destinationMasked} {destinationMasked.includes("/") ? "are" : "is"} fixed by that state; movement still updates the stored position.</p>}
+      <p className="plain-rule-note">In {targetState?.display_name ?? "the destination state"}, {destinationMasked} {destinationMasked.includes("/") ? "are" : "is"} fixed by that state; movement still updates the stored position.</p>}
   </div>;
 }

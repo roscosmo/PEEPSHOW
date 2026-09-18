@@ -41,7 +41,7 @@ export function AnimationClipEditor({ clip, frames, assets, scenes, disabled, on
     return asset ? `${asset.display_name ?? asset.text ?? "Sprite"} / ${frame?.display_name ?? `Frame ${asset.frames.findIndex(item => item.frame_id === id) + 1}`}` : "Unavailable frame";
   };
   const users = scenes.flatMap(scene => (scene.objects ?? []).filter(object => object.animation_ref === clip.animation_id)
-    .map(object => `${scene.display_name} / ${object.object_id}`));
+    .map(object => `${scene.display_name} / ${object.display_name?.trim() || "Unnamed object"}`));
   const move = (index: number, delta: number) => setSteps(current => {
     const next = [...current];
     [next[index], next[index + delta]] = [next[index + delta], next[index]];

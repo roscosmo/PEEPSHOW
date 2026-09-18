@@ -4349,7 +4349,6 @@ export function SceneFlowInspector({
               ))}
             </select>
           </label>
-          <div className="internal-ref-note">Legacy route ID: <code>{route.route_id}</code></div>
         </section>
       );
     }
@@ -4455,7 +4454,6 @@ function SceneNodeInspector({
           ))}
         </div>
       )}
-      <div className="internal-ref-note">Internal scene ID: <code>{scene.scene_id}</code></div>
     </section>
   );
 }
@@ -4804,10 +4802,10 @@ function SceneOverview({
           <EmptyInspector>No screen layouts in this scene.</EmptyInspector>
         ) : (
           <div className="record-list">
-            {renderModels.map((item: RenderModel) => (
+            {renderModels.map((item: RenderModel, index) => (
               <button key={item.visual_id} className="record-row" type="button" onClick={() => onSelect({ kind: "render", id: item.visual_id })}>
-                <strong>{item.elements.length} element{item.elements.length === 1 ? "" : "s"}</strong>
-                <small>{item.visual_id}</small>
+                <strong>Layout {index + 1}</strong>
+                <small>{item.elements.length} object{item.elements.length === 1 ? "" : "s"}</small>
               </button>
             ))}
           </div>
@@ -4820,10 +4818,10 @@ function SceneOverview({
           <EmptyInspector>No waiting animations in this scene.</EmptyInspector>
         ) : (
           <div className="record-list">
-            {waitingVisuals.map((item: WaitingVisual) => (
+            {waitingVisuals.map((item: WaitingVisual, index) => (
               <button key={item.waiting_visual_id} className="record-row" type="button" onClick={() => onSelect({ kind: "waiting", id: item.waiting_visual_id })}>
-                <strong>{item.combined_step_count} step{item.combined_step_count === 1 ? "" : "s"}</strong>
-                <small>{item.phase_quantum_ms} ms per step; {item.waiting_visual_id}</small>
+                <strong>Animation {index + 1}</strong>
+                <small>{item.combined_step_count} step{item.combined_step_count === 1 ? "" : "s"}; {item.phase_quantum_ms} ms per step</small>
               </button>
             ))}
           </div>
@@ -5205,9 +5203,6 @@ function StateInspector({
           Delete state
         </button>
       </div>
-      <div className="internal-ref-note">
-        Internal state ID: <code>{state.state_id}</code>
-      </div>
     </section>
   );
 }
@@ -5244,9 +5239,6 @@ function SceneExitInspector({
             ))}
         </select>
       </label>
-      <div className="internal-ref-note">
-        Internal scene exit ID: <code>{sceneExit.scene_exit_id}</code>
-      </div>
     </section>
   );
 }
@@ -5484,9 +5476,6 @@ function RouteInspector({
         onDeleteRouteAction={onDeleteRouteAction}
         onMoveRouteAction={onMoveRouteAction}
       />
-      <div className="internal-ref-note">
-        Internal transition ID: <code>{route.route_id}</code>
-      </div>
       {onDeleteRoute && <button className="button secondary" type="button" title="Delete transition"
         disabled={!(localCommandAllowed?.("route.delete") ?? canEdit)}
         onClick={() => void onDeleteRoute(sceneId, route.route_id)}><Trash2 size={14} />Delete transition</button>}
@@ -5697,7 +5686,7 @@ function waitingAnimationChoices(
       .filter((element) => element.source_element_ref === elementRef)
       .map((element) => ({
         key: `${waiting.waiting_visual_id}:${element.element_id}`,
-        label: `${waiting.waiting_visual_id} / ${element.element_id}`,
+        label: `Animation ${waitingVisuals.indexOf(waiting) + 1} / Object ${waiting.elements.indexOf(element) + 1}`,
         waitingVisualRef: waiting.waiting_visual_id,
         waitingElementRef: element.element_id,
       }));
@@ -6241,13 +6230,12 @@ function RenderInspector({ render }: { render: RenderModel }) {
   return (
     <section className="inspector-section selected-record">
       <h3>Screen layout</h3>
-      <InspectorList rows={[["Internal ID", render.visual_id], ["Focus order", render.focus_index], ["Elements", render.elements.length]]} />
+      <InspectorList rows={[["Focus order", render.focus_index], ["Elements", render.elements.length]]} />
       <div className="element-table">
-        {render.elements.map((element) => (
+        {render.elements.map((element, index) => (
           <div key={element.element_id}>
-            <strong>{element.element_id}</strong>
+            <strong>Object {index + 1}</strong>
             <span>{element.kind}</span>
-            <small>{element.visual_ref}</small>
             <small>{element.x},{element.y} {element.width}x{element.height} z{element.z_order}</small>
           </div>
         ))}
@@ -6262,8 +6250,6 @@ function WaitingInspector({ waiting }: { waiting: WaitingVisual }) {
       <h3>Waiting animation</h3>
       <InspectorList
         rows={[
-          ["Internal ID", waiting.waiting_visual_id],
-          ["Presentation", waiting.presentation_id],
           ["Quantum", `${waiting.phase_quantum_ms} ms`],
           ["Steps", waiting.combined_step_count],
           ["Settled step", waiting.settled_step + 1],
@@ -6271,11 +6257,9 @@ function WaitingInspector({ waiting }: { waiting: WaitingVisual }) {
         ]}
       />
       <div className="element-table">
-        {waiting.elements.map((element) => (
+        {waiting.elements.map((element, index) => (
           <div key={element.element_id}>
-            <strong>{element.element_id}</strong>
-            <span>from {element.source_element_ref}</span>
-            <small>{element.phase_visual_refs.join(", ")}</small>
+            <strong>Object {index + 1}</strong>
             <small>steps {element.step_phase_indices.join(", ")}</small>
           </div>
         ))}

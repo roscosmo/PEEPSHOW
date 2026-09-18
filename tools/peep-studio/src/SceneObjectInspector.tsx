@@ -122,7 +122,6 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
     <dl className="inspector-list">
       <div><dt>Scene</dt><dd>{scene.display_name}</dd></div>
       <div><dt>Size</dt><dd>{object.width} x {object.height}</dd></div>
-      <div><dt>Internal ID</dt><dd>{object.object_id}</dd></div>
     </dl>
     {(["x", "y"] as const).map(axis => <div className="scene-object-property" key={axis}>
       <label><span>{axis === "x" ? "X (from left)" : "Y (from top)"}</span>

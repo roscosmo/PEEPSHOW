@@ -2,16 +2,19 @@
   "schema_id": "peepshow.authoring.project",
   "schema_version": 1,
   "project_id": "project.native_v2_menu",
-  "project_name": "native_v2_menu",
+  "project_name": "Menu Selection Demo",
   "package": {
     "package_id": "dev.peepshow.native_v2_menu",
-    "display_name": "native_v2_menu",
+    "display_name": "Menu Selection Demo",
     "version": "0.1.0"
   },
   "selected_target_profile": "hw6_fw0_development",
   "entry_scene": "main",
   "scene_sources": [
-    "scenes/main.state.json"
+    "scenes/main.state.json",
+    "scenes/start_game.state.json",
+    "scenes/settings.state.json",
+    "scenes/credits.state.json"
   ],
   "validation": {
     "build_profile": "development",
@@ -21,6 +24,15 @@
     "assets/catalog.json"
   ],
   "editor": {
+    "scene_flow": {
+      "nodes": {
+        "main": {"x": 260, "y": 260},
+        "start_game": {"x": 760, "y": 0},
+        "settings": {"x": 760, "y": 300},
+        "credits": {"x": 760, "y": 600}
+      },
+      "package_entry": {"x": 20, "y": 300}
+    },
     "state_graph": {
       "scenes": {
         "main": {
