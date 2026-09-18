@@ -18,8 +18,8 @@ from .project import ProjectBundle, STABLE_ID, ValidationIssue
 
 PROPERTY_KEYS = frozenset({"x", "y", "visible", "visual_ref"})
 OBJECT_REQUIRED = frozenset({"object_id", "kind", "width", "height", "z_order", "layer", "defaults"})
-OBJECT_OPTIONAL = frozenset({"animation_ref", "line_direction", "focus_role", "display_name"})
-OBJECT_KINDS = frozenset({"sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse", "filled_circle", "filled_ellipse"})
+OBJECT_OPTIONAL = frozenset({"animation_ref", "line_direction", "focus_role", "display_name", "text", "font_id", "scale", "alignment"})
+OBJECT_KINDS = frozenset({"sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse", "filled_circle", "filled_ellipse", "text"})
 OBJECT_ACTION_FIELDS = {
     "object.set_position": (frozenset(), frozenset({"x", "y"})),
     "object.move_by": (frozenset(), frozenset({"dx", "dy"})),
@@ -105,6 +105,15 @@ def validate_object_model(
     for object_id, obj in objects.items():
         path = f"objects[{object_id}]"
         keys(obj, OBJECT_REQUIRED, OBJECT_REQUIRED | OBJECT_OPTIONAL, path)
+        if obj.get("kind") == "text":
+            from .system_fonts import runtime_text_layout, SystemFontError
+            try:
+                runtime_text_layout(obj.get("text"), obj.get("font_id"), obj.get("scale"),
+                                    obj.get("alignment"), obj.get("width"), obj.get("height"))
+            except SystemFontError as exc:
+                issue("OBJECT_TEXT_INVALID", path, str(exc))
+        elif obj.keys() & {"text", "font_id", "scale", "alignment"}:
+            issue("OBJECT_TEXT_INVALID", path, "text fields require a text object")
         if "display_name" in obj and (not isinstance(obj["display_name"], str) or not 1 <= len(obj["display_name"]) <= 96 or not obj["display_name"].strip()):
             issue("OBJECT_NAME_INVALID", f"{path}.display_name", "must contain 1..96 characters and not be blank")
         if not isinstance(obj.get("kind"), str) or obj["kind"] not in OBJECT_KINDS:

@@ -49,7 +49,12 @@ typedef struct
   const uint8_t *sprite_payload;
   uint32_t sprite_size;
   uint16_t frame_count;
+  const uint8_t *strings;
+  uint32_t strings_size;
 } ps_egg_sprite_catalog_t;
+
+uint32_t PS_EggStateLoader_GetRuntimeText(const ps_egg_sprite_catalog_t *catalog,
+  uint32_t index, const uint8_t **text, uint32_t *length);
 
 typedef struct
 {

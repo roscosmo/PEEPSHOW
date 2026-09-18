@@ -14,8 +14,8 @@ from .scene_objects import (
 
 OBJECT_COMMANDS = (
     "object.add", "object.delete", "object.rename", "object.set_defaults", "object.set_kind",
-    "object.bind_animation",
-    "object.clear_animation", "object_override.set", "object_override.clear",
+    "object.bind_animation", "object.clear_animation", "object.set_text",
+    "object_override.set", "object_override.clear",
     "object_actions.set",
 )
 # Other legacy commands are not implicitly safe for a different scene representation.
@@ -69,6 +69,11 @@ def graph_validation_view(scene):
         element.update(obj["defaults"])
         element["element_id"] = obj["object_id"]
         element["focus_role"] = "none"
+        if obj["kind"] == "text":
+            # Shared legacy graph validation has no authored runtime text type.
+            element["kind"] = "filled_rect"
+            for key in ("text", "font_id", "scale", "alignment"):
+                element.pop(key, None)
         elements.append(element)
     view["render_models"] = [{"visual_id": "object_preview", "focus_index": 0, "elements": elements}]
     view["waiting_visuals"] = [{
@@ -162,6 +167,7 @@ def apply_object_command(scenes, command):
         "object.add": {"object", "visible_in_states"},
         "object.delete": {"object_id"},
         "object.rename": {"object_id", "display_name"},
+        "object.set_text": {"object_id", "text", "font_id", "scale", "alignment", "width", "height"},
         "object.set_defaults": {"object_id", "properties"},
         "object.set_kind": {"object_id", "object_kind"},
         "object.bind_animation": {"object_id", "animation_ref"},
@@ -209,6 +215,11 @@ def apply_object_command(scenes, command):
             scene["objects"].remove(obj)
             for state in scene["states"]:
                 state["object_overrides"] = [item for item in state["object_overrides"] if item["object_ref"] != obj["object_id"]]
+        elif kind == "object.set_text":
+            if obj["kind"] != "text":
+                raise ProjectCommandError("OBJECT_TEXT_INVALID", "object.set_text requires a text object")
+            for key in ("text", "font_id", "scale", "alignment", "width", "height"):
+                obj[key] = deepcopy(command[key])
         elif kind == "object.rename":
             obj["display_name"] = command["display_name"]
         elif kind == "object.set_defaults":

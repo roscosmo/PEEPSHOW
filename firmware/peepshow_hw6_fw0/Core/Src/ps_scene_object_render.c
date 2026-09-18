@@ -11,7 +11,7 @@ uint32_t PS_SceneObjectRender_Project(const ps_scene_objects_snapshot_t *snapsho
     PS_SCENE_RENDER_ELEMENT_LINE, PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT,
     PS_SCENE_RENDER_ELEMENT_FILLED_RECT, PS_SCENE_RENDER_ELEMENT_CIRCLE,
     PS_SCENE_RENDER_ELEMENT_ELLIPSE, PS_SCENE_RENDER_ELEMENT_FILLED_CIRCLE,
-    PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE
+    PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE, PS_SCENE_RENDER_ELEMENT_RUNTIME_TEXT
   };
   uint32_t index;
   if ((snapshot == NULL) || (model == NULL) || (next_ms == NULL) ||
@@ -44,6 +44,11 @@ uint32_t PS_SceneObjectRender_Project(const ps_scene_objects_snapshot_t *snapsho
       PS_SCENE_RENDER_ELEMENT_LINE_UP_RIGHT : types[object->kind];
     element->asset_id = (object->kind == 1U) ?
       PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE + 1UL + object->frame : 0UL;
+    if (object->kind == 9U)
+    {
+      element->asset_id = object->frame;
+      element->style_id = object->flags >> 3U;
+    }
     element->visible = object->flags & 1U;
     element->layer = object->layer;
     element->z_order = object->z_order;

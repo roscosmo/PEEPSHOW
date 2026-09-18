@@ -31,6 +31,35 @@ Display is Platform-owned. Engine and Reference Game code request scene/frame pr
 - The Platform display renderer lives above the panel driver in `display_renderer.c`; it owns retained logical layers, composition into the committed native framebuffer, logical-to-native drawing helpers, dirty rows, basic text/shape composition, diagnostic patterns, framebuffer hash, and minimal FW0 UI page rendering.
 - The canonical compositor order is `OVERLAY`, `UI`, `SCENE`, `BACKGROUND`. FW0 currently proves one committed framebuffer, retained element composition, and bounded dirty-row updates; retained per-layer pixel storage remains pending.
 
+## System Font Foundation (2026-09-18)
+
+HW6 shell text now uses the HW4 `font8x8_basic` printable ASCII glyphs
+(U+0020..U+007E), retained in `Core/Inc/ps_system_font.h`. Each glyph has eight
+rows, bit zero on the left, and an eight-pixel character advance. Host parity
+tests require byte equality with HW4 and the existing authoring font resource
+`peepshow.system.8x8.basic.v1`. Unsupported shell bytes draw `?`.
+
+Integer scaling replicates pixels without filtering. Shell titles and list rows
+retain their existing requested 2x scale; labels too wide for the available
+horizontal extent fall back to 1x before drawing. Complete glyphs are bounded
+to the screen. Long centered titles are measured again after scale reduction.
+Diagnostic button/joystick fields use separate rows to avoid overlap.
+
+V2 runtime text is hardware-validated for the restricted resident export subset;
+service API 49 advertises it and enables public export (profile revision 4).
+Existing system-font sprite assets remain compatible and unchanged.
+Authored text never uses shell auto-fit: explicit newlines, integer scales 1..8,
+top alignment and per-line left/center/right alignment must fit declared bounds.
+Overflow and unsupported characters are rejected, including for hidden objects.
+Studio may insert explicit newlines; neither preview nor firmware wraps them.
+Text is transparent black ink. Position and visibility can change through normal
+object overrides/actions; text content/font/style remain fixed during execution.
+Strings borrow immutable package storage under the existing catalog lease; render
+models remain pointer-free. Candidate strings are rebased with private package
+copies and use the same raster/cache/LPBAM pipeline as other objects.
+No display ownership, clocks, STOP2 or SRAM4 changes are introduced.
+See [[V2_Runtime_Text_Validation]] for wire encoding and hardware fixture.
+
 ## Electrical / Low-Power Rules
 
 - The HW6 `TXU0104RUTR` path is hardwired enabled. Firmware must not create a `VLT_LCD` GPIO, translator-disable state, or duty-cycling policy.

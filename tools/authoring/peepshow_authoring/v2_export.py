@@ -47,13 +47,38 @@ def public_v2_audio_profile():
     }
 
 
+def public_v2_text_profile():
+    return {
+        "supported": True, "scene_schema_versions": [2], "object_kind": "text",
+        "font_ids": ["peepshow.system.8x8.basic.v1"],
+        "character_set": "printable_ascii_plus_newline", "maximum_length": 256,
+        "glyph_cell": {"width": 8, "height": 8},
+        "scale": {"minimum": 1, "maximum": 8, "integer_only": True},
+        "alignment": ["left", "center", "right"], "vertical_alignment": "top",
+        "bounds": {"width": {"minimum": 1, "maximum": 168},
+                   "height": {"minimum": 1, "maximum": 144}},
+        "overflow": "reject", "line_breaks": "explicit_newline",
+        "automatic_wrapping": False, "automatic_shrinking": False,
+        "ink": "black", "background": "transparent", "baked_assets": False,
+        "commands": ["object.add", "object.set_text", "object.set_defaults",
+                     "object_override.set", "object_override.clear", "object.delete"],
+        "set_text_fields": ["text", "font_id", "scale", "alignment", "width", "height"],
+        "override_properties": ["x", "y", "visible"],
+        "runtime_action_kinds": ["object.set_position", "object.move_by", "object.set_visibility"],
+        "dynamic_content": False, "content_overrides": False,
+        "layer_and_z_order": "object_definition",
+        "device_exact_admission_required": True,
+    }
+
+
 def public_v2_export_profile():
     return {
-        "profile_id": PROFILE_ID, "profile_revision": 3, "container_version": 2,
+        "profile_id": PROFILE_ID, "profile_revision": 4, "container_version": 2,
         "status": "development_restricted", "execution_model": "scene_objects",
         "limits": deepcopy(LIMITS), "interaction_modes": ["continuous"],
         "event_classes": ["input", "timer"], "audio": True,
         "audio_profile": public_v2_audio_profile(),
+        "runtime_text": public_v2_text_profile(),
         "scene_connections": True, "scene_entry_modes": ["fresh_default"],
         "scene_exit_action_kinds": [], "self_scene_exits": False,
         "system_exit_actions": False,

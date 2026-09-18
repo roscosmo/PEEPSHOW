@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "ps_scene_render_model.h"
+#include "ps_runtime_text.h"
 
 enum
 {
@@ -290,8 +291,8 @@ static ps_egg_object_status_t Objects(const ps_egg_object_view_t *view,
         return PS_EGG_OBJECT_ID;
       }
     }
-    if ((object.kind < 1U) || (object.kind > 8U) || (object.layer > 2U) ||
-        ((object.flags & ~7U) != 0U) ||
+    if ((object.kind < 1U) || (object.kind > 9U) || (object.layer > 2U) ||
+        ((object.kind != 9U) && ((object.flags & ~7U) != 0U)) ||
         (((object.flags & 2U) != 0U) && (object.kind != 2U)) ||
         (U16(view->objects.data + OBJECT_HEADER + (uint32_t)index * OBJECT_RECORD + 18U) != 0U) ||
         (object.width == 0U) || (object.width > PS_SCENE_RENDER_CANVAS_WIDTH) ||
@@ -300,7 +301,7 @@ static ps_egg_object_status_t Objects(const ps_egg_object_view_t *view,
     {
       return PS_EGG_OBJECT_GEOMETRY;
     }
-    if ((object.kind >= 5U) && ((object.width < 3U) || (object.height < 3U) ||
+    if ((object.kind >= 5U) && (object.kind <= 8U) && ((object.width < 3U) || (object.height < 3U) ||
         ((object.width & 1U) == 0U) || ((object.height & 1U) == 0U) ||
         (((object.kind == 5U) || (object.kind == 7U)) && (object.width != object.height))))
     {
@@ -313,6 +314,15 @@ static ps_egg_object_status_t Objects(const ps_egg_object_view_t *view,
       {
         return PS_EGG_OBJECT_ASSET;
       }
+    }
+    else if (object.kind == 9U)
+    {
+      const uint8_t *text;
+      uint32_t length;
+      if ((object.clip != PS_EGG_OBJECT_REF_NONE) ||
+          !PS_RuntimeTextResolve(strings.data, strings.size, object.frame, &text, &length) ||
+          !PS_RuntimeTextFits(text, length, object.flags >> 3U, object.width, object.height))
+      { return PS_EGG_OBJECT_GEOMETRY; }
     }
     else if ((object.frame != PS_EGG_OBJECT_REF_NONE) || (object.clip != PS_EGG_OBJECT_REF_NONE))
     {

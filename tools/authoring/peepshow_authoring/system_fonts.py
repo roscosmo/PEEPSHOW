@@ -52,6 +52,33 @@ class SystemFontError(ValueError):
     """Raised when an authored system-font text asset cannot be rasterized."""
 
 
+def runtime_text_layout(text, font_id, scale, alignment, width, height):
+    """Return explicit line origins; never wrap, shrink or rasterize an asset."""
+    if (font_id != SYSTEM_FONT_8X8_BASIC_ID or type(scale) is not int or not 1 <= scale <= 8
+            or alignment not in ("left", "center", "right") or not isinstance(text, str)
+            or not 1 <= len(text) <= 256 or type(width) is not int or type(height) is not int):
+        raise SystemFontError("invalid runtime text font, content, scale, alignment or bounds")
+    if any(c != "\n" and not 32 <= ord(c) <= 126 for c in text):
+        raise SystemFontError("runtime text supports printable ASCII and explicit newlines")
+    cell = 8 * scale
+    lines = text.split("\n")
+    if len(lines) * cell > height or any(len(line) * cell > width for line in lines):
+        raise SystemFontError("runtime text must fit its bounds at the authored scale")
+    return [(0 if alignment == "left" else (width - len(line) * cell) // (2 if alignment == "center" else 1),
+             i * cell, line) for i, line in enumerate(lines)]
+
+
+def runtime_text_pixels(text, font_id, scale, alignment, width, height):
+    for x0, y0, line in runtime_text_layout(text, font_id, scale, alignment, width, height):
+        for i, char in enumerate(line):
+            for y, row in enumerate(_FONT_8X8_BASIC[(ord(char) - 32) * 8:(ord(char) - 31) * 8]):
+                for x in range(8):
+                    if row & (1 << x):
+                        for dy in range(scale):
+                            for dx in range(scale):
+                                yield x0 + (i * 8 + x) * scale + dx, y0 + y * scale + dy
+
+
 def _pivot(frame: dict[str, Any], field: str) -> int:
     value = frame.get(field)
     if isinstance(value, bool) or not isinstance(value, int):
