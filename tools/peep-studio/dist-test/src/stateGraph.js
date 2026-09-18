@@ -1265,30 +1265,47 @@ function buildStateGraphModel(scene, editor) {
     const timerNodes = sceneTimerBindings.map((binding, index) => {
         const id = `timer-${binding.binding_id}`;
         const savedPosition = savedPositions?.[id];
+        const handler = handlerByEventRef.get(binding.binding_id);
         return {
             id,
             bindingId: binding.binding_id,
             eventType: binding.event_type,
             label: timerBindingLabel(binding),
             detail: timerBindingDetail(binding),
+            guardCount: handler?.guards.length ?? 0,
+            actionCount: visibleActions(handler?.actions ?? []).length,
             x: savedPosition?.x ?? leftmostX + index * 220,
             y: savedPosition?.y ?? topmostY - 180,
         };
     });
+    const savedHandlerLayouts = scene === null ? {} : editor?.state_graph?.scenes?.[scene.scene_id]?.handlers ?? {};
+    const timerEndNodes = [];
     const timerEdges = timerNodes.flatMap((timerNode) => {
         const handler = handlerByEventRef.get(timerNode.bindingId);
         if (handler === undefined) {
             return [];
         }
         const declaredExit = exitForHandler(handler);
+        const savedLayout = savedHandlerLayouts[handler.handler_id];
+        const currentLayout = savedLayout?.routing_version === 1 ? savedLayout : undefined;
         const targetEndpoint = declaredExit === undefined ? undefined : endpointByExitId.get(declaredExit.scene_exit_id);
-        const target = handler.target_state !== undefined && stateIds.has(handler.target_state)
+        let target = handler.target_state !== undefined && stateIds.has(handler.target_state)
             ? handler.target_state
             : targetEndpoint?.id;
         if (target === undefined) {
-            return [];
+            target = `timer-end-${timerNode.bindingId}`;
+            const termination = currentLayout?.termination ?? { x: timerNode.x + 480, y: timerNode.y + 36 };
+            timerEndNodes.push({
+                id: target,
+                bindingId: timerNode.bindingId,
+                x: termination.x,
+                y: termination.y,
+            });
         }
         const targetState = handler.target_state !== undefined && stateIds.has(handler.target_state);
+        const targetKind = targetState
+            ? "state"
+            : targetEndpoint === undefined ? "effect_end" : "scene_exit";
         return [{
                 id: `${handler.handler_id}:${timerNode.bindingId}->${target}`,
                 source: timerNode.id,
@@ -1298,14 +1315,20 @@ function buildStateGraphModel(scene, editor) {
                 guards: handler.guards,
                 actions: visibleActions(handler.actions),
                 effectLabels: actionEffectLabels(handler.actions),
-                targetHandle: targetState ? "entry-top-left" : undefined,
-                targetSide: targetState ? "left" : undefined,
-                targetKind: targetState ? "state" : "scene_exit",
+                rails: currentLayout?.rails ?? [],
+                tokenPositions: currentLayout?.token_positions,
+                termination: targetKind === "effect_end"
+                    ? currentLayout?.termination ?? { x: timerNode.x + 480, y: timerNode.y + 36 }
+                    : undefined,
+                targetHandle: targetState ? currentLayout?.target_handle ?? "entry-top-left" : undefined,
+                targetSide: targetState ? currentLayout?.target_side ?? "left" : undefined,
+                targetKind,
             }];
     });
     return {
         nodes,
         timerNodes,
+        timerEndNodes,
         timerEdges,
         endpoints,
         edges,

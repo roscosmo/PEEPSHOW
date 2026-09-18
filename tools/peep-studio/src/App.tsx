@@ -81,6 +81,7 @@ import type {
   AudioAuditionResult,
   AudioCueRecord,
   CompiledAssetFrame,
+  EditorHandlerLayout,
   EditorNodePosition,
   EditorRouteRail,
   EditorRouteTokenPositions,
@@ -3431,6 +3432,41 @@ export default function App() {
       setMessage(rails.length === 0 && targetHandle === null
         ? "Transition returned to automatic routing. Save to write it to the project."
         : "Transition layout updated. Save to write it to the project.");
+    }).catch((error) => {
+      setStateGraphLayoutStatus(`save failed: ${errorText(error)}`);
+      setMessage(errorText(error));
+    });
+    await layoutSaveChain.current;
+  };
+
+  const setTimerHandlerLayout = async (
+    sceneId: string,
+    handlerId: string,
+    layout: EditorHandlerLayout,
+  ) => {
+    if (bridge === undefined || project === null) {
+      return;
+    }
+    setStateGraphLayoutStatus(`queued ${sceneId}.${handlerId} timer layout`);
+    layoutSaveChain.current = layoutSaveChain.current.then(async () => {
+      const revision = projectRevisionRef.current;
+      if (revision === null) {
+        setStateGraphLayoutStatus(`skipped ${sceneId}.${handlerId}: no project revision`);
+        return;
+      }
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: revision,
+        commands: [{
+          kind: "editor.state_graph.set_handler_layout",
+          scene_id: sceneId,
+          handler_id: handlerId,
+          layout,
+        }],
+      });
+      projectRevisionRef.current = result.project_revision;
+      applyProjectResult(result, { preserveDerivedViews: true });
+      setStateGraphLayoutStatus(`saved ${sceneId}.${handlerId} timer layout rev ${result.project_revision}`);
+      setMessage("Timer path layout updated. Save to write it to the project.");
     }).catch((error) => {
       setStateGraphLayoutStatus(`save failed: ${errorText(error)}`);
       setMessage(errorText(error));
@@ -9121,6 +9157,9 @@ export default function App() {
               onMoveStateNode={(sceneId, stateId, x, y) => {
                 void moveStateNode(sceneId, stateId, x, y);
               }}
+              onSetHandlerLayout={(sceneId, handlerId, layout) => {
+                void setTimerHandlerLayout(sceneId, handlerId, layout);
+              }}
               onSetEntryConnection={(sceneId, stateId, targetHandle, targetSide) => {
                 void setEntryConnection(sceneId, stateId, targetHandle, targetSide);
               }}
@@ -9142,6 +9181,11 @@ export default function App() {
               canCreateState={stateCommandAllowed("state.create") && (objectSceneSelected
                 || service?.state_scene_graph.state_commands.includes("state.create") === true)}
               canMoveStates={stateCommandAllowed("editor.state_graph.set_node_position")}
+              canEditTimerHandlers={service?.state_scene_graph.scene_timers?.editor_layout?.supported === true
+                && service.state_scene_graph.scene_timers.editor_layout.commands.includes("editor.state_graph.set_handler_layout")
+                && selectedSceneCapability?.timer_handler_layout?.supported === true
+                && selectedSceneCapability.timer_handler_layout.commands.includes("editor.state_graph.set_handler_layout")
+                && localCommandAllowed("editor.state_graph.set_handler_layout")}
               canDeleteStates={stateCommandAllowed("state.delete")}
               canEditEntry={stateCommandAllowed("state.set_entry") && stateCommandAllowed("editor.state_graph.set_entry_layout")}
               canEdit={canEditLocalGraph}

@@ -5038,7 +5038,7 @@ button:focus-visible {
   position: relative;
   display: grid;
   width: 196px;
-  min-height: 104px;
+  min-height: 118px;
   grid-template-columns: 68px 1fr;
   gap: 4px 12px;
   align-items: center;
@@ -5089,6 +5089,17 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+.state-timer-node-summary {
+  grid-column: 1 / -1;
+  padding-top: 7px;
+  border-top: 1px solid rgb(48 55 51 / 28%);
+  color: #3f4a44;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+}
+
 .state-timer-node .state-timer-node-handle {
   right: -7px;
   width: 13px;
@@ -5096,6 +5107,32 @@ button:focus-visible {
   border: 2px solid #303733;
   background: #ffd43b;
   box-shadow: none;
+}
+
+.state-timer-end-node {
+  position: relative;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #e03131;
+  cursor: move;
+}
+
+.state-timer-end-node.active {
+  border-color: #175f8a;
+  background: rgb(23 95 138 / 10%);
+}
+
+.state-timer-end-node .state-timer-end-handle {
+  left: 4px;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  background: transparent;
 }
 
 .state-scene-endpoint {
@@ -8310,6 +8347,7 @@ button:focus-visible {
 .studio-shell[data-theme="dark"] .state-output-empty,
 .studio-shell[data-theme="dark"] .state-output-row small,
 .studio-shell[data-theme="dark"] .state-timer-node > small,
+.studio-shell[data-theme="dark"] .state-timer-node-summary,
 .studio-shell[data-theme="dark"] .state-scene-endpoint.system > span,
 .studio-shell[data-theme="dark"] .state-scene-endpoint.system > small {
   color: #9eada5;
@@ -8323,6 +8361,19 @@ button:focus-visible {
   border-color: #c7d2cc;
   background: #f0c94b;
   color: #121915;
+}
+
+.studio-shell[data-theme="dark"] .state-timer-node-summary {
+  border-color: rgb(199 210 204 / 24%);
+}
+
+.studio-shell[data-theme="dark"] .state-timer-end-node {
+  color: #ff6b6b;
+}
+
+.studio-shell[data-theme="dark"] .state-timer-end-node.active {
+  border-color: #58a6c8;
+  background: rgb(88 166 200 / 14%);
 }
 
 .studio-shell[data-theme="dark"] .state-summary-badge,

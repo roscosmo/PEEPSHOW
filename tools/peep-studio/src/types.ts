@@ -53,6 +53,7 @@ export type SceneCapabilities = {
   scene_exit_action_kinds?: string[];
   multi_scene_export?: boolean;
   route_destination_kinds?: string[];
+  timer_handler_layout?: TimerHandlerLayoutCapability;
   schema_version: number;
   execution_model: string;
   host_editing: boolean;
@@ -268,7 +269,17 @@ export type EditorRouteRail = {
 
 export type EditorRouteTokenPositions = {
   condition?: number;
+  guards?: number[];
   actions?: number[];
+};
+
+export type EditorHandlerLayout = {
+  routing_version?: number;
+  termination?: EditorNodePosition;
+  rails?: EditorRouteRail[];
+  target_handle?: "entry-top-left" | "entry-top-right" | "entry-bottom-left" | "entry-bottom-right";
+  target_side?: "left" | "right" | "top" | "bottom";
+  token_positions?: EditorRouteTokenPositions;
 };
 
 export type EditorRouteLayout = {
@@ -305,6 +316,7 @@ export type ProjectEditorData = {
       };
       nodes?: Record<string, EditorNodePosition>;
       routes?: Record<string, EditorRouteLayout>;
+      handlers?: Record<string, EditorHandlerLayout>;
     }>;
   };
 };
@@ -550,6 +562,28 @@ export type PeepOSTriggerCapability = {
   requires: string[];
 };
 
+export type TimerHandlerLayoutCapability = {
+  supported: boolean;
+  editor_only: boolean;
+  routing_version: number;
+  commands: string[];
+  addressing: string[];
+  storage: string;
+  termination_position: boolean;
+  rail_max: number;
+  guard_token_max: number;
+  action_token_max: number;
+  coordinate_min: number;
+  coordinate_max: number;
+  token_positions: string[];
+  condition_and_guards_mutually_exclusive: boolean;
+  token_fraction_min: number;
+  token_fraction_max: number;
+  local_target_socket: boolean;
+  update_mode: string;
+  clear_with_null: boolean;
+};
+
 export type ServiceHello = {
   package_export?: {
     operation: string;
@@ -637,7 +671,12 @@ export type ServiceHello = {
     element_actions: boolean;
   };
   state_scene_graph: {
-    scene_timers?: { event_type: string; start_policies: string[]; actions: string[] };
+    scene_timers?: {
+      event_type: string;
+      start_policies: string[];
+      actions: string[];
+      editor_layout?: TimerHandlerLayoutCapability;
+    };
     command_batch_maximum: number;
     target_scene_actions?: string[];
     scene_commands: string[];

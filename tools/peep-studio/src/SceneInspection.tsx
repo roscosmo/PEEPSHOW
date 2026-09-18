@@ -76,6 +76,7 @@ import {
   type GraphSceneNode,
   type GraphSceneEndpointNode,
   type GraphStateNode,
+  type GraphTimerEndNode,
   type GraphTimerNode,
   type StateGraphEntryHandle,
   type StateGraphEntrySide,
@@ -87,6 +88,7 @@ import { handleBoundary, incomingArrow, incomingPeers, type EntrySocket } from "
 import type {
   AssetRecord,
   AudioCueRecord,
+  EditorHandlerLayout,
   EditorNodePosition,
   EditorRouteRail,
   EditorRouteTokenPositions,
@@ -969,11 +971,50 @@ function TimerGraphNode({ data, selected }: NodeProps<Node<TimerGraphNodeData>>)
       </span>
       <strong>{timer.label}</strong>
       <small>{timer.detail}</small>
+      <span className="state-timer-node-summary">
+        {timer.guardCount > 0 ? `${timer.guardCount} check${timer.guardCount === 1 ? "" : "s"}` : "No checks"}
+        {" / "}
+        {timer.actionCount > 0 ? `${timer.actionCount} effect${timer.actionCount === 1 ? "" : "s"}` : "No effects"}
+      </span>
     </div>
   );
 }
 
-const STATE_NODE_TYPES = { stateCard: StateCardNode, sceneEndpoint: SceneEndpointNode, timerNode: TimerGraphNode };
+type TimerEndNodeData = {
+  timerEnd: GraphTimerEndNode;
+  active: boolean;
+  canEdit: boolean;
+  onSelect: (bindingId: string) => void;
+};
+
+function TimerEndNode({ data }: NodeProps<Node<TimerEndNodeData>>) {
+  return (
+    <div
+      className={`state-timer-end-node ${data.active ? "active" : ""}`}
+      role="button"
+      tabIndex={0}
+      title="One-shot timer ends here"
+      aria-label="One-shot timer ends here"
+      onClick={() => data.onSelect(data.timerEnd.bindingId)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          data.onSelect(data.timerEnd.bindingId);
+        }
+      }}
+    >
+      <Handle className="state-timer-end-handle" id="timer-end-in" type="target" position={Position.Left} isConnectable={false} />
+      <X size={34} strokeWidth={4} aria-hidden="true" />
+    </div>
+  );
+}
+
+const STATE_NODE_TYPES = {
+  stateCard: StateCardNode,
+  sceneEndpoint: SceneEndpointNode,
+  timerNode: TimerGraphNode,
+  timerEnd: TimerEndNode,
+};
 
 type StateTransitionEdgeData = {
   tone?: "blue" | "green";
@@ -2587,6 +2628,7 @@ export function StateGraphView({
   onCreateState,
   onDeleteState,
   onMoveStateNode,
+  onSetHandlerLayout,
   onSetEntryConnection,
   onSetRouteLayout,
   onCreateTriggerRoute,
@@ -2596,6 +2638,7 @@ export function StateGraphView({
   canCreateState,
   canEdit,
   canMoveStates = canEdit,
+  canEditTimerHandlers = false,
   canDeleteStates = canEdit,
   canEditEntry = canEdit,
   canConnectScenes = canEdit,
@@ -2614,6 +2657,7 @@ export function StateGraphView({
   onCreateState: (sceneId: string, x: number, y: number) => void;
   onDeleteState: (sceneId: string, stateId: string) => void;
   onMoveStateNode: (sceneId: string, stateId: string, x: number, y: number) => void;
+  onSetHandlerLayout: (sceneId: string, handlerId: string, layout: EditorHandlerLayout) => void;
   onSetEntryConnection: (
     sceneId: string,
     stateId: string,
@@ -2647,6 +2691,7 @@ export function StateGraphView({
   canCreateState: boolean;
   canEdit: boolean;
   canMoveStates?: boolean;
+  canEditTimerHandlers?: boolean;
   canDeleteStates?: boolean;
   canEditEntry?: boolean;
   canConnectScenes?: boolean;
@@ -2712,6 +2757,21 @@ export function StateGraphView({
         draggable: canMoveStates,
         connectable: false,
       })),
+      ...graph.timerEndNodes.map((timerEnd) => ({
+        id: timerEnd.id,
+        type: "timerEnd",
+        position: { x: timerEnd.x, y: timerEnd.y },
+        data: {
+          timerEnd,
+          active: selectedTimerBindingId === timerEnd.bindingId,
+          canEdit: canEditTimerHandlers,
+          onSelect: (bindingId: string) => onSelect({ kind: "timer", id: bindingId }),
+        },
+        selected: false,
+        draggable: canEditTimerHandlers,
+        selectable: true,
+        connectable: false,
+      })),
       ...graph.endpoints.map((endpoint) => ({
         id: endpoint.id,
         type: "sceneEndpoint",
@@ -2734,7 +2794,7 @@ export function StateGraphView({
         connectable: endpoint.kind === "exit" ? canConnectScenes : canEdit,
       })),
     ],
-    [activeStateId, canEdit, canMoveStates, canConnectScenes, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, graph.timerNodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene, selected, selectedTimerBindingId],
+    [activeStateId, canEdit, canEditTimerHandlers, canMoveStates, canConnectScenes, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, graph.timerEndNodes, graph.timerNodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene, selected, selectedTimerBindingId],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
@@ -2885,6 +2945,19 @@ export function StateGraphView({
     setNodes((current) =>
       current.map((item) => (item.id === node.id ? { ...item, position: { x, y } } : item)),
     );
+    if (node.type === "timerEnd") {
+      const timerEnd = (node.data as TimerEndNodeData | undefined)?.timerEnd;
+      const edge = graph.timerEdges.find((item) => item.bindingId === timerEnd?.bindingId);
+      if (edge !== undefined) {
+        onSetHandlerLayout(scene.scene_id, edge.handlerId, {
+          routing_version: 1,
+          termination: { x, y },
+          rails: edge.rails,
+          ...(edge.tokenPositions === undefined ? {} : { token_positions: edge.tokenPositions }),
+        });
+      }
+      return;
+    }
     onMoveStateNode(scene.scene_id, node.id, x, y);
   };
   const onConnect = (connection: Connection) => {
@@ -3183,8 +3256,8 @@ export function StateGraphView({
             }));
         const targetHandle = edge.targetKind === "state"
           ? stateEntryPortId(edge.targetHandle ?? "entry-top-left", edge.targetSide ?? "left")
-          : "scene-exit-in";
-        const isSelected = selected.kind === "timer" && selected.id === edge.bindingId;
+          : edge.targetKind === "effect_end" ? "timer-end-in" : "scene-exit-in";
+        const isSelected = selectedTimerBindingId === edge.bindingId;
         return {
           id: edge.id,
           source: edge.source,
@@ -3198,11 +3271,34 @@ export function StateGraphView({
             timer_id: edge.bindingId,
             guards: edge.guards,
             actions: edge.actions,
+            rails: edge.rails,
+            tokenPositions: edge.tokenPositions,
             targetHandle: edge.targetKind === "state" ? edge.targetHandle ?? "entry-top-left" : undefined,
             targetSide: edge.targetKind === "state" ? edge.targetSide ?? "left" : "left",
             targetEntryPorts,
-            canEdit: false,
+            canEdit: canEditTimerHandlers,
+            showSectionHandles: isSelected && canEditTimerHandlers,
             onSelect: () => onSelect({ kind: "timer", id: edge.bindingId }),
+            onSetRouteLayout: (
+              _routeId: string,
+              _sourceState: string,
+              rails: EditorRouteRail[],
+              targetHandle: StateGraphEntryHandle | null,
+              targetSide: StateGraphEntrySide | null,
+              tokenPositions: EditorRouteTokenPositions,
+            ) => {
+              if (scene !== null) {
+                onSetHandlerLayout(scene.scene_id, edge.handlerId, {
+                  routing_version: 1,
+                  rails,
+                  ...(edge.targetKind === "effect_end" && edge.termination !== undefined
+                    ? { termination: edge.termination } : {}),
+                  ...(edge.targetKind === "state" && targetHandle !== null && targetSide !== null
+                    ? { target_handle: targetHandle, target_side: targetSide } : {}),
+                  token_positions: tokenPositions,
+                });
+              }
+            },
           },
           label: "",
           type: "stateTransition",
@@ -3240,7 +3336,7 @@ export function StateGraphView({
       }];
       return [...transitionEdges, ...timerEdges, ...entryEdge];
     },
-    [canEdit, canEditEntry, graph.edges, graph.entryEdge, graph.nodes, graph.timerEdges, graphNodeById, onSelect, onSetEntryConnection, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
+    [canEdit, canEditEntry, canEditTimerHandlers, graph.edges, graph.entryEdge, graph.nodes, graph.timerEdges, graphNodeById, onSelect, onSetEntryConnection, onSetHandlerLayout, onSetRouteLayout, positionById, scene, selected, selectedTimerBindingId, transitionLayouts],
   );
 
   if (scene === null) {
@@ -3280,7 +3376,7 @@ export function StateGraphView({
           });
         }
       }}
-      nodesDraggable={canMoveStates}
+      nodesDraggable={canMoveStates || canEditTimerHandlers}
       nodesConnectable={canEdit}
       edgesReconnectable={canEdit}
       deleteKeyCode={null}
@@ -3297,6 +3393,11 @@ export function StateGraphView({
         if (node.type === "timerNode") {
           const timer = (node.data as TimerGraphNodeData | undefined)?.timer;
           onSelect(timer === undefined ? { kind: "scene" } : { kind: "timer", id: timer.bindingId });
+          return;
+        }
+        if (node.type === "timerEnd") {
+          const timerEnd = (node.data as TimerEndNodeData | undefined)?.timerEnd;
+          onSelect(timerEnd === undefined ? { kind: "scene" } : { kind: "timer", id: timerEnd.bindingId });
           return;
         }
         const endpoint = (node.data as SceneEndpointNodeData | undefined)?.endpoint;
@@ -3329,7 +3430,7 @@ export function StateGraphView({
     >
       <Background gap={18} size={1} />
       <GraphMiniMap
-        nodes={[...graph.nodes, ...graph.timerNodes, ...graph.endpoints]}
+        nodes={[...graph.nodes, ...graph.timerNodes, ...graph.timerEndNodes, ...graph.endpoints]}
         edges={[...graph.edges, ...graph.timerEdges]}
         selectedId={selected.kind === "state" ? selected.id : selectedTimerBindingId ? `timer-${selectedTimerBindingId}` : null}
       />

@@ -668,6 +668,63 @@ const invalidRouteGraph = buildStateGraphModel({
 
 assert.equal(invalidRouteGraph.edges.length, 0);
 
+const actionOnlyTimerGraph = buildStateGraphModel({
+  ...scene,
+  event_bindings: [{
+    binding_id: "reveal_timer",
+    event_type: "time.scene_elapsed",
+    configuration: { delay_ms: 2000, start_policy: "scene_entry" },
+  }],
+  event_handlers: [{
+    handler_id: "reveal_handler",
+    event_ref: "reveal_timer",
+    guards: [{ variable_ref: "coins", operator: "gt", value: 0 }],
+    actions: [{ kind: "set_variable", variable_ref: "coins", operation: "assign", value: 1 }],
+  }],
+});
+assert.equal(actionOnlyTimerGraph.timerNodes[0]?.guardCount, 1);
+assert.equal(actionOnlyTimerGraph.timerNodes[0]?.actionCount, 1);
+assert.deepEqual(actionOnlyTimerGraph.timerEndNodes, [{
+  id: "timer-end-reveal_timer",
+  bindingId: "reveal_timer",
+  x: actionOnlyTimerGraph.timerNodes[0]!.x + 480,
+  y: actionOnlyTimerGraph.timerNodes[0]!.y + 36,
+}]);
+assert.equal(actionOnlyTimerGraph.timerEdges[0]?.target, "timer-end-reveal_timer");
+assert.equal(actionOnlyTimerGraph.timerEdges[0]?.targetKind, "effect_end");
+assert.equal(actionOnlyTimerGraph.timerEdges[0]?.guards.length, 1);
+assert.equal(actionOnlyTimerGraph.timerEdges[0]?.actions.length, 1);
+
+const savedActionOnlyTimerGraph = buildStateGraphModel({
+  ...scene,
+  event_bindings: [{
+    binding_id: "reveal_timer",
+    event_type: "time.scene_elapsed",
+    configuration: { delay_ms: 2000, start_policy: "scene_entry" },
+  }],
+  event_handlers: [{
+    handler_id: "reveal_handler",
+    event_ref: "reveal_timer",
+    guards: [{ variable_ref: "coins", operator: "gt", value: 0 }],
+    actions: [{ kind: "set_variable", variable_ref: "coins", operation: "assign", value: 1 }],
+  }],
+}, {
+  state_graph: { scenes: { menu: { handlers: { reveal_handler: {
+    routing_version: 1,
+    termination: { x: 620, y: -80 },
+    rails: [{ axis: "x", value: 410 }],
+    token_positions: { condition: 0.3, actions: [0.7] },
+  } } } } },
+});
+assert.deepEqual(savedActionOnlyTimerGraph.timerEndNodes[0], {
+  id: "timer-end-reveal_timer",
+  bindingId: "reveal_timer",
+  x: 620,
+  y: -80,
+});
+assert.deepEqual(savedActionOnlyTimerGraph.timerEdges[0]?.rails, [{ axis: "x", value: 410 }]);
+assert.deepEqual(savedActionOnlyTimerGraph.timerEdges[0]?.tokenPositions, { condition: 0.3, actions: [0.7] });
+
 const sceneRoutePlans = planSceneFlowRoutes(
   [
     {
