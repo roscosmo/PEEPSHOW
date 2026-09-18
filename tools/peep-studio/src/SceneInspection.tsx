@@ -5758,7 +5758,8 @@ export function EditableActionList({
   const labels = targetElements.map(objectLabel);
   const objectOptionLabel = (element: RenderElement) => {
     const label = objectLabel(element);
-    return labels.filter(item => item === label).length > 1 ? `${label} (${element.element_id})` : label;
+    const matchingElements = targetElements.filter(item => objectLabel(item) === label);
+    return matchingElements.length > 1 ? `${label} ${matchingElements.indexOf(element) + 1}` : label;
   };
 
   const defaultActionForKind = (kind: string, preferredElementRef?: string): Record<string, unknown> | null => {

@@ -9362,7 +9362,7 @@ export default function App() {
 
         <ObjectActionContext.Provider value={{ scene: selectedSceneDocument,
           preview: preview?.project_revision === projectRevision ? preview : null,
-          label: placementObjectLabelBase }}>
+          label: placementObjectDisplayName }}>
         <aside className="inspector-pane" id="studio-inspector">
           <div className="pane-heading inspector-heading">
             <span>{settingsOpen ? "Settings" : "Inspector"}</span>
