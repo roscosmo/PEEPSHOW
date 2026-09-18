@@ -152,7 +152,7 @@ def check_command_model(scenes, command):
     elif scene is None and any(item.get("schema_version") == 2 for item in scenes):
         if kind not in {"asset.upsert", "asset.delete", "animation.upsert", "animation.delete",
                         "audio_asset.upsert", "audio_asset.delete", "audio_cue.upsert", "audio_cue.delete",
-                        "scene.add", "project.set_entry_scene", *SCENE_FLOW_COMMANDS}:
+                        "scene.add", "project.set_entry_scene", "project.settings.set", *SCENE_FLOW_COMMANDS}:
             raise ProjectCommandError("COMMAND_EXECUTION_MODEL_MISMATCH", f"'{kind}' has not been integrated with mixed scene models")
 
 

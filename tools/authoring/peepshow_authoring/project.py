@@ -92,7 +92,7 @@ PROJECT_KEYS = {
     "scene_sources",
     "validation",
 }
-PROJECT_OPTIONAL_KEYS = {"asset_sources", "editor"}
+PROJECT_OPTIONAL_KEYS = {"asset_sources", "editor", "settings"}
 SCENE_KEYS = {
     "schema_id",
     "schema_version",
@@ -4753,8 +4753,37 @@ def _unique_ids(
     return result
 
 
+def _check_project_settings(settings, issues):
+    path = "project.settings"
+    if not isinstance(settings, dict):
+        _issue(issues, "PROJECT_SETTINGS_INVALID", path, "must be an object")
+        return
+    _check_keys(settings, set(), path, issues, {"sfx_import", "runtime_preferences"})
+    for group, fields in (("sfx_import", {"normalization", "target_peak_dbfs"}),
+                          ("runtime_preferences", {"inactivity_timeout_ms"})):
+        if group not in settings:
+            continue
+        values = settings[group]
+        if not isinstance(values, dict):
+            _issue(issues, "PROJECT_SETTINGS_INVALID", f"{path}.{group}", "must be an object")
+            continue
+        _check_keys(values, fields, f"{path}.{group}", issues, fields)
+        if group == "sfx_import":
+            if values.get("normalization") not in ("none", "peak"):
+                _issue(issues, "PROJECT_SETTINGS_INVALID", path, "normalization must be none or peak")
+            value = values.get("target_peak_dbfs")
+            if type(value) is not int or not -60 <= value <= 0:
+                _issue(issues, "PROJECT_SETTINGS_INVALID", path, "target_peak_dbfs must be an integer from -60 to 0")
+        else:
+            value = values.get("inactivity_timeout_ms")
+            if value is not None and (type(value) is not int or not 1000 <= value <= 86400000):
+                _issue(issues, "PROJECT_SETTINGS_INVALID", path, "inactivity_timeout_ms must be null or an integer from 1000 to 86400000")
+
+
 def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> None:
     _check_keys(project, PROJECT_KEYS, "project", issues, PROJECT_KEYS | PROJECT_OPTIONAL_KEYS)
+    if "settings" in project:
+        _check_project_settings(project["settings"], issues)
     if project.get("schema_id") != "peepshow.authoring.project" or project.get("schema_version") != 1:
         _issue(issues, "PROJECT_SCHEMA_UNSUPPORTED", "project", "expected peepshow.authoring.project version 1")
     _stable_id(project.get("project_id"), "project.project_id", issues)
@@ -6879,6 +6908,14 @@ def apply_project_commands(
             )
         elif kind == "scene.rename":
             applied.append(_apply_scene_rename(scenes, command))
+        elif kind == "project.settings.set":
+            _require_command_fields(command, {"kind", "settings"}, {"kind", "settings", "command_id"})
+            settings_issues = []
+            _check_project_settings(command["settings"], settings_issues)
+            if settings_issues:
+                raise ProjectCommandError(settings_issues[0].code, settings_issues[0].message)
+            project["settings"] = deepcopy(command["settings"])
+            applied.append({"kind": kind, "settings": deepcopy(command["settings"])})
         elif kind == "project.set_entry_scene":
             applied.append(_apply_project_set_entry_scene(project, scenes, command))
         elif kind == "state.create":

@@ -59,7 +59,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 47
+SERVICE_API_VERSION = 48
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -69,6 +69,7 @@ SERVICE_OPERATIONS = (
     "project.load",
     "project.validate",
     "project.normalize",
+    "project.settings.get",
     "project.build_package",
     "project.compatibility_report",
     "project.apply_commands",
@@ -371,6 +372,17 @@ class AuthoringService:
             "service_api_version": SERVICE_API_VERSION,
             "protocol_version": PROTOCOL_VERSION,
             "operations": list(SERVICE_OPERATIONS),
+            "project_settings": {
+                "read_operation": "project.settings.get", "edit_command": "project.settings.set",
+                "replacement": "whole_settings_object", "persisted": True,
+                "undo_redo": True, "runtime_encoded": False,
+                "sfx_import": {"status": "persisted_only", "import_applied": False,
+                               "normalization": ["none", "peak"],
+                               "target_peak_dbfs": {"minimum": -60, "maximum": 0, "integer": True}},
+                "runtime_preferences": {"status": "persisted_only", "firmware_enforced": False,
+                                        "inactivity_timeout_ms": {"minimum": 1000, "maximum": 86400000,
+                                                                  "nullable": True, "integer": True}},
+            },
             "asset_metadata": {"tags": {"supported": True, "commands": ["asset.set_tags", "audio_asset.set_tags"],
                                         "maximum_count": 16, "maximum_length": 32, "case_sensitive": True,
                                         "runtime_encoded": False}},
@@ -797,6 +809,11 @@ class AuthoringService:
             ),
         }
 
+    def _settings_get(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params)
+        return {"project_revision": self._project_revision,
+                "settings": deepcopy(bundle.project.get("settings", {}))}
+
     def _normalize(self, params: dict[str, Any]) -> dict[str, Any]:
         bundle = self._current_bundle(params)
         if not bundle.valid:
@@ -1176,6 +1193,7 @@ class AuthoringService:
             "project.load": self._load,
             "project.validate": self._validate,
             "project.normalize": self._normalize,
+            "project.settings.get": self._settings_get,
             "project.build_package": self._build_package,
             "project.compatibility_report": self._compatibility_report,
             "project.apply_commands": self._apply_commands,
