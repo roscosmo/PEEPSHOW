@@ -171,6 +171,43 @@ The implementation sequence and evidence limits are in [[HW6_System_Time_Bringup
 
 ## Calendar Time
 
+### Calendar Scheduler Core Checkpoint (2026-09-19)
+
+`ps_calendar_timer` implements peripheral-free single-owner deadline arithmetic.
+It is connected to the HW6 wake arbiter for a single power-owned bench registration,
+not package dispatch, and does not grant
+`time.calendar` or any Studio export capability. Its records are caller-owned;
+the adapter must bound their count and validate registration/scene lifetime
+tokens independently from clock generations.
+
+- One-shot: an absolute encoded local date/time, delivered at most once per
+  registration. A deadline already reached at registration/rebase is consumed
+  without delivery. A future selected deadline is retained, not rerolled.
+- Daily: local seconds since midnight, with the next occurrence strictly after
+  the current snapshot. No timezone or daylight-saving conversion.
+- Invalid time disarms the record while retaining its definition. Valid-time
+  recovery explicitly recalculates; it does not dispatch a backlog.
+- A changed clock generation rebases without dispatching. An old-generation
+  wake cannot deliver a current-generation event.
+- Ordinary late wake delivers the original due occurrence once, then daily
+  recurrence advances directly to a future occurrence. Missed days are coalesced,
+  not emitted as an unbounded burst.
+- Daily delivery history prevents re-delivering the same or an earlier occurrence
+  after a backward edit during that registration's lifetime. Explicit new
+  registration clears history; no save/reboot persistence is implied.
+- Cancellation removes the registration. An adapter must additionally reject
+  queued events from old registration/scene lifetimes before evaluating a wake.
+- No periodic timer polling, implicit parallel logic, heap or HAL access exists
+  in the core. Call it at registration, clock validity/edit notifications and
+  scheduled delivery. Time-of-day guards remain separate explicit evaluations.
+
+The bench adapter uses the existing earliest-deadline wake selection. The future
+package adapter must validate
+clock and registration generations at delivery, serialize event consumption and
+handle dispatch backpressure without silently losing or duplicating actions.
+Suspension/recreation and simultaneous-event ordering need adapter-level tests
+before promotion. Native arithmetic tests do not prove an RTC wake or handler.
+
 PeepOS local calendar time is system-owned and package-readable.
 
 Package-facing values:

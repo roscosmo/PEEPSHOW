@@ -2,6 +2,12 @@
 
 ## Scope and Status
 
+Latest increment: `ps_calendar_timer` provides tested one-shot/daily calendar
+deadline arithmetic, now connected to a single power-owned bench registration.
+The existing RTC arbiter can select CALENDAR=4; no gameplay handler or public
+capability is enabled. Hardware wake validation is pending. See
+[[HW6_Calendar_Wake_Bench]] for the one-helper midnight check and evidence limits.
+
 Fourth checkpoint: warm-reset retention added to the optional shell Time editor.
 Native tests and firmware build pass. The user confirmed time continues after
 NRST and does not survive full power-down on the corrected build.

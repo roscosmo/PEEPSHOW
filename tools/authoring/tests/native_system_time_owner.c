@@ -22,6 +22,7 @@ static uint32_t reads, dates, sends, immediate;
 static RTC_TimeTypeDef raw_time = {0, 0, 0, 255, 255};
 static RTC_DateTypeDef raw_date = {0, 1, 1};
 static void PS_HW6_SystemTime_Owner(const ULONG *message);
+static void PS_HW6_Calendar_TimeChanged(void) {}
 static uint32_t PS_HW6_TimeRetention_Store(const ps_system_time_t *clock)
 { (void)clock; assert(current == &ps_threads[PS_HW6_RTOS_OWNER_POWER]); return 1U; }
 static void *tx_thread_identify(void) { return current; }

@@ -2,6 +2,7 @@
 #include "ps_battery_wake.h"
 #include "ps_hw6_system_time.h"
 #include "ps_hw6_time_retention.h"
+#include "ps_hw6_calendar.h"
 
 #include <string.h>
 
@@ -149,6 +150,7 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_INTERACTION (1UL)
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_STATE_TIMER (2UL)
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY (3UL)
+#define PS_HW6_RTOS_RTC_WAKE_SOURCE_CALENDAR (4UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_PACKAGE_READER_ACK    (1UL << 15U)
@@ -8703,6 +8705,8 @@ static void PS_HW6_SystemTime_Owner(const ULONG *message)
     result.status = PS_SYSTEM_TIME_SOURCE_LOST;
   }
   g_ps_system_time_probe.result = result;
+  if ((message[2] == PS_HW6_SYSTEM_TIME_SET) || (result.status != PS_SYSTEM_TIME_OK))
+  { PS_HW6_Calendar_TimeChanged(); }
   __DMB();
   g_ps_system_time_probe.complete = (uint32_t)message[1];
 }
@@ -8746,6 +8750,24 @@ static HAL_StatusTypeDef PS_HW6_RTOS_ObjectRtcMilliseconds(uint64_t *value)
     ((uint64_t)(time.SecondFraction - time.SubSeconds) * 1000ULL) /
       ((uint64_t)time.SecondFraction + 1ULL);
   return HAL_OK;
+}
+
+ps_system_time_status_t PS_HW6_Calendar_Read(ps_system_time_snapshot_t *snapshot)
+{
+  uint64_t source_ms;
+  ps_system_time_status_t status;
+  if (tx_thread_identify() != &ps_threads[PS_HW6_RTOS_OWNER_POWER])
+  { return PS_SYSTEM_TIME_ARGUMENT; }
+  if (PS_HW6_RTOS_ObjectRtcMilliseconds(&source_ms) != HAL_OK)
+  {
+    PS_SystemTime_Invalidate(&ps_system_clock);
+    (void)PS_HW6_TimeRetention_Store(&ps_system_clock);
+    return PS_SYSTEM_TIME_SOURCE_LOST;
+  }
+  status = PS_SystemTime_Read(&ps_system_clock, source_ms, snapshot);
+  if ((status != PS_SYSTEM_TIME_OK) && (status != PS_SYSTEM_TIME_UNSET))
+  { (void)PS_HW6_TimeRetention_Store(&ps_system_clock); }
+  return status;
 }
 
 /* Consume only our own token; late results cannot reopen an abandoned editor. */
@@ -9513,7 +9535,8 @@ void RTC_IRQHandler(void)
       g_ps_hw6_battery_wake_probe.rtc_expiries++;
     }
     if ((ps_runtime_interaction_rtc_armed != 0UL) &&
-        (ps_runtime_rtc_wake_source != PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY))
+        (ps_runtime_rtc_wake_source != PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY) &&
+        (ps_runtime_rtc_wake_source != PS_HW6_RTOS_RTC_WAKE_SOURCE_CALENDAR))
     {
       if (ps_runtime_interaction_rtc_command_queued == 0UL)
       {
@@ -9531,6 +9554,7 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
 {
   uint32_t now_tick;
   uint32_t battery_remaining_ticks;
+  uint32_t calendar_remaining_ticks;
   uint32_t remaining_ticks = 0UL;
   uint32_t interaction_remaining_ticks = 0UL;
   uint32_t interaction_available = 0UL;
@@ -9579,6 +9603,8 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
 
   battery_remaining_ticks = PS_BatteryWake_Prepare(
     &g_ps_hw6_battery_wake_probe, now_tick);
+  calendar_remaining_ticks = (g_ps_hw6_battery_fault_wait_probe.active == 0UL) ?
+    PS_HW6_Calendar_Prepare(now_tick) : UINT32_MAX;
 
   if ((state_timer_available != 0UL) &&
       (state_timer_remaining_ticks <= battery_remaining_ticks) &&
@@ -9603,8 +9629,15 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
   {
     ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY;
     remaining_ticks = battery_remaining_ticks;
-    g_ps_hw6_battery_wake_probe.rtc_selections++;
   }
+  if (calendar_remaining_ticks < remaining_ticks)
+  {
+    ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_CALENDAR;
+    remaining_ticks = calendar_remaining_ticks;
+    g_ps_calendar_probe.rtc_selections++;
+  }
+  if (ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY)
+  { g_ps_hw6_battery_wake_probe.rtc_selections++; }
   g_ps_hw6_rtos_probe.runtime_rtc_wake_source =
     ps_runtime_rtc_wake_source;
 
@@ -9832,6 +9865,10 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
     elapsed_ticks;
   PS_BatteryWake_Finish(&g_ps_hw6_battery_wake_probe, now_tick, elapsed_ticks,
     (read_status == HAL_OK) && (deactivate_status == HAL_OK));
+  if ((ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_CALENDAR) &&
+      (ps_runtime_interaction_rtc_irq_expired != 0UL))
+  { g_ps_calendar_probe.rtc_expiries++; }
+  if (g_ps_hw6_battery_fault_wait_probe.active == 0UL) { PS_HW6_Calendar_Finish(); }
   if (ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_STATE_TIMER)
   {
     g_ps_hw6_rtos_probe.runtime_state_timer_rtc_elapsed_ticks =
@@ -12059,6 +12096,13 @@ static ULONG PS_HW6_RTOS_OwnerReceiveWaitTicks(uint32_t owner_id,
   int32_t remaining_ticks;
   ULONG wait_ticks = PS_HW6_RTOS_HEARTBEAT_TICKS;
 
+  if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+      (g_ps_hw6_battery_fault_wait_probe.active == 0UL))
+  {
+    uint32_t calendar_wait = PS_HW6_Calendar_Remaining(now_tick);
+    if (calendar_wait < (uint32_t)wait_ticks) { wait_ticks = calendar_wait; }
+  }
+
   /* Disabled services cannot advance their deadlines; do not spin on them. */
   if ((g_ps_hw6_battery_fault_wait_probe.active != 0UL) &&
       ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) ||
@@ -12902,6 +12946,11 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (ps_power_boot_done != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      if ((g_ps_system_time_request == 0UL) && (g_ps_system_time_probe.pending == 0UL))
+      {
+        PS_HW6_Calendar_Service((uint32_t)tx_time_get(),
+          g_ps_hw6_battery_fault_wait_probe.active == 0UL);
+      }
       PS_HW6_RTOS_RunStop2AutoIdlePeriodic((uint32_t)now);
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
