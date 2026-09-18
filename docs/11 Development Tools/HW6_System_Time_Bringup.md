@@ -2,7 +2,16 @@
 
 ## Scope and Status
 
-Third checkpoint: optional shell Time editor over the power-owned read/set transaction.
+Fourth checkpoint: warm-reset retention added to the optional shell Time editor.
+Native tests and firmware build pass. The user confirmed time continues after
+NRST and does not survive full power-down on the corrected build.
+NRST/software reset may preserve time while powered. Shipment/power loss returns
+UNSET: the user confirmed the RTC domain is on the MCU rail and neither it nor
+the external MEMS oscillator remains powered during shipment.
+
+The earlier checkpoint below describes the original RAM-only adapter and its
+historical reset-to-UNSET evidence; the retention section supersedes that reset
+policy, not the earlier test results.
 `thUI` submits one copied request to `thPower`, which samples the RTC and owns
 the local-time mapping. The debugger mailbox exercises this same request path.
 Firmware build and native tests pass. HW6 owner read/set, midnight rollover,
@@ -206,9 +215,111 @@ navigation; cancelled edits and reopened to a reset draft; saved and observed SA
 reopened after saving and observed advancing time; all text fitted on screen.
 This is observed UI behaviour, not queue-counter inference. The report does not
 separately establish month/leap-day handling on target, idle current, shell idle/wake,
-package-resume/relative-timer regression, or a new reset-through-editor test. The
+or a new reset-through-editor test. The
 earlier owner-level reset-to-UNSET evidence remains valid. No debugger cleanup
 experiment was repeated for these shell checks.
+
+### Relative-Timer Clock-Edit Regression (2026-09-19)
+
+The user confirmed the installed TIMER 10S test passed after the shell waiting
+timeline fix: start a guarded countdown, suspend through HOLD START, edit/save
+local time, and RESUME the package. The requested procedure covered forward and
+backward date edits and completion after the preserved remaining duration rather
+than immediate expiry or a fresh ten seconds. This is user-observed functional
+evidence, not a precision timing measurement. No further manual repetition is
+required for this checkpoint.
+
+SYSTEM navigation was usable after the fix. HOME (RESUME / SYSTEM / PACKAGES)
+still has a static cursor while SYSTEM blinks; HOME is explicitly excluded by
+the current blink eligibility. The user deferred that visual inconsistency to
+the shell overhaul. It is not evidence that the fixed SYSTEM busy loop persists.
+
+### Retention Boundary (NRST and Power-Down Confirmed)
+
+The retention adapter now implements the following boundary:
+
+- Distinguish continuously powered warm reset from loss of the RTC/oscillator
+  supply. Current startup unconditionally resets the raw RTC calendar.
+- Preserve the raw elapsed source on qualified warm resets; retain the local
+  mapping separately rather than writing user edits into the raw RTC calendar.
+- A retained mapping needs a version, integrity validation, commit ordering and
+  explicit association with the retained source lifetime. Torn or invalid records
+  must not produce an apparently valid clock.
+- On unverified source continuity, report UNSET/SOURCE_LOST. Do not restore a
+  flash timestamp and pretend it advanced during shutdown.
+- Hardware clarification from the user: the RTC domain uses the MCU rail; the
+  external MEMS oscillator runs while the device is powered, but nothing remains
+  powered during shipment. Shipment retention is explicitly unsupported.
+
+Startup changes are confined to main.c USER CODE blocks. After HAL RTC init,
+qualified PIN/software resets with an initialized calendar and matching DR0
+cookie bypass the generated calendar setters, while still enabling the existing
+1 Hz calibration output. BOR, option-byte, low-power and watchdog reset flags,
+unknown reset causes or a missing cookie select fresh startup. Reset flags are
+captured in `g_ps_time_retention_probe.reset_flags` before being cleared so an old
+power-on flag cannot poison every later warm reset. DR0 is invalidated before
+fresh calendar writes and committed only after initialization completes.
+
+### Year-Zero Hardware Finding and Correction
+
+The first NRST bench attempt failed: reset flags were 0x04004400 (PIN reset,
+no BOR), source_preserved/mapping_restored=0/0, and the completed READ was UNSET.
+The RTC ICSR was 0x27, with INITS (bit 4) clear. DR0 read 0x52544301 and payload
+words survived, while DR1 was cleared by the rejection path. This is not evidence
+that backup power was lost.
+
+The private raw RTC previously started at year 00 (2000). INITS depends on a
+nonzero calendar year, so that valid running baseline fails both our retention
+test and the HAL_RTC_Init initialized-calendar branch. The original native stub
+incorrectly treated INITS as independent of the calendar year.
+
+Cold startup now completes in RTC_Init 2 by setting and reading back the private
+raw date 2001-01-01 (Monday), before committing source cookie 0x52544302. Failure
+leaves the cookie invalid and enters the existing startup error handler. The
+generated year-zero assignment remains untouched; it is superseded only on the
+cold path before any runtime elapsed accounting starts. A qualified warm path
+skips both calendar assignments. User local dates still support 2000..2099 and
+never edit the physical RTC.
+
+Old source cookies are rejected deliberately, requiring one new local-time set
+after flashing this revision. Native tests now derive INITS from the fake raw
+year, exercise date-write/readback failures and old-cookie rejection, and verify
+warm preservation performs no date writes. Firmware build and four time tests
+pass. The user subsequently confirmed that time continues after NRST and is
+lost after full power-down. This is observed hardware behaviour, not inferred
+from native tests or scheduling counters. Software-reset retention, precise
+drift and interrupted-write behaviour on physical hardware were not separately
+measured by this check.
+
+DR1..DR8 are reserved for the local mapping: version/commit word, 64-bit raw
+anchor, local-seconds anchor, generation, 64-bit last-observed raw time and CRC32.
+thPower restores the record at startup and updates it after explicit time requests.
+The commit word is invalidated first and written last after payload readback;
+readback failure returns a non-OK result rather than SAVED. Interrupted writes
+may lose the setting but must not accept a partial record. No heap, flash storage,
+new thread, periodic poll or RTC calendar write is used for user edits.
+
+Restore validates integrity, ranges and anchor ordering. The first requested
+snapshot checks the live raw source against the retained last observation.
+Failure invalidates the mapping. This does not detect every conceivable stopped
+oscillator or hardware fault; retention is not a substitute for source monitoring.
+Backup survival alone never grants shutdown retention.
+
+Native tests cover NRST/software reset qualification, cold/unsafe lifetimes,
+all single-bit record corruptions, interruption before each commit step, lost
+calendar initialization, midnight advancement, generation preservation and raw
+source regression. Existing owner/editor tests pass. No new calendar scheduling
+or public game-time capability is advertised.
+
+Short hardware check (no debugger register changes): set/save a recognizable
+time in shell TIME, press NRST, reopen TIME and confirm it advanced instead of
+returning UNSET. Separately use normal shipment and START: TIME must be unset.
+Keep the installed egg; no package rebuild is required.
+
+### Original Editor Procedure (RAM-Only Checkpoint)
+
+The procedure below records the earlier editor bring-up. Its reset-to-UNSET
+expectation is superseded by the warm-reset procedure above.
 
 Reflash the normal Debug firmware; keep the installed egg unchanged. No GDB
 time-setting helper or low-power-debug manipulation is needed for this test.

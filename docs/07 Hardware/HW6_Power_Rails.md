@@ -19,6 +19,14 @@ remain `pending_validation` until their dedicated tests run.
 | External flash deep power-down | OCTOSPI command | idle | deep-power-down when policy permits | pending HW6 proof |
 | Power debug marker | `PH1 PWR_DBG`, battery connector | low/idle | remains low unless an explicit development evidence procedure drives a timing marker | first-unit idle-low baseline and 250 ms PPK2 D7 route verified |
 
+## RTC Supply Clarification (2026-09-19)
+
+User-confirmed wiring: the STM32 RTC domain is supplied by the MCU rail. Its
+external MEMS clock runs while powered, but neither remains powered in PMIC
+shipment. Time can continue through STOP2 and powered warm reset, not shipment
+or loss of power. Firmware must report unset time after those power-loss events;
+saved flash timestamps cannot reconstruct elapsed shutdown time.
+
 ## Removed Loads And Enables
 
 HW6 has no `PHOT_EN`, `ENC_EN`, or PAM/piezo load. Power policy must not retain

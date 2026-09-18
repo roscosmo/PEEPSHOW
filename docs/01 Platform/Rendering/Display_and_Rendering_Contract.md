@@ -33,6 +33,23 @@ Display is Platform-owned. Engine and Reference Game code request scene/frame pr
 
 ## System Font Foundation (2026-09-18)
 
+### Shell Waiting-Timeline Isolation (2026-09-19)
+
+The shell waiting sequence uses its own frame index, phase and cadence even
+while a V2 package remains suspended. Object waiting-position resolution is
+restricted to the runtime handoff page. A held package has no animation quantum
+and must not prevent shell cursor service.
+
+Failed waiting-frame preparation resets the display deadline before returning;
+it must not leave an expired deadline driving repeated zero-wait queue receives.
+An observed SYSTEM lockup had deadline 70391, display tick 71900, 200821 due
+passes and stalled lower-priority owners. The code path could return early on
+failed object resolution without advancing that deadline. Native regression
+coverage exercises shell isolation, runtime timing and early failure paths;
+the user subsequently confirmed usable SYSTEM navigation and completion of the
+paused-timer clock-edit test. HOME's static cursor remains a separate, deferred
+shell visual inconsistency.
+
 HW6 shell text now uses the HW4 `font8x8_basic` printable ASCII glyphs
 (U+0020..U+007E), retained in `Core/Inc/ps_system_font.h`. Each glyph has eight
 rows, bit zero on the left, and an eight-pixel character advance. Host parity

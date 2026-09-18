@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "ps_hw6_time_retention.h"
 #include <ps_hw6_peripheral_probe.h>
 #include "knobs_autogen.h"
 #include "ps_input_buttons.h"
@@ -2080,7 +2081,12 @@ void MX_RTC_Init(void)
   }
 
   /* USER CODE BEGIN Check_RTC_BKUP */
-
+  if (PS_HW6_TimeRetention_BootPreserve() != 0U)
+  {
+    if (HAL_RTCEx_SetCalibrationOutPut(&hrtc, RTC_CALIBOUTPUT_1HZ) != HAL_OK)
+    { Error_Handler(); }
+    return;
+  }
   /* USER CODE END Check_RTC_BKUP */
 
   /** Initialize RTC and set the Time and Date
@@ -2111,7 +2117,7 @@ void MX_RTC_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN RTC_Init 2 */
-
+  if (PS_HW6_TimeRetention_BootFresh() == 0U) { Error_Handler(); }
   /* USER CODE END RTC_Init 2 */
 
 }

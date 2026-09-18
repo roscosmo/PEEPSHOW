@@ -22,7 +22,7 @@ class SystemTimeOwnerTests(unittest.TestCase):
         end = source.index("static HAL_StatusTypeDef PS_HW6_RTOS_ObjectRtcMilliseconds", begin)
         block = source[begin:end]
         self.assertNotIn("HAL_RTC_Set", block)
-        self.assertIn("PS_SystemTime_Init(&ps_system_clock);", source[end:])
+        self.assertIn("PS_HW6_TimeRetention_Restore(&ps_system_clock);", source[end:])
         self.assertIn("PS_HW6_SystemTime_Owner(message);", source[end:])
         self.assertIn("PS_HW6_SystemTime_DebugUi();", source[end:])
         env = dict(os.environ)

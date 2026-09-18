@@ -9,6 +9,6 @@ else
     set var g_ps_system_time_request = 2
     echo Queued one SET using those fields. Resume, waking normally if asleep.\n
     echo After a second, halt and source __fw0_system_time_prints.gdb. Invalid dates are rejected.\n
-    echo This RAM mapping is lost on reset/shipment. No calendar events or shell Time page exist yet.\n
+    echo Mapping is retained across qualified warm reset, not shipment/power loss. Shell TIME also uses this service; calendar events remain deferred.\n
   end
 end

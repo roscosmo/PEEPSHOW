@@ -6,6 +6,59 @@
 /* Exclusive endpoint: 2100-01-01. These are format limits, not tuning knobs. */
 #define PS_SYSTEM_TIME_END_SECONDS (3155760000UL)
 
+#define PS_SYSTEM_TIME_RECORD_V1 (0x544D0001UL)
+
+static uint32_t PS_SystemTime_RecordCrc(const uint32_t *words)
+{
+  uint32_t crc = UINT32_MAX;
+  uint32_t word, bit;
+  for (word = 0U; word < PS_SYSTEM_TIME_RECORD_WORDS - 1U; ++word)
+  {
+    crc ^= words[word];
+    for (bit = 0U; bit < 32U; ++bit)
+    { crc = (crc >> 1U) ^ ((0UL - (crc & 1UL)) & 0xEDB88320UL); }
+  }
+  return ~crc;
+}
+
+uint32_t PS_SystemTime_SaveRecord(const ps_system_time_t *clock, uint32_t *words)
+{
+  if ((clock == NULL) || (words == NULL) || (clock->status != PS_SYSTEM_TIME_OK))
+  { return 0U; }
+  words[0] = PS_SYSTEM_TIME_RECORD_V1;
+  words[1] = (uint32_t)clock->anchor_source_ms;
+  words[2] = (uint32_t)(clock->anchor_source_ms >> 32U);
+  words[3] = clock->anchor_local_seconds;
+  words[4] = clock->generation;
+  words[5] = (uint32_t)clock->last_source_ms;
+  words[6] = (uint32_t)(clock->last_source_ms >> 32U);
+  words[7] = PS_SystemTime_RecordCrc(words);
+  return 1U;
+}
+
+uint32_t PS_SystemTime_LoadRecord(ps_system_time_t *clock, const uint32_t *words)
+{
+  ps_system_time_t candidate = {0};
+  ps_system_time_snapshot_t snapshot;
+  if (clock == NULL) { return 0U; }
+  PS_SystemTime_Init(clock);
+  if ((words == NULL) || (words[0] != PS_SYSTEM_TIME_RECORD_V1) ||
+      (words[7] != PS_SystemTime_RecordCrc(words)) ||
+      (words[3] >= PS_SYSTEM_TIME_END_SECONDS) || (words[4] == 0U))
+  { return 0U; }
+  candidate.anchor_source_ms = ((uint64_t)words[2] << 32U) | words[1];
+  candidate.last_source_ms = ((uint64_t)words[6] << 32U) | words[5];
+  candidate.anchor_local_seconds = words[3];
+  candidate.generation = words[4];
+  candidate.status = PS_SYSTEM_TIME_OK;
+  if ((candidate.last_source_ms < candidate.anchor_source_ms) ||
+      (candidate.last_source_ms >= (uint64_t)PS_SYSTEM_TIME_END_SECONDS * 1000ULL) ||
+      (PS_SystemTime_Read(&candidate, candidate.last_source_ms, &snapshot) != PS_SYSTEM_TIME_OK))
+  { return 0U; }
+  *clock = candidate;
+  return 1U;
+}
+
 static uint32_t PS_SystemTime_MonthDays(uint32_t year, uint32_t month)
 {
   static const uint8_t days[12] = {31U,28U,31U,30U,31U,30U,31U,31U,30U,31U,30U,31U};

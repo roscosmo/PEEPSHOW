@@ -4067,7 +4067,7 @@ static uint32_t DisplayRenderer_DrawTimeEditor(uint32_t seconds, uint32_t focus,
   }
   black += DisplayRenderer_DrawText(12U, 115U, (focus == 6UL) ? ">SAVE" : " SAVE", 1U);
   black += DisplayRenderer_DrawText(92U, 115U, (focus == 7UL) ? ">CANCEL" : " CANCEL", 1U);
-  black += DisplayRenderer_DrawCenteredText(133U, "RESET CLEARS TIME", 1U);
+  black += DisplayRenderer_DrawCenteredText(133U, "POWER OFF LOSES TIME", 1U);
   return black;
 }
 

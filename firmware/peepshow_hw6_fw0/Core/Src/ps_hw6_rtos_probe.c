@@ -1,6 +1,7 @@
 #include "ps_hw6_rtos_probe.h"
 #include "ps_battery_wake.h"
 #include "ps_hw6_system_time.h"
+#include "ps_hw6_time_retention.h"
 
 #include <string.h>
 
@@ -4402,17 +4403,26 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RenderDisplayWaitingSequenceFrame(
   HAL_StatusTypeDef status;
   uint32_t sequence_count =
     g_ps_hw6_owner_probe.display_waiting_sequence_frame_count;
+  uint32_t object_timeline =
+    ((g_ps_ui_router_probe.current_page == PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
+     (g_ps_object_lpbam_probe.enabled != 0UL) &&
+     (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL)) ? 1UL : 0UL;
 
-  if ((g_ps_object_lpbam_probe.enabled != 0UL) &&
-      (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL))
+  /* A suspended package does not own the shell's waiting sequence. */
+  if (object_timeline != 0UL)
   {
     if (PS_HW6_DisplayOwner_ObjectWaitingPosition(now_tick, &sequence_frame, &period_ticks) == 0UL)
-    { return HAL_ERROR; }
+    {
+      PS_HW6_RTOS_ResetDisplayCursorBlink(now_tick);
+      return HAL_ERROR;
+    }
     g_ps_object_lpbam_probe.deadline_tick = now_tick + period_ticks;
   }
 
-  if ((sequence_count == 0UL) || (sequence_frame >= sequence_count))
+  if ((sequence_count == 0UL) || (sequence_frame >= sequence_count) ||
+      (period_ticks == 0UL))
   {
+    PS_HW6_RTOS_ResetDisplayCursorBlink(now_tick);
     return HAL_ERROR;
   }
 
@@ -4428,8 +4438,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RenderDisplayWaitingSequenceFrame(
     ps_display_waiting_sequence_count = sequence_count;
     ps_display_blink_visible =
       g_ps_hw6_owner_probe.display_lpbam_sequence_phase[sequence_frame];
-    if ((g_ps_object_lpbam_probe.enabled != 0UL) &&
-        (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL))
+    if (object_timeline != 0UL)
     { ps_display_blink_visible = sequence_frame; }
   }
   else
@@ -8688,6 +8697,11 @@ static void PS_HW6_SystemTime_Owner(const ULONG *message)
   }
   else
   { result.status = PS_SystemTime_Read(&ps_system_clock, result.source_ms, &result.snapshot); }
+  if (PS_HW6_TimeRetention_Store(&ps_system_clock) == 0U)
+  {
+    PS_SystemTime_Invalidate(&ps_system_clock);
+    result.status = PS_SYSTEM_TIME_SOURCE_LOST;
+  }
   g_ps_system_time_probe.result = result;
   __DMB();
   g_ps_system_time_probe.complete = (uint32_t)message[1];
@@ -12269,7 +12283,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
 
   now = tx_time_get();
   g_ps_hw6_rtos_probe.owner_last_tick[owner_id] = (uint32_t)now;
-  if (owner_id == PS_HW6_RTOS_OWNER_POWER) { PS_SystemTime_Init(&ps_system_clock); }
+  if (owner_id == PS_HW6_RTOS_OWNER_POWER) { PS_HW6_TimeRetention_Restore(&ps_system_clock); }
   g_ps_hw6_rtos_probe.owner_start_mask |= (1UL << owner_id);
   PS_HW6_RTOS_RecordThreadStackProbe(owner_id);
   PS_HW6_RTOS_UpdateRuntimeComplete();

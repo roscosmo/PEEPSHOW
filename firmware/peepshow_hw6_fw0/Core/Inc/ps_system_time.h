@@ -58,4 +58,9 @@ ps_system_time_status_t PS_SystemTime_Read(ps_system_time_t *clock,
 /* Call on source loss, reset or an unverified elapsed-time lifetime change. */
 void PS_SystemTime_Invalidate(ps_system_time_t *clock);
 
+/* Versioned backup record. Word zero is committed last by the owner adapter. */
+#define PS_SYSTEM_TIME_RECORD_WORDS (8U)
+uint32_t PS_SystemTime_SaveRecord(const ps_system_time_t *clock, uint32_t *words);
+uint32_t PS_SystemTime_LoadRecord(ps_system_time_t *clock, const uint32_t *words);
+
 #endif

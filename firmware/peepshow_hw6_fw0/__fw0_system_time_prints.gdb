@@ -16,4 +16,5 @@ echo Local status: OK=0 UNSET=1 ARGUMENT=2 SOURCE_LOST=3 RANGE=4 GENERATION_EXHA
 echo This is the last requested snapshot, not a live clock. Run the READ helper again for a fresh sample.\n
 echo SET changes only the local mapping. Relative timers, RTC wake deadlines and raw RTC are not edited.\n
 echo A completed request can remain pending briefly until UI consumes it. Never clear its lease manually.\n
-echo Reset deliberately returns local time to UNSET; retention and calendar scheduling are not implemented.\n
+echo Qualified warm reset preserves time. Shipment/power loss returns UNSET. Calendar scheduling is not implemented.\n
+p g_ps_time_retention_probe
