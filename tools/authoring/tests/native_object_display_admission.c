@@ -275,6 +275,21 @@ static uint32_t full_frame_oracle(void *context, uint32_t step, uint8_t *destina
   return DisplayRenderer_CopyCandidateSceneFrame(&model, &candidate_catalog, destination, capacity);
 }
 
+static void packing_equivalence(const ps_lpbam_display_check_workspace_t *a,
+  const ps_lpbam_display_check_workspace_t *b)
+{
+  assert(memcmp(a->previous, b->previous, sizeof(a->previous)) == 0);
+  assert(memcmp(a->target, b->target, sizeof(a->target)) == 0);
+  assert(memcmp(a->length, b->length, sizeof(a->length)) == 0);
+  assert(memcmp(a->band, b->band, sizeof(a->band)) == 0);
+  assert(a->frames_composed == b->frames_composed);
+  for (uint32_t slot = 0; slot < PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT; ++slot)
+  {
+    assert(a->length[slot] <= sizeof(a->payload[slot]));
+    assert(memcmp(a->payload[slot], b->payload[slot], a->length[slot]) == 0);
+  }
+}
+
 static void timing_equivalence(uint32_t expected_status)
 {
   static ps_lpbam_display_check_workspace_t saved_packing;
@@ -286,13 +301,13 @@ static void timing_equivalence(uint32_t expected_status)
   ps_lpbam_display_admission_t oracle_result;
   assert(PS_LpbamDisplay_CheckFullSceneAnimation(program.step_count, full_frame_oracle, NULL,
     &oracle, &oracle_result) == (expected_status ? HAL_ERROR : HAL_OK));
-  assert(memcmp(&oracle, &saved_packing, sizeof(oracle)) == 0);
+  packing_equivalence(&oracle, &saved_packing);
   assert(memcmp(&oracle_result, &checked.payload, sizeof(oracle_result)) == 0);
   profile_clock_calls = UINT32_MAX - 3U; /* Exercise elapsed subtraction across wrap. */
   assert(PS_ObjectDisplay_CheckWaitingProfiled(&program, &candidate_catalog,
     &check_workspace, &checked, &timing) == expected_status);
   assert(memcmp(&saved_result, &checked, sizeof(checked)) == 0);
-  assert(memcmp(&saved_packing, &check_workspace.packing, sizeof(saved_packing)) == 0);
+  packing_equivalence(&saved_packing, &check_workspace.packing);
   assert(timing.calls[PS_DISPLAY_WORK_PROJECT] == checked.frames_composed);
   assert(timing.calls[PS_DISPLAY_WORK_RASTER] == checked.frames_composed);
   assert(timing.calls[PS_DISPLAY_WORK_COMPARE] == checked.payload.sequence_used + expected_status);
@@ -306,12 +321,12 @@ static void timing_equivalence(uint32_t expected_status)
     &check_workspace, &checked, &timing) == expected_status);
   assert(profile_clock_calls == 0); /* NULL clock is inert, even with a profile. */
   assert(memcmp(&saved_result, &checked, sizeof(checked)) == 0);
-  assert(memcmp(&saved_packing, &check_workspace.packing, sizeof(saved_packing)) == 0);
+  packing_equivalence(&saved_packing, &check_workspace.packing);
   for (stage = 0; stage < PS_DISPLAY_WORK_COUNT; ++stage)
   { assert(timing.ticks[stage] == 0 && timing.calls[stage] == 0); }
   assert(PS_ObjectDisplay_CheckWaitingCached(&program, &candidate_catalog,
     &check_workspace, &checked, NULL, 1) == expected_status);
-  assert(memcmp(&saved_packing, &check_workspace.packing, sizeof(saved_packing)) == 0);
+  packing_equivalence(&saved_packing, &check_workspace.packing);
   if (expected_status == 0)
   {
     assert(check_workspace.raster_cache.full_frames == 0);
@@ -451,6 +466,60 @@ static void resource_boundaries(void)
   assert(payload_snapshot(payload_after) == before && memcmp(payload_before, payload_after, before) == 0);
 }
 
+static void poisoned_workspace_equivalence(void)
+{
+  static ps_lpbam_display_check_workspace_t clean, poisoned;
+  static const struct { uint32_t steps, fail, hold; } cases[] = {
+    {3, 0, 0}, {4, 0, 0}, {12, 0, 1}, {13, 0, 1},
+    {3, 4, 1}, {1, 1, 0}, {1, 2, 0}, {0, 0, 0}, {1, 0, 1}
+  };
+  uint32_t before = payload_snapshot(payload_before);
+  for (uint32_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index)
+  {
+    ps_lpbam_display_admission_t expected, actual;
+    compose_test_t test = {0, cases[index].fail, cases[index].hold};
+    memset(&clean, 0, sizeof(clean));
+    HAL_StatusTypeDef status = PS_LpbamDisplay_CheckFullSceneAnimation(
+      cases[index].steps, synthetic_frame, &test, &clean, &expected);
+    for (uint32_t pattern = 0; pattern < 2; ++pattern)
+    {
+      uint8_t poison = pattern ? 0x5A : 0xA5;
+      memset(&poisoned, poison, sizeof(poisoned));
+      for (uint32_t repeat = 0; repeat < 2; ++repeat)
+      {
+        test = (compose_test_t){0, cases[index].fail, cases[index].hold};
+        assert(PS_LpbamDisplay_CheckFullSceneAnimation(cases[index].steps,
+          synthetic_frame, &test, &poisoned, &actual) == status);
+        assert(memcmp(&expected, &actual, sizeof(actual)) == 0);
+        packing_equivalence(&clean, &poisoned);
+        /* Untouched tails remain poison; the comparison must not depend on them. */
+        for (uint32_t slot = 0; slot < PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT; ++slot)
+        {
+          for (uint32_t byte = poisoned.length[slot]; byte < sizeof(poisoned.payload[slot]); ++byte)
+          { assert(poisoned.payload[slot][byte] == poison); }
+        }
+      }
+    }
+  }
+  /* A smaller check after a full workspace must not retain occupied slots. */
+  compose_test_t test = {0};
+  ps_lpbam_display_admission_t result;
+  assert(PS_LpbamDisplay_CheckFullSceneAnimation(3, synthetic_frame, &test, &poisoned, &result) == HAL_OK);
+  test = (compose_test_t){0, 0, 1};
+  assert(PS_LpbamDisplay_CheckFullSceneAnimation(1, synthetic_frame, &test, &poisoned, &result) == HAL_OK);
+  assert(result.chunk_used == 1 && result.payload_used_bytes == 584);
+  for (uint32_t slot = 1; slot < PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT; ++slot)
+  { assert(poisoned.length[slot] == 0 && poisoned.band[slot] == 0); }
+  memset(&poisoned, 0xA5, sizeof(poisoned));
+  assert(PS_LpbamDisplay_CheckFullSceneAnimation(1, NULL, NULL, &poisoned, &result) == HAL_ERROR);
+  assert(poisoned.frames_composed == 0);
+  assert(poisoned.wire[0] == 0xA5 && poisoned.payload[0][0] == 0xA5);
+  for (uint32_t slot = 0; slot < PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT; ++slot)
+  { assert(poisoned.length[slot] == 0 && poisoned.band[slot] == 0); }
+  assert(payload_snapshot(payload_after) == before && memcmp(payload_before, payload_after, before) == 0);
+  puts("poisoned and reused workspace preserves admission and valid payload bytes");
+}
+
 int main(int argc, char **argv)
 {
   static ps_egg_context_t saved_catalog;
@@ -462,6 +531,7 @@ int main(int argc, char **argv)
   uint32_t size, expected_failure, step, snapshot_size, status;
   HAL_StatusTypeDef packed;
   if (argc == 1) { band_equivalence(); return 0; }
+  if (argc == 2 && strcmp(argv[1], "poisoned-workspace") == 0) { poisoned_workspace_equivalence(); return 0; }
   if (argc == 2 && strcmp(argv[1], "raster-cache") == 0) { raster_cache_equivalence(); return 0; }
   if (argc == 2 && strcmp(argv[1], "clear-rect") == 0) { clear_rect_equivalence(); return 0; }
   if (argc == 2 && strcmp(argv[1], "clip-regions") == 0) { clipped_regions_equivalence(); return 0; }

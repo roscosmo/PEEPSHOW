@@ -531,3 +531,68 @@ in display workload or clock rate. These are instrumented elapsed intervals,
 not isolated CPU time or physical button-to-panel latency. Trace success and
 matching work counts do not replace operator confirmation of intact visuals
 and audio; that confirmation remains pending for this build.
+
+### Candidate Scratch Reset Optimization
+
+Further analysis of `__fw0_tracex_snapshot_20260918_092206.trx` measures the
+candidate interval at 61.47 ms. The first full raster takes 20.74 ms; four
+partial draws total 10.60 ms, overlap checks 2.52 ms, region clears 0.44 ms,
+and raster output/model copies 4.51 ms. The ten marked validation calls total
+3.42 ms, but five are nested within drawing and must not be added again.
+
+The initial pair of display-thread clock reads surrounding the packing
+workspace reset spans 5.18 ms. Their attribution follows the existing
+PS_DisplayWork_Begin/End call order in CheckFullSceneAnimationProfiled;
+these are TraceX timestamps of profiling calls, not new dedicated reset
+markers or isolated CPU measurements.
+
+After approval, the packer resets the previous/target frames, slot lengths,
+bands and frames-composed counter individually, rather than clearing the
+entire workspace. Wire construction initializes each transaction before use;
+only populated slots below the local used_slots counter are compared, and
+each such payload is copied before its slot becomes populated. Unused payload
+bytes and wire scratch are intentionally unspecified. Live DMA storage, frame
+baseline behavior, admission limits, clock policy and ownership are unchanged.
+
+Native tests compare populated payload bytes, frames, metadata and results,
+not irrelevant scratch tails. Added checks use two poison patterns, repeated
+checks, successful full-capacity and HOLD cases, chunk/sequence rejection,
+early/late callback failures, invalid arguments, and a small check after a
+full one. Unused payload tails remain poisoned; live display payloads remain
+unchanged. Existing exhaustive frame-byte/band equivalence, renderer, trace,
+candidate ownership and installed SFX tests also pass: 40 focused tests total.
+Debug build passed with RAM 553648 bytes and SRAM4 15480 bytes unchanged;
+ROM is 887352 bytes. Hardware timing savings remain unmeasured.
+
+Reflash normal Debug firmware and retain the installed real-audio GUI egg.
+Repeat the same quiet Lobby-to-Garden API 3 trace, waiting for audio to finish
+before halting. Compare the reset interval and complete candidate/transaction
+times at 24 MHz, with unchanged frame/element counts, output and audio behavior.
+Do not claim the whole 5.18 ms is removed: frame and metadata clearing remain.
+
+### Candidate Scratch Reset Hardware Result
+
+Capture `__fw0_tracex_snapshot_20260918_101956.trx` wrapped once, but chronological
+ring decoding retains the matching sequence-1 RECEIVE/DONE, candidate boundaries
+and all panel phase pairs. Event/panel results and marker errors are zero;
+stage/clock records remain at 24 MHz without retune triples.
+
+| Work | Previous capture | Smaller reset |
+|---|---:|---:|
+| Initial workspace reset | 5.185 ms | 1.799 ms |
+| Candidate preparation | 61.470 ms | 58.150 ms |
+| Runtime receipt to panel completion | 191.427 ms | 188.896 ms |
+| Runtime receipt to DONE | 194.735 ms | 192.152 ms |
+
+The reset saves 3.386 ms (about 65%); candidate preparation saves 3.319 ms.
+Both captures retain 47 candidate profiling clock reads, one full/four reused
+frames and 18 elements drawn. Panel composition remains about 19.52 ms, with
+11 elements, black count 2467, 128 dirty rows and identical transfer chunk
+sizes. All transfer statuses remain successful.
+
+Panel transfer elapsed time rises from 21.944 to 22.642 ms; a successful marked
+joystick read spans 0.441 ms during presentation. This is additional concurrent
+work, not proof that all transfer-time variation comes from that read. Therefore
+the end-to-end improvement is smaller than the reset saving. Timings include
+observer overhead and interrupts and exclude pre-runtime input/wake latency.
+Operator confirmation of unchanged visuals and audio remains pending.

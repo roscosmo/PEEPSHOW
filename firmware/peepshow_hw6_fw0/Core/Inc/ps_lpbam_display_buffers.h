@@ -62,7 +62,9 @@ typedef struct
   uint32_t reason;
 } ps_lpbam_display_admission_t;
 
-/* Caller-owned ordinary RAM, never DMA-visible/live payload scratch. */
+/* Caller-owned ordinary RAM, never DMA-visible/live payload scratch.
+ * Payload bytes beyond each slot's length and wire scratch are not reset.
+ * Only the declared payload lengths are meaningful after a check. */
 typedef struct
 {
   uint8_t previous[DISPLAY_HEIGHT][LINE_WIDTH];

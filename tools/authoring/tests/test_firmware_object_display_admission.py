@@ -97,6 +97,12 @@ class ObjectDisplayAdmissionTests(unittest.TestCase):
         clips[1]["frame_duration_ms"] = [700] * 4
         self.assertIn("schedule rejection isolated", self.check(replace(bundle, animations=clips), 2))
 
+    def test_poisoned_workspace_and_retries_preserve_payloads(self):
+        result = subprocess.run([str(self.exe), "poisoned-workspace"], capture_output=True,
+                                text=True, timeout=10, env=self.env)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("poisoned and reused workspace preserves admission", result.stdout)
+
     def test_incremental_pixels_match_full_rendering(self):
         result = subprocess.run([str(self.exe), "raster-cache"], capture_output=True, text=True,
                                 timeout=10, env=self.env)
