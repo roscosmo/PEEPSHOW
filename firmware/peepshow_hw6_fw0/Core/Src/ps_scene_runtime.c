@@ -1461,6 +1461,7 @@ static uint32_t PS_SceneRuntime_ReplaceObjectScene(uint32_t target_scene_id,
 {
   ps_egg_v2_profile_result_t profile;
   uint32_t slot = s_ps_scene_runtime_active_slot ^ 1UL;
+  uint32_t index;
   ps_scene_runtime_state_scene_t *target = &s_ps_scene_runtime_scene_slots[slot];
   g_ps_scene_runtime_probe.scene_replace_count++;
   g_ps_scene_runtime_probe.scene_replace_source_id = g_ps_scene_runtime_probe.scene_id;
@@ -1487,9 +1488,17 @@ static uint32_t PS_SceneRuntime_ReplaceObjectScene(uint32_t target_scene_id,
    * active; only its scene descriptor and fresh instance change here. */
   (void)PS_SceneRuntime_ActivateDecodedScene(target, slot);
   s_ps_object_graph = s_ps_object_destination;
+  /* Only package-global SFX survive replacement. Publish after admission and
+   * commit, before abort clears the outgoing transaction's staged effects. */
+  s_ps_object_effects = s_ps_object_stage.effects;
   PS_SceneObjectGraph_Abort(&s_ps_object_stage);
-  (void)memset(&s_ps_object_effects, 0, sizeof(s_ps_object_effects));
   s_ps_object_sfx_take = 0UL;
+  for (index = 0UL; index < s_ps_object_effects.count; ++index)
+  {
+    g_ps_scene_runtime_probe.sfx_action_commit_count++;
+    g_ps_scene_runtime_probe.last_sfx_cue_index =
+      (uint32_t)s_ps_object_effects.actions[index].value;
+  }
   s_ps_scene_runtime_pending_shell_exit = 0UL;
   s_ps_scene_runtime_pending_sfx_cue = PS_SCENE_RUNTIME_INDEX_INVALID;
   g_ps_scene_runtime_probe.primary_variable_value = s_ps_object_graph.variables[0];

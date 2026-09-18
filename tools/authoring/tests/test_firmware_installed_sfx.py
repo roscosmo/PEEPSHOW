@@ -56,14 +56,39 @@ class InstalledSfxTests(unittest.TestCase):
         for blob in (repair(bad_block), repair(bad_cue)):
             self.run_blob(blob, "selection", "0", "0")
 
-    def test_audio_does_not_admit_exit_actions_or_shell_actions(self):
-        for kind in ("exit", "shell"):
-            scenes = deepcopy(self.bundle.scenes)
-            route = scenes[1]["routes"][-1 if kind == "exit" else 0]
-            route["actions"] = ([{"kind": "play_sfx", "cue_ref": "short.cue"}]
-                                if kind == "exit" else [{"kind": "exit_to_shell"}])
-            blob = build_development_egg_v2(replace(self.bundle, scenes=scenes))
-            self.run_blob(blob, "selection", "0", "0")
+    def test_exit_sfx_commits_once_in_order_after_admission(self):
+        scenes = deepcopy(self.bundle.scenes)
+        for scene in scenes:
+            for route in scene["routes"]:
+                if route.get("target_scene"):
+                    route["actions"] = [
+                        {"kind": "play_sfx", "cue_ref": "short.cue"},
+                        {"kind": "play_sfx", "cue_ref": "long.cue"}]
+        bundle = replace(self.bundle, scenes=scenes)
+        self.assertTrue(build_readiness_issues(bundle))  # Public capability stays closed.
+        blob = build_development_egg_v2(bundle)
+        self.assertIn("exit SFX ordered commit passed", self.run_blob(blob, "exit-audio"))
+        scenes[0]["event_handlers"][0].update(target_scene="visit", actions=[
+            {"kind": "play_sfx", "cue_ref": "short.cue"},
+            {"kind": "play_sfx", "cue_ref": "long.cue"}])
+        blob = build_development_egg_v2(replace(self.bundle, scenes=scenes))
+        self.assertIn("exit SFX ordered commit passed", self.run_blob(blob, "exit-timer"))
+
+    def test_audio_does_not_admit_shell_actions(self):
+        scenes = deepcopy(self.bundle.scenes)
+        scenes[1]["routes"][0]["actions"] = [{"kind": "exit_to_shell"}]
+        blob = build_development_egg_v2(replace(self.bundle, scenes=scenes))
+        self.run_blob(blob, "selection", "0", "0")
+
+    def test_exit_bench_fixture_installs_without_public_export(self):
+        from build_scene_exit_sfx_fixture import scene_exit_sfx_bundle
+        bundle = scene_exit_sfx_bundle()
+        self.assertTrue(build_readiness_issues(bundle))
+        blob = build_development_egg_v2(bundle)
+        self.assertEqual(54660, len(blob))
+        self.assertEqual("610119f8944e1965cb4b29e081085eb957469b33db6cc7c0c8fe71849cac0f5c",
+                         hashlib.sha256(blob).hexdigest())
+        self.run_blob(blob, "selection", "1", "2")
 
     def test_resident_audio_capacity_includes_footer(self):
         header = HEADER.unpack_from(self.blob)

@@ -3133,12 +3133,25 @@ static uint32_t PS_EggCheckV2Profile(ps_egg_context_t *context,
   {
     const ps_scene_runtime_transition_t *transition = &scene->transitions[index];
     if ((transition->target_scene_id != 0UL) &&
-        ((scene_set == 0UL) || (transition->target_scene_id == scene->scene_id) ||
-         (transition->action_count != 0UL)))
+        ((scene_set == 0UL) || (transition->target_scene_id == scene->scene_id)))
     {
       result->reason = PS_EGG_V2_PROFILE_SCENE_EXIT;
       result->item_index = index;
       return 1UL;
+    }
+    if (transition->target_scene_id != 0UL)
+    {
+      uint32_t action_index;
+      for (action_index = 0UL; action_index < transition->action_count; ++action_index)
+      {
+        if (scene->actions[transition->first_action + action_index].kind !=
+            PS_SCENE_RUNTIME_ACTION_PLAY_SFX)
+        {
+          result->reason = PS_EGG_V2_PROFILE_SCENE_EXIT;
+          result->item_index = index;
+          return 1UL;
+        }
+      }
     }
   }
   for (index = 0UL; index < scene->action_count; ++index)
