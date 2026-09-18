@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { EyeOff, RotateCcw, Trash2 } from "lucide-react";
 import { FramePreviewCanvas } from "./FramebufferCanvas";
 import { isFillableShapeKind, shapeKindWithFill } from "./placementGeometry";
-import type { AssetRecord, AuthoredClip, CompiledAssetFrame, PlacementOwnership, RenderElement, SceneDocument, SceneObject } from "./types";
+import type { AssetRecord, AuthoredClip, CompiledAssetFrame, PlacementOwnership, RenderElement, RuntimeTextProfile, SceneDocument, SceneObject } from "./types";
 
 type Property = "x" | "y" | "visible" | "visual_ref";
 type Command = Record<string, unknown>;
@@ -37,12 +37,13 @@ function Visibility({ value, disabled, onChange }: { value: boolean | undefined;
     checked={value === true} onChange={event => onChange(event.target.checked)} />;
 }
 
-export function SceneObjectInspector({ scene, object, label, stateIds, ownership, frames, clips, busy, supports, onApply, assets = [] }: {
+export function SceneObjectInspector({ scene, object, label, stateIds, ownership, frames, clips, busy, supports, onApply, assets = [], runtimeTextProfile }: {
   scene: SceneDocument; object: SceneObject | undefined; label: string; stateIds: string[];
   ownership: PlacementOwnership["scenes"][string] | null;
   frames: CompiledAssetFrame[]; clips: AuthoredClip[]; busy: boolean;
   supports: (kind: string) => boolean;
   assets?: AssetRecord[];
+  runtimeTextProfile?: RuntimeTextProfile | null;
   onApply: (commands: Command[]) => Promise<boolean>;
 }) {
   if (!object) return <section className="inspector-section placement-inspector"><p className="muted">No object selected.</p></section>;
@@ -147,6 +148,8 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
         }}
       />
     </label><small>All states</small></div>}
+    {object.kind === "text" && runtimeTextProfile && <RuntimeTextEditor scene={scene} object={object}
+      profile={runtimeTextProfile} busy={busy || stateScope || !supports("object.set_text")} onApply={onApply} />}
     {object.kind === "sprite" && <>
       {(stateScope || animated) && <div className="scene-object-property">
         <details key={selectionKey} className="object-frame-picker">
@@ -181,4 +184,65 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
       {stateScope ? stateIds.length === 1 ? "Hide in this state" : "Hide in selected states" : "Delete object"}
     </button>
   </section>;
+}
+
+function RuntimeTextEditor({ scene, object, profile, busy, onApply }: {
+  scene: SceneDocument;
+  object: SceneObject;
+  profile: RuntimeTextProfile;
+  busy: boolean;
+  onApply: (commands: Command[]) => Promise<boolean>;
+}) {
+  const [text, setText] = useState(object.text ?? "");
+  const [scale, setScale] = useState(object.scale ?? profile.scale.minimum);
+  const [alignment, setAlignment] = useState<"left" | "center" | "right">(object.alignment ?? "left");
+  const [width, setWidth] = useState(object.width);
+  const [height, setHeight] = useState(object.height);
+  useEffect(() => {
+    setText(object.text ?? "");
+    setScale(object.scale ?? profile.scale.minimum);
+    setAlignment(object.alignment ?? "left");
+    setWidth(object.width);
+    setHeight(object.height);
+  }, [object.object_id, object.text, object.scale, object.alignment, object.width, object.height, profile.scale.minimum]);
+  const lines = text.split("\n");
+  const requiredWidth = Math.max(1, ...lines.map(line => line.length)) * profile.glyph_cell.width * scale;
+  const requiredHeight = lines.length * profile.glyph_cell.height * scale;
+  const invalidCharacters = !/^[\x20-\x7e\n]+$/.test(text);
+  const overflow = requiredWidth > width || requiredHeight > height;
+  const changed = text !== object.text || scale !== object.scale || alignment !== object.alignment
+    || width !== object.width || height !== object.height;
+  const valid = text.length >= 1 && text.length <= profile.maximum_length && !invalidCharacters && !overflow
+    && width >= profile.bounds.width.minimum && width <= profile.bounds.width.maximum
+    && height >= profile.bounds.height.minimum && height <= profile.bounds.height.maximum;
+  return <div className="runtime-text-editor">
+    <label>Text
+      <textarea rows={5} value={text} maxLength={profile.maximum_length} disabled={busy}
+        onChange={event => setText(event.target.value)} />
+    </label>
+    <div className="runtime-text-fields">
+      <label>Scale
+        <input type="number" min={profile.scale.minimum} max={profile.scale.maximum} step={1}
+          value={scale} disabled={busy} onChange={event => setScale(Number(event.target.value))} />
+      </label>
+      <label>Alignment
+        <select value={alignment} disabled={busy} onChange={event => setAlignment(event.target.value as typeof alignment)}>
+          {profile.alignment.map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}
+        </select>
+      </label>
+      <label>Width
+        <input type="number" min={profile.bounds.width.minimum} max={profile.bounds.width.maximum} step={1}
+          value={width} disabled={busy} onChange={event => setWidth(Number(event.target.value))} />
+      </label>
+      <label>Height
+        <input type="number" min={profile.bounds.height.minimum} max={profile.bounds.height.maximum} step={1}
+          value={height} disabled={busy} onChange={event => setHeight(Number(event.target.value))} />
+      </label>
+    </div>
+    <small className={valid ? "" : "error-text"}>{requiredWidth} x {requiredHeight} px required by the current text.</small>
+    {invalidCharacters && <small className="error-text">Use printable ASCII characters and explicit line breaks only.</small>}
+    <button className="button primary" type="button" disabled={busy || !changed || !valid}
+      onClick={() => void onApply([{ kind: "object.set_text", scene_id: scene.scene_id, object_id: object.object_id,
+        text, font_id: object.font_id ?? profile.font_ids[0], scale, alignment, width, height }])}>Apply text</button>
+  </div>;
 }

@@ -101,10 +101,10 @@ import type {
 } from "./types";
 import type { RenderElement, RenderModel, StateRecord, StateVariable } from "./types";
 
-type PlacementDrawingTool = "line" | "rectangle" | "circle";
+type PlacementDrawingTool = "line" | "rectangle" | "circle" | "text";
 type PlacementTool = "select" | "sprite" | "animation" | PlacementDrawingTool;
 type PlacementPrimitiveDraft = {
-  kind: PlacementPrimitiveKind;
+  kind: PlacementPrimitiveKind | "text";
   bounds: PlacementBounds;
   lineDirection?: PlacementLineDirection;
 };
@@ -4051,6 +4051,23 @@ export default function App() {
     if (selectedSceneDocument === null) {
       return;
     }
+    if (objectSceneSelected && element.kind === "text") {
+      const definition = placementOwnershipScene?.objects?.find(object => object.object_id === element.element_id);
+      if (definition?.kind !== "text") return;
+      const width = Math.max(1, Math.min(PLACEMENT_WIDTH, Math.round(bounds.width)));
+      const height = Math.max(1, Math.min(PLACEMENT_HEIGHT, Math.round(bounds.height)));
+      const x = Math.max(0, Math.min(PLACEMENT_WIDTH - width, Math.round(bounds.x)));
+      const y = Math.max(0, Math.min(PLACEMENT_HEIGHT - height, Math.round(bounds.y)));
+      const commands: Record<string, unknown>[] = [];
+      if (width !== definition.width || height !== definition.height) commands.push({
+        kind: "object.set_text", scene_id: selectedSceneDocument.scene_id, object_id: definition.object_id,
+        text: definition.text, font_id: definition.font_id, scale: definition.scale,
+        alignment: definition.alignment, width, height,
+      });
+      if (x !== element.x || y !== element.y) commands.push(...sceneObjectPropertyCommands(element.element_id, { x, y }));
+      if (commands.length > 0) void applySceneObjectCommands(commands);
+      return;
+    }
     const { x: nextX, y: nextY, width: nextWidth, height: nextHeight } = normalizePrimitiveBounds(element.kind as PlacementPrimitiveKind, bounds);
     if (nextX === element.x && nextY === element.y && nextWidth === element.width && nextHeight === element.height) {
       return;
@@ -4632,6 +4649,15 @@ export default function App() {
     : service?.state_scene_presentation.element_commands.includes("placement_object.add") === true;
   const sceneObjectMoveSupported = objectSceneSelected && supportsObjectCommand(service, selectedSceneCapability,
     placementEditStateIds.length === 0 ? "object.set_defaults" : "object_override.set");
+  const runtimeTextProfile = service?.state_scene_presentation.runtime_text_profile;
+  const runtimeTextSupported = objectSceneSelected
+    && service?.state_scene_presentation.runtime_text === true
+    && runtimeTextProfile?.supported === true
+    && service.scene_object_authoring?.runtime_text?.supported === true
+    && selectedSceneCapability?.runtime_text === true
+    && selectedSceneCapability.runtime_text_profile?.supported === true
+    && supportsObjectCommand(service, selectedSceneCapability, "object.add")
+    && supportsObjectCommand(service, selectedSceneCapability, "object.set_text");
   const canEditSelectedScene = canEditLegacyScene(selectedSceneDocument, selectedSceneCapability)
     && service?.operations.includes("project.apply_commands") === true && busy === null;
   const stateCommandAllowed = (command: string) => objectSceneSelected
@@ -5311,12 +5337,14 @@ export default function App() {
     y: Math.min(PLACEMENT_HEIGHT - 1, Math.max(0, Math.floor(((clientY - rect.top) / rect.height) * PLACEMENT_HEIGHT))),
   });
   const startPlacementPrimitiveDraw = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const kind: PlacementPrimitiveKind | null = placementTool === "line"
+    const kind: PlacementPrimitiveKind | "text" | null = placementTool === "line"
       ? "line"
       : placementTool === "rectangle"
         ? "outline_rect"
         : placementTool === "circle"
           ? "ellipse"
+          : placementTool === "text"
+            ? "text"
           : null;
     if (
       kind === null ||
@@ -5334,7 +5362,8 @@ export default function App() {
     placementDrawCancelRef.current?.();
     const rect = event.currentTarget.getBoundingClientRect();
     const start = placementPointFromClient(rect, event.clientX, event.clientY);
-    let latestBounds = primitiveBoundsFromPoints(kind, start, start);
+    const boundsKind = kind === "text" ? "outline_rect" : kind;
+    let latestBounds = primitiveBoundsFromPoints(boundsKind, start, start);
     let latestLineDirection: PlacementLineDirection = "down_right";
     let finished = false;
 
@@ -5347,7 +5376,7 @@ export default function App() {
     };
     const update = (clientX: number, clientY: number) => {
       const end = placementPointFromClient(rect, clientX, clientY);
-      latestBounds = primitiveBoundsFromPoints(kind, start, end);
+      latestBounds = primitiveBoundsFromPoints(boundsKind, start, end);
       latestLineDirection = lineDirectionFromPoints(start, end);
       setPlacementPrimitiveDraft({ kind, bounds: latestBounds, lineDirection: latestLineDirection });
     };
@@ -5359,6 +5388,10 @@ export default function App() {
       finished = true;
       update(stopEvent.clientX, stopEvent.clientY);
       cleanup();
+      if (kind === "text") {
+        void addPlacementText(latestBounds);
+        return;
+      }
       const createdKind = placementTool === "circle" && latestBounds.width === latestBounds.height
         ? "circle"
         : kind;
@@ -5437,10 +5470,15 @@ export default function App() {
       </button>
       <button
         type="button"
-        disabled
-        title={service?.state_scene_presentation.runtime_text === true
-          ? "Runtime text objects need Studio integration"
-          : "Runtime text objects are not exposed by the authoring backend yet"}
+        disabled={!runtimeTextSupported || busy !== null || selectedSceneDocument === null}
+        className={placementTool === "text" ? "active" : ""}
+        onClick={() => {
+          placementDrawCancelRef.current?.();
+          setPlacementTool("text");
+          setSpritePickerOpen(false);
+          setSelectedPlacementElement(null);
+        }}
+        title={runtimeTextSupported ? "Draw system text box" : "Runtime text is unavailable for this scene"}
         aria-label="Add text"
       >
         <StudioIcon name="text" />
@@ -5694,7 +5732,7 @@ export default function App() {
           )}
           {variant === "placement" && (
             <div
-              className={`placement-screen-overlay labels-${placementLabelMode} ${placementOverlayVisible ? "" : "boxes-hidden"} ${["line", "rectangle", "circle"].includes(placementTool) ? `drawing-tool drawing-${placementTool}` : ""}`}
+              className={`placement-screen-overlay labels-${placementLabelMode} ${placementOverlayVisible ? "" : "boxes-hidden"} ${["line", "rectangle", "circle", "text"].includes(placementTool) ? `drawing-tool drawing-${placementTool}` : ""}`}
               aria-label="Placement selection overlay"
               tabIndex={0}
               ref={placementScreenOverlayRef}
@@ -5715,7 +5753,7 @@ export default function App() {
                         : placementPrimitiveDraft.bounds.y + placementPrimitiveDraft.bounds.height - 0.5}
                     />
                   )}
-                  {(placementPrimitiveDraft.kind === "outline_rect" || placementPrimitiveDraft.kind === "filled_rect") && (
+                  {(placementPrimitiveDraft.kind === "outline_rect" || placementPrimitiveDraft.kind === "filled_rect" || placementPrimitiveDraft.kind === "text") && (
                     <rect
                       className={placementPrimitiveDraft.kind === "filled_rect" ? "filled" : ""}
                       x={placementPrimitiveDraft.bounds.x + 0.5}
@@ -5724,7 +5762,8 @@ export default function App() {
                       height={Math.max(0, placementPrimitiveDraft.bounds.height - 1)}
                     />
                   )}
-                  {(["circle", "ellipse", "filled_circle", "filled_ellipse"] as PlacementPrimitiveKind[]).includes(placementPrimitiveDraft.kind) && (
+                  {(placementPrimitiveDraft.kind === "circle" || placementPrimitiveDraft.kind === "ellipse"
+                    || placementPrimitiveDraft.kind === "filled_circle" || placementPrimitiveDraft.kind === "filled_ellipse") && (
                     <ellipse
                       className={placementPrimitiveDraft.kind === "filled_circle" || placementPrimitiveDraft.kind === "filled_ellipse" ? "filled" : ""}
                       cx={placementPrimitiveDraft.bounds.x + placementPrimitiveDraft.bounds.width / 2}
@@ -7383,6 +7422,8 @@ export default function App() {
     switch (kind) {
       case "sprite":
         return "Sprite";
+      case "text":
+        return "Text";
       case "line":
         return "Line";
       case "outline_rect":
@@ -7408,6 +7449,8 @@ export default function App() {
     switch (kind) {
       case "sprite":
         return "sprite";
+      case "text":
+        return "text";
       case "line":
         return "line";
       case "outline_rect":
@@ -7479,6 +7522,24 @@ export default function App() {
       setSelectedPlacementElement(element_id);
     }
     return applied;
+  };
+  const addPlacementText = async (requestedBounds: PlacementBounds) => {
+    if (!runtimeTextSupported || runtimeTextProfile === undefined || selectedSceneDocument === null) return;
+    const minimumWidth = runtimeTextProfile.glyph_cell.width * runtimeTextProfile.scale.minimum * 4;
+    const minimumHeight = runtimeTextProfile.glyph_cell.height * runtimeTextProfile.scale.minimum;
+    const width = Math.min(PLACEMENT_WIDTH, Math.max(minimumWidth, requestedBounds.width));
+    const height = Math.min(PLACEMENT_HEIGHT, Math.max(minimumHeight, requestedBounds.height));
+    const x = Math.min(requestedBounds.x, PLACEMENT_WIDTH - width);
+    const y = Math.min(requestedBounds.y, PLACEMENT_HEIGHT - height);
+    const elements = baseObjectRows(selectedSceneDocument, placementOwnershipScene);
+    await addSceneObject({
+      element_id: nextPlacementElementId("text", elements), kind: "text",
+      text: "Text", font_id: runtimeTextProfile.font_ids[0], scale: runtimeTextProfile.scale.minimum,
+      alignment: "left", x, y, width, height,
+      z_order: Math.min(255, Math.max(0, ...elements.map(item => item.z_order)) + 1),
+      layer: "UI", visible: true,
+    });
+    setPlacementTool("select");
   };
   const addPlacementSprite = async (frame: CompiledAssetFrame | null, animationId?: string) => {
     if (objectSceneSelected && selectedSceneDocument !== null && frame !== null) {
@@ -8410,6 +8471,7 @@ export default function App() {
         stateIds={placementEditStateTargets()} ownership={placementOwnershipScene}
         frames={compiledAssetFrames} clips={project?.document?.animations ?? []} busy={busy !== null}
         assets={assets}
+        runtimeTextProfile={selectedSceneCapability?.runtime_text_profile ?? null}
         supports={kind => supportsObjectCommand(service, selectedSceneCapability, kind)}
         onApply={applySceneObjectCommands}
       /></>;

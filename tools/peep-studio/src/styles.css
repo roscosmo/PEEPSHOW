@@ -120,6 +120,55 @@ button:focus-visible {
   margin-top: 12px;
 }
 
+.runtime-text-editor {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 10px;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  background: #f7faf8;
+}
+
+.runtime-text-editor > label,
+.runtime-text-fields label {
+  display: grid;
+  gap: 5px;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.runtime-text-editor textarea {
+  min-height: 88px;
+  resize: vertical;
+  font-family: monospace;
+  text-transform: none;
+}
+
+.runtime-text-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.runtime-text-editor > small {
+  color: #68736d;
+  font-size: 10px;
+}
+
+.studio-shell[data-theme="dark"] .runtime-text-editor {
+  border-color: #48564f;
+  background: #18201c;
+}
+
+.studio-shell[data-theme="dark"] .runtime-text-editor > label,
+.studio-shell[data-theme="dark"] .runtime-text-fields label,
+.studio-shell[data-theme="dark"] .runtime-text-editor > small {
+  color: #aebdb5;
+}
+
 .effect-field > .object-action-axis {
   display: flex;
   align-items: center;

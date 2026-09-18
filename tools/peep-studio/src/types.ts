@@ -55,6 +55,8 @@ export type SceneCapabilities = {
   route_destination_kinds?: string[];
   timer_handler_layout?: TimerHandlerLayoutCapability;
   object_display_names?: boolean;
+  runtime_text?: boolean;
+  runtime_text_profile?: RuntimeTextProfile | null;
   schema_version: number;
   execution_model: string;
   host_editing: boolean;
@@ -72,6 +74,38 @@ export type SceneObject = Omit<RenderElement, "element_id" | "x" | "y" | "visibl
   display_name?: string;
   defaults: { x: number; y: number; visible: boolean; visual_ref?: string };
   animation_ref?: string;
+};
+
+export type RuntimeTextProfile = {
+  supported: boolean;
+  scene_schema_versions: number[];
+  object_kind: "text";
+  font_ids: string[];
+  character_set: string;
+  maximum_length: number;
+  glyph_cell: { width: number; height: number };
+  scale: { minimum: number; maximum: number; integer_only: boolean };
+  alignment: Array<"left" | "center" | "right">;
+  vertical_alignment: "top";
+  bounds: {
+    width: { minimum: number; maximum: number };
+    height: { minimum: number; maximum: number };
+  };
+  overflow: "reject";
+  line_breaks: "explicit_newline";
+  automatic_wrapping: boolean;
+  automatic_shrinking: boolean;
+  ink: string;
+  background: string;
+  baked_assets: boolean;
+  commands: string[];
+  set_text_fields: string[];
+  override_properties: string[];
+  runtime_action_kinds: string[];
+  dynamic_content: boolean;
+  content_overrides: boolean;
+  layer_and_z_order: string;
+  device_exact_admission_required: boolean;
 };
 
 export type SceneDocument = {
@@ -198,6 +232,10 @@ export type RenderElement = {
   layer?: "BACKGROUND" | "SCENE" | "UI";
   visible?: boolean;
   line_direction?: "down_right" | "up_right";
+  text?: string;
+  font_id?: string;
+  scale?: number;
+  alignment?: "left" | "center" | "right";
 };
 
 export type RenderModel = {
@@ -637,6 +675,7 @@ export type ServiceHello = {
       profile_revision?: number;
       audio?: boolean;
       audio_profile?: V2AudioExportCapability;
+      runtime_text?: RuntimeTextProfile;
     };
   };
   target_profiles?: { available: Array<{ profile_id: string; state_scene_events?: {
@@ -657,6 +696,7 @@ export type ServiceHello = {
       runtime_encoded: boolean;
     };
     audio_export?: V2AudioExportCapability;
+    runtime_text?: RuntimeTextProfile;
     clip_loop_policies?: string[];
     local_graph_commands?: string[];
     scene_connection_commands?: boolean;
@@ -708,6 +748,7 @@ export type ServiceHello = {
     logical_input_events: Array<"press" | "release" | "hold" | "repeat">;
     joystick_policies: Array<"four_way" | "eight_way">;
     runtime_text: boolean;
+    runtime_text_profile?: RuntimeTextProfile;
     build_time_text: {
       source_format: string;
       font_ids: string[];

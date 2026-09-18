@@ -1,0 +1,29 @@
+{
+  "schema_id":"peepshow.authoring.state_scene","schema_version":2,"scene_id":"main","display_name":"Runtime Text","scene_type":"STATE_SCENE","entry_state":"start",
+  "variables":[],
+  "input_actions":[
+    {"action_id":"button_a_press","logical_source":"BUTTON_A","event_kind":"press"},
+    {"action_id":"button_b_press","logical_source":"BUTTON_B","event_kind":"press"}
+  ],
+  "scene_exits":[],
+  "routes":[
+    {"route_id":"show_changed","action_ref":"button_a_press","from_states":["start"],"guards":[],"actions":[],"target_state":"changed"},
+    {"route_id":"restore_start","action_ref":"button_b_press","from_states":["changed"],"guards":[],"actions":[],"target_state":"start"}
+  ],
+  "reactive_wait_default":{"policy_id":"main_wait_policy","hold_fallback_allowed":true,"event_interests":["button_a_press","button_b_press"]},
+  "interaction_policy":{"policy_id":"main_interaction","mode":"continuous","meaningful_activity_actions":["button_a_press","button_b_press"]},
+  "objects":[
+    {"object_id":"continuity_sprite","display_name":"Animation continuity","kind":"sprite","width":24,"height":24,"z_order":0,"layer":"SCENE","defaults":{"x":136,"y":0,"visible":true,"visual_ref":"pulse.a"},"animation_ref":"pulse_loop"},
+    {"object_id":"title","display_name":"Title","kind":"text","text":"Text 2x","font_id":"peepshow.system.8x8.basic.v1","scale":2,"alignment":"left","width":120,"height":16,"z_order":2,"layer":"UI","defaults":{"x":0,"y":0,"visible":true}},
+    {"object_id":"lines","display_name":"Centred lines","kind":"text","text":"abc XYZ\n012 !?","font_id":"peepshow.system.8x8.basic.v1","scale":2,"alignment":"center","width":120,"height":32,"z_order":2,"layer":"UI","defaults":{"x":0,"y":22,"visible":true}},
+    {"object_id":"marker","display_name":"Moving text","kind":"text","text":"Aa","font_id":"peepshow.system.8x8.basic.v1","scale":2,"alignment":"left","width":32,"height":16,"z_order":2,"layer":"UI","defaults":{"x":8,"y":64,"visible":true}},
+    {"object_id":"large","display_name":"Large centred text","kind":"text","text":"3x","font_id":"peepshow.system.8x8.basic.v1","scale":3,"alignment":"center","width":48,"height":24,"z_order":2,"layer":"UI","defaults":{"x":60,"y":64,"visible":true}},
+    {"object_id":"hidden","display_name":"Visibility text","kind":"text","text":"Visible","font_id":"peepshow.system.8x8.basic.v1","scale":2,"alignment":"right","width":168,"height":16,"z_order":2,"layer":"UI","defaults":{"x":0,"y":86,"visible":true}},
+    {"object_id":"footer","display_name":"Controls","kind":"text","text":"A: move/hide\nB: restore","font_id":"peepshow.system.8x8.basic.v1","scale":1,"alignment":"left","width":168,"height":16,"z_order":2,"layer":"UI","defaults":{"x":0,"y":106,"visible":true}}
+  ],
+  "states":[
+    {"state_id":"start","display_name":"Initial","object_overrides":[]},
+    {"state_id":"changed","display_name":"Moved and hidden","object_overrides":[{"object_ref":"marker","x":120},{"object_ref":"hidden","visible":false}]}
+  ],
+  "event_bindings":[],"event_handlers":[]
+}
