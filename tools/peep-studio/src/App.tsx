@@ -4054,8 +4054,13 @@ export default function App() {
     if (objectSceneSelected && element.kind === "text") {
       const definition = placementOwnershipScene?.objects?.find(object => object.object_id === element.element_id);
       if (definition?.kind !== "text") return;
-      const width = Math.max(1, Math.min(PLACEMENT_WIDTH, Math.round(bounds.width)));
-      const height = Math.max(1, Math.min(PLACEMENT_HEIGHT, Math.round(bounds.height)));
+      const profile = selectedSceneCapability?.runtime_text_profile;
+      const scale = definition.scale ?? profile?.scale.minimum ?? 1;
+      const lines = (definition.text ?? "").split("\n");
+      const requiredWidth = Math.max(1, ...lines.map(line => line.length)) * (profile?.glyph_cell.width ?? 1) * scale;
+      const requiredHeight = lines.length * (profile?.glyph_cell.height ?? 1) * scale;
+      const width = Math.max(requiredWidth, Math.min(PLACEMENT_WIDTH, Math.round(bounds.width)));
+      const height = Math.max(requiredHeight, Math.min(PLACEMENT_HEIGHT, Math.round(bounds.height)));
       const x = Math.max(0, Math.min(PLACEMENT_WIDTH - width, Math.round(bounds.x)));
       const y = Math.max(0, Math.min(PLACEMENT_HEIGHT - height, Math.round(bounds.y)));
       const commands: Record<string, unknown>[] = [];

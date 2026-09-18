@@ -147,10 +147,58 @@ button:focus-visible {
   text-transform: none;
 }
 
+.runtime-text-count {
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: none;
+}
+
 .runtime-text-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.runtime-text-alignment {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.runtime-text-alignment legend {
+  margin-bottom: 5px;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.runtime-text-alignment .segmented-control {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.runtime-text-alignment .segmented-control button {
+  display: grid;
+  min-height: 30px;
+  place-items: center;
+}
+
+.runtime-text-fit {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #37604b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.runtime-text-fit.invalid {
+  color: #a83b31;
 }
 
 .runtime-text-editor > small {
@@ -166,6 +214,11 @@ button:focus-visible {
 .studio-shell[data-theme="dark"] .runtime-text-editor > label,
 .studio-shell[data-theme="dark"] .runtime-text-fields label,
 .studio-shell[data-theme="dark"] .runtime-text-editor > small {
+  color: #aebdb5;
+}
+
+.studio-shell[data-theme="dark"] .runtime-text-count,
+.studio-shell[data-theme="dark"] .runtime-text-alignment legend {
   color: #aebdb5;
 }
 

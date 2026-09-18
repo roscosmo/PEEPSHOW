@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { EyeOff, RotateCcw, Trash2 } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, EyeOff, Maximize2, RotateCcw, Trash2 } from "lucide-react";
 import { FramePreviewCanvas } from "./FramebufferCanvas";
 import { isFillableShapeKind, shapeKindWithFill } from "./placementGeometry";
 import type { AssetRecord, AuthoredClip, CompiledAssetFrame, PlacementOwnership, RenderElement, RuntimeTextProfile, SceneDocument, SceneObject } from "./types";
@@ -207,28 +207,42 @@ function RuntimeTextEditor({ scene, object, profile, busy, onApply }: {
   const lines = text.split("\n");
   const requiredWidth = Math.max(1, ...lines.map(line => line.length)) * profile.glyph_cell.width * scale;
   const requiredHeight = lines.length * profile.glyph_cell.height * scale;
+  const columns = Math.floor(width / (profile.glyph_cell.width * scale));
+  const rows = Math.floor(height / (profile.glyph_cell.height * scale));
+  const fittedWidth = Math.min(profile.bounds.width.maximum, Math.max(profile.bounds.width.minimum, requiredWidth));
+  const fittedHeight = Math.min(profile.bounds.height.maximum, Math.max(profile.bounds.height.minimum, requiredHeight));
   const invalidCharacters = !/^[\x20-\x7e\n]+$/.test(text);
   const overflow = requiredWidth > width || requiredHeight > height;
+  const scaleValid = Number.isInteger(scale) && scale >= profile.scale.minimum && scale <= profile.scale.maximum;
+  const boundsValid = Number.isInteger(width) && width >= profile.bounds.width.minimum && width <= profile.bounds.width.maximum
+    && Number.isInteger(height) && height >= profile.bounds.height.minimum && height <= profile.bounds.height.maximum;
   const changed = text !== object.text || scale !== object.scale || alignment !== object.alignment
     || width !== object.width || height !== object.height;
   const valid = text.length >= 1 && text.length <= profile.maximum_length && !invalidCharacters && !overflow
-    && width >= profile.bounds.width.minimum && width <= profile.bounds.width.maximum
-    && height >= profile.bounds.height.minimum && height <= profile.bounds.height.maximum;
+    && scaleValid && boundsValid;
+  const fitBounds = () => {
+    setWidth(fittedWidth);
+    setHeight(fittedHeight);
+  };
   return <div className="runtime-text-editor">
     <label>Text
       <textarea rows={5} value={text} maxLength={profile.maximum_length} disabled={busy}
         onChange={event => setText(event.target.value)} />
+      <span className="runtime-text-count">{text.length} / {profile.maximum_length} characters; {lines.length} {lines.length === 1 ? "line" : "lines"}</span>
     </label>
     <div className="runtime-text-fields">
       <label>Scale
         <input type="number" min={profile.scale.minimum} max={profile.scale.maximum} step={1}
           value={scale} disabled={busy} onChange={event => setScale(Number(event.target.value))} />
       </label>
-      <label>Alignment
-        <select value={alignment} disabled={busy} onChange={event => setAlignment(event.target.value as typeof alignment)}>
-          {profile.alignment.map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}
-        </select>
-      </label>
+      <fieldset className="runtime-text-alignment">
+        <legend>Alignment</legend>
+        <div className="segmented-control">
+          {profile.alignment.map(value => <button key={value} type="button" disabled={busy}
+            className={alignment === value ? "active" : ""} aria-label={`${value} align`} title={`${value[0].toUpperCase() + value.slice(1)} align`}
+            onClick={() => setAlignment(value)}>{value === "left" ? <AlignLeft size={15} /> : value === "center" ? <AlignCenter size={15} /> : <AlignRight size={15} />}</button>)}
+        </div>
+      </fieldset>
       <label>Width
         <input type="number" min={profile.bounds.width.minimum} max={profile.bounds.width.maximum} step={1}
           value={width} disabled={busy} onChange={event => setWidth(Number(event.target.value))} />
@@ -238,8 +252,15 @@ function RuntimeTextEditor({ scene, object, profile, busy, onApply }: {
           value={height} disabled={busy} onChange={event => setHeight(Number(event.target.value))} />
       </label>
     </div>
-    <small className={valid ? "" : "error-text"}>{requiredWidth} x {requiredHeight} px required by the current text.</small>
+    <div className={`runtime-text-fit ${overflow || !scaleValid || !boundsValid ? "invalid" : ""}`}>
+      <span>{!scaleValid ? `Scale must be ${profile.scale.minimum}-${profile.scale.maximum}`
+        : !boundsValid ? "Bounds must be whole pixels within the supported range"
+        : overflow ? `Needs ${requiredWidth} x ${requiredHeight} px` : `Fits ${columns} columns x ${rows} rows`}</span>
+      <button className="button secondary" type="button" disabled={busy || !scaleValid || (width === fittedWidth && height === fittedHeight)}
+        onClick={fitBounds}><Maximize2 size={14} />Fit bounds</button>
+    </div>
     {invalidCharacters && <small className="error-text">Use printable ASCII characters and explicit line breaks only.</small>}
+    {overflow && <small className="error-text">Increase the bounds, reduce the scale, or add explicit line breaks.</small>}
     <button className="button primary" type="button" disabled={busy || !changed || !valid}
       onClick={() => void onApply([{ kind: "object.set_text", scene_id: scene.scene_id, object_id: object.object_id,
         text, font_id: object.font_id ?? profile.font_ids[0], scale, alignment, width, height }])}>Apply text</button>
