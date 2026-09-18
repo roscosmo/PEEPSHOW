@@ -105,3 +105,25 @@ packages without assets. Malformed references/styles/bounds are rejected by C
 and Python. Candidate admission checks text-bearing LPBAM payloads without
 mutating live display/package state; private-copy catalog rebasing is tested.
 All 95 font glyphs additionally match HW4 and the frozen host font bytes.
+
+## Studio Public Export Hardware Result
+
+The operator confirmed the Studio fixture behaved like the OS text fixture:
+A moves `Aa` right and hides `Visible`, B restores the initial state, and the
+numbered animation continues through local changes.
+
+- Source: `examples/authoring/native_v2_runtime_text.peepproj`.
+- Normal public build: `G:/PEEPSHOW-PeepStudio/build/native_v2_runtime_text.egg`.
+- Size: 1,956 bytes; GUI-reported SHA-256:
+  `3eb5b7db43621facb63331f2bb76e62bb23c54dd25307d6676fa4549a5824c79`.
+- Installed source/model/active: `3/2/1`; generation 28, 1,956 bytes.
+- Admission token/complete/lease/status: `16/16/0/0`.
+- Display request/complete/result: `9/9/0`.
+- Schedule: four steps at 400 ms; eight chunks, 4,672 payload bytes.
+- WFI returns/measured/reconciled: `4/4/4`, clock status zero.
+
+This closes normal Studio export/install/playback verification for the fixture,
+not byte identity with the earlier 2,052-byte OS fixture. The printed byte count
+is not independent hash verification. Old cumulative timer/replacement counters
+do not imply authored timers or exits in this package. This run does not provide
+a new explicit reboot test or a physical low-current measurement.
