@@ -90,14 +90,14 @@ class SceneObjectConnectionTests(unittest.TestCase):
         self.assertEqual(before_routes, self.scene()["routes"])
         self.assertEqual("to_settings", exit_id)
         hello = self.call("service.hello")
-        self.assertEqual(49, hello["service_api_version"])
+        self.assertEqual(50, hello["service_api_version"])
         caps = hello["scene_object_authoring"]
         scene_caps = self.call("project.normalize")["scene_capabilities"]["main"]
         for item in (caps, scene_caps):
             self.assertTrue(item["scene_connection_commands"])
             self.assertEqual(list(SCENE_CONNECTION_COMMANDS), item["connection_commands"])
             self.assertEqual(["fresh_default"], item["scene_entry_modes"])
-            self.assertEqual([], item["scene_exit_action_kinds"])
+            self.assertEqual(["play_sfx"], item["scene_exit_action_kinds"])
         self.assertTrue(caps["multi_scene_export"])
         self.assertTrue(scene_caps["export_ready"])
         self.call("project.build_package")

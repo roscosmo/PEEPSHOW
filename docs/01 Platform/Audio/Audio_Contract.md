@@ -129,6 +129,24 @@ package voices.
 
 ### Package Suspension Semantics
 
+V2 scene-exit SFX firmware increment (input-exit bench confirmed 2026-09-18): resident
+same-package replacement now admits bounded `play_sfx` exit actions. Actions
+are staged in authored order and made available to the existing audio dispatcher
+only after destination admission and scene commit succeed. A rejected destination
+publishes no exit cues and preserves the source scene. Audio queue/mixer refusal
+after commit follows existing SFX failure reporting; it does not roll back the
+scene or retry the cue. Ordered dispatch does not mean sequential playback:
+multiple cues may overlap under the existing mixer limits.
+
+Object, variable, timer and shell-exit actions on a scene exit remain rejected.
+Existing same-package voices continue; shell/package suspension still discards
+them. The fixed existing action bounds, resident ceiling, voice limits and clock
+policy are unchanged. Following the input-exit HW6 bench result, public service
+API 50/export-profile revision 5 advertises SFX-only input and timer scene exits.
+Timer-exit ordering/rejection is native-tested; physical evidence covers one cue
+per input exit. See [[V2_Scene_Exit_SFX_Validation]] and
+[[Peep_Studio_V2_Scene_Exit_SFX_Handoff]].
+
 V2 resident install milestone (2026-09-17): firmware profile admission now
 accepts fully validated resident audio catalogs and local `play_sfx` actions,
 including targetless scene-timer handlers, within the existing 65536-byte total

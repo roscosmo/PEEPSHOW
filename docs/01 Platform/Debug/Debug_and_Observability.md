@@ -10,6 +10,38 @@ Dashboard-facing telemetry is defined in [[Telemetry_And_Debug_Dashboard_Contrac
 
 ---
 
+## Performance Review Policy
+
+Optimisation is periodic and evidence-led, not an open-ended prerequisite for
+feature delivery. Revisit performance after meaningful integration milestones,
+when users report noticeable lag, or when traces/current measurements indicate
+a timing, energy, throughput or resource-budget regression. Safety and correctness
+failures remain immediate work regardless of the likely performance saving.
+
+Before each optimisation, state the observed end-to-end cost, the measured hot
+path, the expected saving (or explicitly unknown), and the implementation/test
+cost. Separate elapsed time from CPU time, energy and physical input latency.
+Record firmware/artifact identity, clocks, completed work and observer limitations.
+Do not add overlapping trace intervals or treat scheduling counters as completed work.
+
+After measuring a change, report absolute end-to-end milliseconds and percentage,
+not only the percentage improvement within a small substage. A few milliseconds
+saved from a tens-of-milliseconds stage should trigger a value reassessment,
+not automatically another micro-optimisation. Small gains can still matter in a
+frequent hot path or against a hard deadline, but that justification must be explicit.
+
+If gains are marginal, below measurement confidence, or not worth another
+instrument/build/flash cycle, present alternatives: leave the path unchanged;
+reduce duplicated work or change data representation; consider bounded caching
+with its RAM/lifetime costs; or separately evaluate clock policy and its measured
+energy tradeoff. No alternative is pre-approved by listing it. Do not remove
+validation/ownership protection or change hardware policy merely to improve a trace.
+
+Pause when no correctness/safety issue or agreed performance target justifies
+further work. Retain the baseline, remaining hypotheses, potential upper bounds,
+tradeoffs and the next discriminating measurement; resume feature rollout.
+The paused V2 transition investigation is recorded in [[V2_Installed_SFX_Test]].
+
 ## Allowed Debug Channels
 
 - SWD (required)

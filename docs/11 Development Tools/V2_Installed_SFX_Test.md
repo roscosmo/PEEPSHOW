@@ -591,8 +591,90 @@ frames and 18 elements drawn. Panel composition remains about 19.52 ms, with
 sizes. All transfer statuses remain successful.
 
 Panel transfer elapsed time rises from 21.944 to 22.642 ms; a successful marked
-joystick read spans 0.441 ms during presentation. This is additional concurrent
+joystick read spans 4.409 ms during presentation (169.335 to 173.744 ms). This is additional concurrent
 work, not proof that all transfer-time variation comes from that read. Therefore
 the end-to-end improvement is smaller than the reset saving. Timings include
 observer overhead and interrupts and exclude pre-runtime input/wake latency.
 Operator confirmation of unchanged visuals and audio remains pending.
+
+## Current Baseline and Paused Optimisation (2026-09-18)
+
+The operator confirmed unchanged behaviour and audible real audio in the latest
+run. Further micro-optimisation is paused in favour of V2 feature integration.
+The proposed extra comparison/descriptor trace markers have not been implemented.
+Future reviews follow [[Debug_and_Observability#Performance Review Policy]].
+
+Evidence: `__fw0_tracex_snapshot_20260918_163420.trx`, API 49 firmware checkpoint
+`1221858`, retained sequence 1 RECEIVE/DONE, 381 intervening events, unchanged
+24 MHz HCLK and no clock-retune triples. The real-audio package inspected locally
+was 56,176 bytes; the trace itself does not establish its hash. Candidate work
+was one full/four reused frames and 18 drawn elements. Presentation drew 11
+elements with 128 dirty rows and three successful 48/48/32-row transfers.
+
+Non-overlapping runtime-receipt-to-panel breakdown, rounded to milliseconds:
+
+| Work | Elapsed ms |
+| --- | ---: |
+| Receipt to candidate private-copy start | 23.49 |
+| Private package copy stage | 14.25 |
+| Package comparison/descriptor/profile stage | 29.31 |
+| Candidate raster/packing | 58.15 |
+| Remaining runtime, queues and projection | 13.26 |
+| Panel composition | 19.61 |
+| Panel transfer | 21.95 |
+| Other panel work | 8.78 |
+| Receipt to panel completion | 188.79 |
+
+The two remainder rows are residuals, not independently isolated operations.
+Publication and completion bring RECEIVE-to-DONE to 194.42 ms. These are elapsed
+times including observer overhead, scheduling and interrupts, not isolated CPU
+time or physical button-to-panel latency. The previous comparable capture was
+188.90 ms to panel completion: this is effectively the same baseline, not a new
+optimisation result. A marked joystick read spans 6.72 ms in the latest capture;
+its overlap does not establish the cause of all completion-time variation.
+
+### Remaining Hypotheses and Alternatives
+
+The 29.31 ms stage is not another full package load. The prepared-scene path in
+`PS_HW6_RTOS_CandidateCheck` calls `PS_EggStateLoader_PrepareActiveV2Display`,
+which compares private and active package bytes, validates the descriptor and
+checks the V2 profile before rebasing catalogs. The current binary's `memcmp`
+uses a byte-wise loop. That makes comparison a plausible contributor, but its
+share of the 29.31 ms has not been measured separately.
+
+Removing the entire stage would save at most 29.31 ms, about 15.5% of the measured
+188.79 ms, yielding 159.48 ms. This is a mathematical upper bound, not a forecast
+or permission to remove checks. Expected recoverable time remains unknown.
+If this investigation resumes, split comparison from descriptor/profile work
+first. Then compare exact-equality implementation improvements against validated
+package-lifetime reuse, including identity, invalidation and private ownership.
+
+Other remaining costs include candidate work (58.15 ms), the private copy
+(14.25 ms), and work before admission (within 23.49 ms). None is wholly redundant
+by assumption. Caching trades preparation time for bounded RAM and lifetime
+complexity. Panel composition (19.61 ms) and transfer (21.95 ms) need different
+approaches; clock or transport changes require separate energy/hardware review.
+Leaving these paths unchanged is a valid option while shipping more functionality.
+
+### Value of the Completed Changes
+
+Earlier removal of repeated full validation reduced an observed transition from
+2,460 ms to 310 ms. Subsequent work brought the current baseline to about 189 ms.
+These span different checkpoints/assets and are not one controlled benchmark.
+
+The dirty-row change saved about 7.13 ms in its stage and 7.33 ms end-to-end.
+The later scratch-reset change saved 3.386 ms in reset work (about 65%), but only
+2.531 ms end-to-end, from 191.427 to 188.896 ms (about 1.3%). The latter result
+warrants reassessing value rather than automatically pursuing another small gain.
+Report both absolute and end-to-end improvements; do not sell a large percentage
+of a small substage as a large user-visible improvement.
+
+### Next Feature Increment
+
+Proposed next scope: bounded V2 scene-exit SFX, dispatched once only after a
+successful destination admission and scene commit. Rejected replacement must
+not emit its cue. Existing active-audio and shell-discard behaviour must remain
+explicit. Outgoing object, variable and timer mutations remain rejected rather
+than silently discarded. This is a proposal, not newly enabled capability;
+Studio must continue enforcing the advertised action-free exit subset until
+implementation, tests and capability advertisement are complete.

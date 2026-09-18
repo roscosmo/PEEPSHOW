@@ -37,25 +37,28 @@ class V2AudioExportTests(unittest.TestCase):
         service, params, loaded = self.service()
         hello = self.call(service, "service.hello", {})
         profile = hello["package_export"]["v2_profile"]
-        self.assertEqual(49, hello["service_api_version"])
-        self.assertEqual(4, profile["profile_revision"])
+        self.assertEqual(50, hello["service_api_version"])
+        self.assertEqual(5, profile["profile_revision"])
         self.assertTrue(profile["audio"])
         self.assertEqual(65536, profile["limits"]["package_bytes"])
         audio = profile["audio_profile"]
         self.assertEqual(public_v2_audio_profile(), audio)
         self.assertEqual(audio, hello["scene_object_authoring"]["audio_export"])
         self.assertEqual(["play_sfx"], audio["action_kinds"])
-        self.assertEqual(["local_transition", "local_timer_handler"], audio["action_contexts"])
+        self.assertEqual(["local_transition", "local_timer_handler", "scene_exit", "timer_scene_exit"], audio["action_contexts"])
+        self.assertEqual("after_destination_admission_and_commit", audio["scene_exit_commit"])
+        self.assertEqual("no_cues", audio["scene_exit_rejection"])
+        self.assertFalse(audio["sequential_playback"])
         self.assertEqual("whole_package", audio["residency"])
         self.assertEqual("stop_and_discard", audio["package_suspend"])
         self.assertEqual("new_requests_only", audio["package_resume"])
-        self.assertEqual([], profile["scene_exit_action_kinds"])
+        self.assertEqual(["play_sfx"], profile["scene_exit_action_kinds"])
         for key in ("maximum_assets", "maximum_cues", "voice_limit", "sample_rate_hz", "channels", "block_samples"):
             self.assertEqual(TARGET_SAMPLED_SFX[key], audio[key])
         for caps in loaded["scene_capabilities"].values():
             self.assertTrue(caps["export_ready"])
             self.assertEqual(audio, caps["audio_export"])
-            self.assertEqual([], caps["scene_exit_action_kinds"])
+            self.assertEqual(["play_sfx"], caps["scene_exit_action_kinds"])
         before = service._bundle.canonical_bytes()
         result = self.call(service, "project.build_package", params)
         blob = base64.b64decode(result["package"]["blob_base64"])
@@ -127,7 +130,7 @@ class V2AudioExportTests(unittest.TestCase):
                     with self.assertRaises(EggFormatError):
                         parse_egg(build_development_egg_v2(bundle))
 
-    def test_audio_does_not_allow_exit_actions_in_any_scene(self):
+    def test_public_scene_exit_sfx_for_input_and_timer(self):
         for timer in (False, True):
             scenes = deepcopy(self.bundle.scenes)
             if timer:
@@ -136,9 +139,24 @@ class V2AudioExportTests(unittest.TestCase):
             else:
                 scenes[1]["routes"][-1]["actions"] = [{"kind": "play_sfx", "cue_ref": "short.cue"}]
             bundle = replace(self.bundle, scenes=scenes)
-            self.assertIn("V2_SCENE_EXIT_UNSUPPORTED", {i["code"] for i in build_readiness_issues(bundle)})
-            with self.assertRaises(EggFormatError):
-                parse_egg(build_development_egg_v2(bundle))
+            self.assertEqual([], build_readiness_issues(bundle))
+            blob = build_egg(bundle)
+            self.assertEqual(blob, build_development_egg_v2(bundle))
+            self.assertEqual(2, len(parse_egg(blob).audio_cues))
+            service, params, loaded = self.service(bundle)
+            self.assertTrue(all(c["export_ready"] for c in loaded["scene_capabilities"].values()))
+            result = self.call(service, "project.build_package", params)
+            self.assertEqual(blob, base64.b64decode(result["package"]["blob_base64"]))
+
+    def test_public_exit_fixture_matches_hardware_tested_bytes(self):
+        from build_scene_exit_sfx_fixture import scene_exit_sfx_bundle
+        bundle = scene_exit_sfx_bundle()
+        service, params, _ = self.service(bundle)
+        blob = base64.b64decode(self.call(service, "project.build_package", params)["package"]["blob_base64"])
+        self.assertEqual(build_development_egg_v2(bundle), blob)
+        self.assertEqual(54660, len(blob))
+        self.assertEqual("610119f8944e1965cb4b29e081085eb957469b33db6cc7c0c8fe71849cac0f5c",
+                         hashlib.sha256(blob).hexdigest())
 
     def test_public_parser_rejects_invalid_cue_values_and_bank(self):
         package = parse_egg(self.blob)

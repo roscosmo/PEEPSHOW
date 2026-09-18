@@ -216,6 +216,54 @@ static void installed_sfx(uint32_t size)
   puts("installed resident SFX: owner admission, atomic effects and catalog lifetime passed");
 }
 
+static void exit_sfx(uint32_t size, uint32_t timer_exit)
+{
+  uint32_t cue, next, index, committed, timer = 0;
+  ps_egg_state_loader_audio_cue_t audio;
+  memcpy(baseline, candidate, size);
+  baseline_size = size;
+  PS_SceneRuntime_SetObjectSceneAdmission(PS_HW6_RTOS_ObjectSceneCheck);
+  installed_preflight(size);
+  assert(PS_SceneRuntime_EnterStateScene() != PS_SCENE_RUNTIME_INDEX_INVALID);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0);
+  if (timer_exit)
+  {
+    for (timer = 0; timer < s_ps_scene_runtime_state_scene->event_binding_count; ++timer)
+    {
+      if (s_ps_scene_runtime_state_scene->event_bindings[timer].event_class ==
+          PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) { break; }
+    }
+    assert(timer < s_ps_scene_runtime_state_scene->event_binding_count);
+  }
+  save_source();
+  committed = g_ps_scene_runtime_probe.sfx_action_commit_count;
+  inject_missing_scene = 2;
+  assert((timer_exit ? PS_SceneRuntime_HandleStateSceneEvent(timer) :
+    PS_SceneRuntime_HandleStateSceneInput(1, 1)) == PS_SCENE_RUNTIME_INPUT_ERROR);
+  assert(!PS_SceneRuntime_TakeSfxRequest(&cue));
+  source_unchanged();
+  assert(g_ps_scene_runtime_probe.sfx_action_commit_count == committed);
+  inject_missing_scene = 0;
+  for (index = 0; index < 4; ++index)
+  {
+    assert(((timer_exit && !(index & 1)) ? PS_SceneRuntime_HandleStateSceneEvent(timer) :
+      PS_SceneRuntime_HandleStateSceneInput(1, (index & 1) ? 2 : 1)) ==
+           PS_SCENE_RUNTIME_INPUT_APPLIED);
+    assert(g_ps_scene_runtime_probe.scene_id == ((index & 1) ? 1U : 2U));
+    assert(PS_SceneRuntime_TakeSfxRequest(&cue));
+    assert(PS_EggStateLoader_GetAudioCue(cue, &audio));
+    assert(audio.duration_ms == 80);
+    assert(PS_SceneRuntime_TakeSfxRequest(&cue));
+    assert(PS_EggStateLoader_GetAudioCue(cue, &audio));
+    assert(audio.duration_ms == 6000);
+    assert(!PS_SceneRuntime_TakeSfxRequest(&cue));
+    assert(g_ps_scene_runtime_probe.sfx_action_commit_count == committed + (index + 1) * 2);
+  }
+  PS_SceneRuntime_ExitStateScene();
+  assert(!PS_SceneRuntime_TakeSfxRequest(&cue));
+  puts("exit SFX ordered commit passed");
+}
+
 static void trusted_metadata(uint32_t size)
 {
   static ps_scene_runtime_state_scene_t decoded;
@@ -383,6 +431,11 @@ int main(int argc, char **argv)
   if (argc == 3 && strcmp(argv[2], "audio") == 0)
   {
     installed_sfx(size);
+    return 0;
+  }
+  if (argc == 3 && (strcmp(argv[2], "exit-audio") == 0 || strcmp(argv[2], "exit-timer") == 0))
+  {
+    exit_sfx(size, strcmp(argv[2], "exit-timer") == 0);
     return 0;
   }
   if (argc == 3 && strcmp(argv[2], "trusted") == 0)

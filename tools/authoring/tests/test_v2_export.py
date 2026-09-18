@@ -39,9 +39,9 @@ class V2ExportTests(unittest.TestCase):
     def test_service_build_exact_hardware_fixture_and_capabilities(self):
         service = AuthoringService()
         hello = service.handle(ServiceRequest("hello", "service.hello", {}))
-        self.assertEqual(49, hello["service_api_version"])
+        self.assertEqual(50, hello["service_api_version"])
         self.assertTrue(hello["scene_object_authoring"]["multi_scene_export"])
-        self.assertEqual(4, hello["package_export"]["v2_profile"]["profile_revision"])
+        self.assertEqual(5, hello["package_export"]["v2_profile"]["profile_revision"])
         self.assertEqual(PROFILE_ID, hello["package_export"]["v2_profile"]["profile_id"])
         loaded = service.handle(ServiceRequest("load", "project.load", {"path": str(FIXTURE)}))
         self.assertEqual([], loaded["build_issues"])
@@ -137,10 +137,12 @@ class V2ExportTests(unittest.TestCase):
         issues = package_issues(replace(package, animations=tuple(clips)), len(blob))
         self.assertTrue(any(i["code"] == "V2_ANIMATION_TIMING" and i["scene_id"] == "scene_1" for i in issues))
 
-    def test_cross_scene_exits_reject_self_targets_and_all_actions(self):
+    def test_cross_scene_exits_reject_self_targets_and_non_sfx_actions(self):
         for target, actions in (("scene_0", []), ("missing", []),
-                                ("scene_1", [{"kind": 1}]), ("scene_1", [{"kind": 7}]),
-                                ("scene_1", [{"kind": 9}]), ("scene_1", [{"kind": 12}])):
+                                ("scene_1", [{"kind": 1}]), ("scene_1", [{"kind": 8}]),
+                                ("scene_1", [{"kind": 9}]), ("scene_1", [{"kind": 10}]),
+                                ("scene_1", [{"kind": 11}]), ("scene_1", [{"kind": 12}]),
+                                ("scene_1", [{"kind": 7}, {"kind": 1}])):
             package = parse_egg(build_egg(self.scene_set()))
             scenes = deepcopy(package.scenes)
             scenes[0]["graph"]["routes"][0].update(target_scene=target, operations=actions)
