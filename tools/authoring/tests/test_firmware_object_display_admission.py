@@ -15,6 +15,10 @@ from peepshow_authoring.compiler import build_development_egg_v2
 
 
 class ObjectDisplayAdmissionTests(unittest.TestCase):
+    def test_runtime_text_candidate_pixels_and_payload_isolation(self):
+        from build_runtime_text_fixture import runtime_text_bundle
+        self.assertIn("steps=4", self.check(runtime_text_bundle()))
+
     @classmethod
     def setUpClass(cls):
         awake.ObjectAwakeTests.setUpClass.__func__(cls)

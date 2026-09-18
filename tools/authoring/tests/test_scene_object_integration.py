@@ -94,7 +94,7 @@ class SceneObjectIntegrationTests(unittest.TestCase):
         bundle = load_project(self.root)
         self.assertTrue(bundle.valid, bundle.issues)
         self.assertEqual(self.service._bundle.canonical_bytes(), bundle.canonical_bytes())
-        with self.assertRaisesRegex(EggCompileError, "exactly one version-2 scene"):
+        with self.assertRaisesRegex(EggCompileError, "legacy scenes cannot be mixed"):
             build_egg(bundle)
         hello = self.call("service.hello")
         self.assertTrue(hello["scene_object_authoring"]["egg_export"])

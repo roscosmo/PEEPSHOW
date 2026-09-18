@@ -138,7 +138,7 @@ class ShapePrimitivesTests(unittest.TestCase):
             case(internal, wire, 0, 0, 1, 13, valid=0)
         for internal, wire in [(8, 5), (11, 7)]:
             case(internal, wire, 0, 0, 11, 13, valid=0)
-        case(13, 8, 0, 0, 13, 13, valid=0)
+        case(14, 8, 0, 0, 13, 13, valid=0)
         with tempfile.TemporaryDirectory() as temporary:
             work = Path(temporary)
             (work / "shape_under_test.inc").write_text(definitions, encoding="ascii")

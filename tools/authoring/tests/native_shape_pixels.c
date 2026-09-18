@@ -18,6 +18,11 @@ static const ps_scene_render_element_t *s_display_draw_clip;
 static uint32_t s_rotate_ccw = 1U;
 
 /* These branches are outside the primitive tests; unexpected use must fail. */
+static uint32_t DisplayRenderer_RuntimeText(const ps_scene_render_element_t *e,
+  const uint8_t **text, uint32_t *length)
+{ (void)e; (void)text; (void)length; assert(0); return 0; }
+static uint32_t DisplayRenderer_DrawRuntimeText(const ps_scene_render_element_t *e)
+{ (void)e; assert(0); return 0; }
 static const char *DisplayRenderer_SceneText(uint32_t id)
 { (void)id; assert(0); return NULL; }
 static uint16_t DisplayRenderer_TextWidth(const char *text, uint16_t scale)

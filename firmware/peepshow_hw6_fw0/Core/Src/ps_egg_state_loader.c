@@ -6,6 +6,7 @@
 #include "ps_hw6_hash.h"
 #include "ps_input_buttons.h"
 #include "ps_input_logical.h"
+#include "ps_runtime_text.h"
 
 #define PS_EGG_HEADER_SIZE               (64UL)
 #define PS_EGG_CHUNK_ENTRY_SIZE          (40UL)
@@ -217,6 +218,14 @@ static uint32_t PS_EggValidateContainer(ps_egg_context_t *context, const uint8_t
 static uint32_t PS_EggFindSingleChunk(ps_egg_context_t *context, uint16_t type, uint16_t *index_out);
 static uint32_t PS_EggCountChunks(ps_egg_context_t *context, uint16_t type);
 static uint32_t PS_EggSceneIdFromStringIndex(ps_egg_context_t *context, uint16_t string_index);
+
+uint32_t PS_EggStateLoader_GetRuntimeText(const ps_egg_sprite_catalog_t *catalog,
+  uint32_t index, const uint8_t **text, uint32_t *length)
+{
+  if (catalog == NULL) { catalog = &s_ps_egg_runtime_context.sprite_catalog; }
+  return PS_RuntimeTextResolve(catalog->strings, catalog->strings_size, index, text, length);
+}
+
 static uint32_t PS_EggContext_GetSpriteFrame(ps_egg_context_t *context, uint32_t frame_id,
   ps_egg_state_loader_sprite_frame_t *frame);
 static uint32_t PS_EggContext_GetAudioCue(ps_egg_context_t *context, uint32_t cue_index,
@@ -3039,6 +3048,8 @@ static uint32_t PS_EggContext_Load(ps_egg_context_t *context, const uint8_t *blo
   context->blob = blob;
   context->scene_count = (uint16_t)scene_count;
   context->strings = strings;
+  context->sprite_catalog.strings = strings.payload;
+  context->sprite_catalog.strings_size = strings.size;
   (*context->probe).scene_count = scene_count;
   (*context->probe).entry_scene_id = context->entry_scene_id;
   if (PS_EggContext_LoadScene(context, context->entry_scene_id, scene) != 0UL)
@@ -3300,6 +3311,7 @@ uint32_t PS_EggStateLoader_PrepareActiveV2Display(const uint8_t *blob, uint32_t 
       (PS_EggCheckV2Profile(context, scene, 1UL, result) != 0UL)) { return 1UL; }
   *catalog = context->sprite_catalog;
   if (catalog->records != NULL) { catalog->records = blob + (catalog->records - active); }
+  if (catalog->strings != NULL) { catalog->strings = blob + (catalog->strings - active); }
   if (catalog->sprite_payload != NULL)
   { catalog->sprite_payload = blob + (catalog->sprite_payload - active); }
   result->scene_count = context->scene_count;
@@ -3332,6 +3344,7 @@ uint32_t PS_EggStateLoader_DecodeActiveV2Scene(const uint8_t *blob, uint32_t siz
   context->probe = &g_ps_egg_validation_probe;
   context->blob = blob;
   context->strings.payload = blob + (context->strings.payload - active);
+  context->sprite_catalog.strings = context->strings.payload;
   if (context->sprite_catalog.records != NULL)
   { context->sprite_catalog.records = blob + (context->sprite_catalog.records - active); }
   if (context->sprite_catalog.sprite_payload != NULL)

@@ -552,6 +552,10 @@ class StateScenePreview:
             state = next(state for state in self._object_source["states"] if state["state_id"] == self._state()["state_id"])
             override = next((item for item in state["object_overrides"] if item["object_ref"] == ref), {})
             resolved = dict(element)
+            definition = self._object_definitions[ref]
+            if definition["kind"] == "text":
+                resolved.update({key: definition[key] for key in ("text", "font_id", "scale", "alignment")})
+                resolved["kind"] = 9
             resolved.update(resolve_object(
                 self._object_definitions[ref], self._object_live[ref], override,
                 self._object_clips if self._include_waiting_visuals else {}, self._elapsed_ms,
@@ -821,6 +825,12 @@ class StateScenePreview:
         )
         for _, element in ordered:
             if not int(element.get("visible", 1)):
+                continue
+            if int(element["kind"]) == 9:
+                from .system_fonts import runtime_text_pixels
+                for px, py in runtime_text_pixels(element["text"], element["font_id"], element["scale"],
+                                                  element["alignment"], element["width"], element["height"]):
+                    self._write_bit(framebuffer, int(element["x"]) + px, int(element["y"]) + py, 1)
                 continue
             if int(element["kind"]) != 1:
                 self._draw_primitive(framebuffer, element)

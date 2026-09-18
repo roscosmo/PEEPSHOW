@@ -315,7 +315,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(48, SERVICE_API_VERSION)
+        self.assertEqual(49, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -369,7 +369,7 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("filled_circle", result["state_scene_presentation"]["element_kinds"])
         self.assertIn("filled_ellipse", result["state_scene_presentation"]["element_kinds"])
         self.assertEqual(["down_right", "up_right"], result["state_scene_presentation"]["line_directions"])
-        self.assertFalse(result["state_scene_presentation"]["runtime_text"])
+        self.assertTrue(result["state_scene_presentation"]["runtime_text"])
         text = result["state_scene_presentation"]["build_time_text"]
         self.assertEqual("system_font_text", text["source_format"])
         self.assertEqual(["peepshow.system.8x8.basic.v1"], text["font_ids"])

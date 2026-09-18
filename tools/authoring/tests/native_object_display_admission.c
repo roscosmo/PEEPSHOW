@@ -107,7 +107,7 @@ static void raster_cache_equivalence(void)
 {
   static ps_scene_frame_cache_t cache;
   uint8_t record[PS_EGG_ASSET_RECORD_SIZE] = {0}, payload[78];
-  ps_egg_sprite_catalog_t catalog = {record, payload, sizeof(payload), 1};
+  ps_egg_sprite_catalog_t catalog = {record, payload, sizeof(payload), 1, NULL, 0};
   ps_scene_render_model_t m = {.api_version = PS_SCENE_RENDER_MODEL_API_VERSION,
     .scene_id = 1, .element_count = 4};
   record[4] = 17; record[6] = 13; record[8] = 3;
@@ -200,7 +200,7 @@ static void clipped_regions_equivalence(void)
 {
   static ps_scene_frame_cache_t cache;
   uint8_t record[PS_EGG_ASSET_RECORD_SIZE] = {0}, payload[78];
-  ps_egg_sprite_catalog_t catalog = {record, payload, sizeof(payload), 1};
+  ps_egg_sprite_catalog_t catalog = {record, payload, sizeof(payload), 1, NULL, 0};
   ps_scene_render_model_t m = {.api_version=PS_SCENE_RENDER_MODEL_API_VERSION,
     .scene_id=1, .element_count=10};
   record[4] = 17; record[6] = 13; record[8] = 3;

@@ -1,4 +1,6 @@
 #include "display_renderer.h"
+#include "ps_system_font.h"
+#include "ps_runtime_text.h"
 #include "ps_hw6_trace.h"
 #include "ps_package_workflow.h"
 
@@ -2035,71 +2037,15 @@ uint32_t DisplayRenderer_FramebufferHash(void)
   return hash;
 }
 
-static uint32_t DisplayRenderer_GlyphRows(char glyph, uint8_t rows[7])
+static uint32_t DisplayRenderer_GlyphRows(char glyph, uint8_t rows[8])
 {
-  static const uint8_t blank[7] =
-  {
-    0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U
-  };
-  static const uint8_t glyphs[36][7] =
-  {
-    {0x0EU, 0x11U, 0x11U, 0x1FU, 0x11U, 0x11U, 0x11U},
-    {0x1EU, 0x11U, 0x11U, 0x1EU, 0x11U, 0x11U, 0x1EU},
-    {0x0EU, 0x11U, 0x10U, 0x10U, 0x10U, 0x11U, 0x0EU},
-    {0x1EU, 0x11U, 0x11U, 0x11U, 0x11U, 0x11U, 0x1EU},
-    {0x1FU, 0x10U, 0x10U, 0x1EU, 0x10U, 0x10U, 0x1FU},
-    {0x1FU, 0x10U, 0x10U, 0x1EU, 0x10U, 0x10U, 0x10U},
-    {0x0EU, 0x11U, 0x10U, 0x17U, 0x11U, 0x11U, 0x0FU},
-    {0x11U, 0x11U, 0x11U, 0x1FU, 0x11U, 0x11U, 0x11U},
-    {0x0EU, 0x04U, 0x04U, 0x04U, 0x04U, 0x04U, 0x0EU},
-    {0x01U, 0x01U, 0x01U, 0x01U, 0x11U, 0x11U, 0x0EU},
-    {0x11U, 0x12U, 0x14U, 0x18U, 0x14U, 0x12U, 0x11U},
-    {0x10U, 0x10U, 0x10U, 0x10U, 0x10U, 0x10U, 0x1FU},
-    {0x11U, 0x1BU, 0x15U, 0x15U, 0x11U, 0x11U, 0x11U},
-    {0x11U, 0x19U, 0x15U, 0x13U, 0x11U, 0x11U, 0x11U},
-    {0x0EU, 0x11U, 0x11U, 0x11U, 0x11U, 0x11U, 0x0EU},
-    {0x1EU, 0x11U, 0x11U, 0x1EU, 0x10U, 0x10U, 0x10U},
-    {0x0EU, 0x11U, 0x11U, 0x11U, 0x15U, 0x12U, 0x0DU},
-    {0x1EU, 0x11U, 0x11U, 0x1EU, 0x14U, 0x12U, 0x11U},
-    {0x0FU, 0x10U, 0x10U, 0x0EU, 0x01U, 0x01U, 0x1EU},
-    {0x1FU, 0x04U, 0x04U, 0x04U, 0x04U, 0x04U, 0x04U},
-    {0x11U, 0x11U, 0x11U, 0x11U, 0x11U, 0x11U, 0x0EU},
-    {0x11U, 0x11U, 0x11U, 0x11U, 0x11U, 0x0AU, 0x04U},
-    {0x11U, 0x11U, 0x11U, 0x15U, 0x15U, 0x15U, 0x0AU},
-    {0x11U, 0x11U, 0x0AU, 0x04U, 0x0AU, 0x11U, 0x11U},
-    {0x11U, 0x11U, 0x0AU, 0x04U, 0x04U, 0x04U, 0x04U},
-    {0x1FU, 0x01U, 0x02U, 0x04U, 0x08U, 0x10U, 0x1FU},
-    {0x0EU, 0x11U, 0x13U, 0x15U, 0x19U, 0x11U, 0x0EU},
-    {0x04U, 0x0CU, 0x04U, 0x04U, 0x04U, 0x04U, 0x0EU},
-    {0x0EU, 0x11U, 0x01U, 0x02U, 0x04U, 0x08U, 0x1FU},
-    {0x1EU, 0x01U, 0x01U, 0x0EU, 0x01U, 0x01U, 0x1EU},
-    {0x02U, 0x06U, 0x0AU, 0x12U, 0x1FU, 0x02U, 0x02U},
-    {0x1FU, 0x10U, 0x10U, 0x1EU, 0x01U, 0x01U, 0x1EU},
-    {0x07U, 0x08U, 0x10U, 0x1EU, 0x11U, 0x11U, 0x0EU},
-    {0x1FU, 0x01U, 0x02U, 0x04U, 0x08U, 0x08U, 0x08U},
-    {0x0EU, 0x11U, 0x11U, 0x0EU, 0x11U, 0x11U, 0x0EU},
-    {0x0EU, 0x11U, 0x11U, 0x0FU, 0x01U, 0x02U, 0x1CU}
-  };
-  const uint8_t *src = blank;
-  uint16_t i;
+  uint8_t code = (uint8_t)glyph;
 
-  if ((glyph >= 'A') && (glyph <= 'Z'))
+  if ((code < 0x20U) || (code > 0x7EU))
   {
-    src = glyphs[(uint32_t)(glyph - 'A')];
+    code = (uint8_t)'?';
   }
-  else if ((glyph >= '0') && (glyph <= '9'))
-  {
-    src = glyphs[26U + (uint32_t)(glyph - '0')];
-  }
-  else if (glyph != ' ')
-  {
-    return 0UL;
-  }
-
-  for (i = 0U; i < 7U; ++i)
-  {
-    rows[i] = src[i];
-  }
+  memcpy(rows, ps_system_font_8x8[code - 0x20U], 8U);
   return 1UL;
 }
 
@@ -2108,7 +2054,7 @@ static uint32_t DisplayRenderer_DrawGlyph(uint16_t x,
                                           char glyph,
                                           uint16_t scale)
 {
-  uint8_t rows[7];
+  uint8_t rows[8];
   uint32_t count = 0UL;
   uint16_t row;
   uint16_t col;
@@ -2120,11 +2066,11 @@ static uint32_t DisplayRenderer_DrawGlyph(uint16_t x,
     return 0UL;
   }
 
-  for (row = 0U; row < 7U; ++row)
+  for (row = 0U; row < 8U; ++row)
   {
-    for (col = 0U; col < 5U; ++col)
+    for (col = 0U; col < 8U; ++col)
     {
-      if ((rows[row] & (uint8_t)(1U << (4U - col))) != 0U)
+      if ((rows[row] & (uint8_t)(1U << col)) != 0U)
       {
         for (sy = 0U; sy < scale; ++sy)
         {
@@ -2149,7 +2095,7 @@ static uint16_t DisplayRenderer_TextWidth(const char *text, uint16_t scale)
   {
     ++count;
   }
-  return (uint16_t)(count * 6U * scale);
+  return (uint16_t)(count * 8U * scale);
 }
 
 static uint32_t DisplayRenderer_DrawText(uint16_t x,
@@ -2160,10 +2106,25 @@ static uint32_t DisplayRenderer_DrawText(uint16_t x,
   uint32_t black_pixels = 0UL;
   uint16_t index = 0U;
 
+  if ((x >= DISPLAY_RENDERER_WIDTH) || (y >= DISPLAY_RENDERER_HEIGHT) || (scale == 0U))
+  {
+    return 0UL;
+  }
+  while ((scale > 1U) &&
+         ((DisplayRenderer_TextWidth(text, scale) > (DISPLAY_RENDERER_WIDTH - x)) ||
+          ((8U * scale) > (DISPLAY_RENDERER_HEIGHT - y))))
+  {
+    --scale;
+  }
   while ((text != NULL) && (text[index] != '\0'))
   {
+    if (((x + ((index + 1U) * 8U * scale)) > DISPLAY_RENDERER_WIDTH) ||
+        ((y + (8U * scale)) > DISPLAY_RENDERER_HEIGHT))
+    {
+      break;
+    }
     black_pixels += DisplayRenderer_DrawGlyph(
-      (uint16_t)(x + (index * 6U * scale)), y, text[index], scale);
+      (uint16_t)(x + (index * 8U * scale)), y, text[index], scale);
     ++index;
   }
   return black_pixels;
@@ -2176,6 +2137,11 @@ static uint32_t DisplayRenderer_DrawCenteredText(uint16_t y,
   uint16_t width = DisplayRenderer_TextWidth(text, scale);
   uint16_t x = 0U;
 
+  while ((scale > 1U) && (width > DISPLAY_RENDERER_WIDTH))
+  {
+    --scale;
+    width = DisplayRenderer_TextWidth(text, scale);
+  }
   if (width < DISPLAY_RENDERER_WIDTH)
   {
     x = (uint16_t)((DISPLAY_RENDERER_WIDTH - width) / 2U);
@@ -2245,6 +2211,43 @@ static uint32_t DisplayRenderer_RasterEllipse(int32_t center_x,
                                               int32_t radius_y,
                                               uint32_t filled);
 
+static uint32_t DisplayRenderer_RuntimeText(const ps_scene_render_element_t *element,
+  const uint8_t **text, uint32_t *length)
+{
+  return PS_EggStateLoader_GetRuntimeText(s_display_candidate_catalog,
+    element->asset_id, text, length) && PS_RuntimeTextFits(*text, *length,
+    element->style_id, element->width, element->height);
+}
+
+static uint32_t DisplayRenderer_DrawRuntimeText(const ps_scene_render_element_t *element)
+{
+  const uint8_t *text;
+  uint32_t length;
+  uint32_t start = 0UL;
+  uint32_t line = 0UL;
+  uint32_t pixels = 0UL;
+  uint16_t scale = (uint16_t)((element->style_id & 7UL) + 1UL);
+  uint32_t cell = 8UL * scale;
+  if (!DisplayRenderer_RuntimeText(element, &text, &length)) { return 0UL; }
+  for (uint32_t end = 0UL; end <= length; ++end)
+  {
+    if ((end == length) || (text[end] == '\n'))
+    {
+      uint32_t slack = element->width - (end - start) * cell;
+      uint32_t align = element->style_id >> 3U;
+      uint32_t x = element->x + ((align == 1UL) ? slack / 2UL : ((align == 2UL) ? slack : 0UL));
+      for (uint32_t i = start; i < end; ++i)
+      {
+        pixels += DisplayRenderer_DrawGlyph((uint16_t)(x + (i - start) * cell),
+          (uint16_t)(element->y + line * cell), (char)text[i], scale);
+      }
+      start = end + 1UL;
+      ++line;
+    }
+  }
+  return pixels;
+}
+
 static uint32_t DisplayRenderer_ValidateSceneModel(
   const ps_scene_render_model_t *model)
 {
@@ -2268,7 +2271,7 @@ static uint32_t DisplayRenderer_ValidateSceneModel(
 
     if ((element->element_id == 0UL) ||
         (element->type <= PS_SCENE_RENDER_ELEMENT_NONE) ||
-        (element->type > PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE) ||
+        (element->type > PS_SCENE_RENDER_ELEMENT_RUNTIME_TEXT) ||
         (element->layer >= PS_SCENE_RENDER_LAYER_COUNT) ||
         (element->visible > 1UL) ||
         (element->z_order > 255U) || (element->reserved != 0U) ||
@@ -2290,6 +2293,12 @@ static uint32_t DisplayRenderer_ValidateSceneModel(
           (element->width != element->height))))
     {
       return 0UL;
+    }
+    if (element->type == PS_SCENE_RENDER_ELEMENT_RUNTIME_TEXT)
+    {
+      const uint8_t *text;
+      uint32_t length;
+      if (!DisplayRenderer_RuntimeText(element, &text, &length)) { return 0UL; }
     }
     if ((element->type == PS_SCENE_RENDER_ELEMENT_TEXT) &&
         ((DisplayRenderer_SceneText(element->asset_id) == NULL) ||
@@ -2406,6 +2415,9 @@ static uint32_t DisplayRenderer_DrawSceneElement(
         (int32_t)element->height / 2,
         ((element->type == PS_SCENE_RENDER_ELEMENT_FILLED_CIRCLE) ||
          (element->type == PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE)) ? 1UL : 0UL);
+      break;
+    case PS_SCENE_RENDER_ELEMENT_RUNTIME_TEXT:
+      black_pixels += DisplayRenderer_DrawRuntimeText(element);
       break;
     case PS_SCENE_RENDER_ELEMENT_TEXT:
     {
@@ -2888,7 +2900,7 @@ static void DisplayRenderer_UIList(uint32_t page,
     case PS_UI_ROUTER_PAGE_MENU:
       list->title = "SYSTEM";
       list->rows[0] = "SETTINGS";
-      list->rows[1] = "CAL INPUT";
+      list->rows[1] = "CALIB";
       list->rows[2] = "PACKAGES";
       list->selected_row = (focus_index >= DISPLAY_RENDERER_LIST_ROW_COUNT) ?
         0UL : focus_index;
@@ -3367,9 +3379,9 @@ static uint32_t DisplayRenderer_DrawInputDiagnosticPage(void)
   black_pixels += DisplayRenderer_DrawText(
     44U, 91U, DisplayRenderer_InputEventText(
       g_ps_hw6_rtos_probe.input_policy_last_event), 1U);
-  black_pixels += DisplayRenderer_DrawText(92U, 91U, "JOY", 1U);
+  black_pixels += DisplayRenderer_DrawText(8U, 103U, "JOY", 1U);
   black_pixels += DisplayRenderer_DrawText(
-    128U, 91U, DisplayRenderer_InputEventText(
+    44U, 103U, DisplayRenderer_InputEventText(
       g_ps_hw6_rtos_probe.joystick_logical_last_event), 1U);
   black_pixels += DisplayRenderer_DrawText(8U, 112U, "USE ANY INPUT", 1U);
   black_pixels += DisplayRenderer_DrawText(8U, 127U, "NO SCRIPT", 1U);
@@ -4066,7 +4078,7 @@ void DisplayRenderer_PrepareUIPage(
       black_pixels += DisplayRenderer_HorizontalLine(27U, 132U, 97U);
       black_pixels += DisplayRenderer_VerticalLine(27U, 62U, 97U);
       black_pixels += DisplayRenderer_VerticalLine(132U, 62U, 97U);
-      black_pixels += DisplayRenderer_DrawText(45U, 76U, "PRESS START", 1U);
+      black_pixels += DisplayRenderer_DrawCenteredText(76U, "PRESS START", 1U);
       primitive_id = DISPLAY_RENDERER_PRIMITIVE_INTERACTION_CUE;
     }
     else

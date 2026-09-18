@@ -25,7 +25,7 @@ OVERRIDE_RECORD = struct.Struct("<HHiiHH")
 OBJECT_OPERATION = struct.Struct("<BBHiiHH")
 NONE = 0xFFFF
 KINDS = {"sprite": 1, "line": 2, "outline_rect": 3, "filled_rect": 4,
-         "circle": 5, "ellipse": 6, "filled_circle": 7, "filled_ellipse": 8}
+         "circle": 5, "ellipse": 6, "filled_circle": 7, "filled_ellipse": 8, "text": 9}
 LAYERS = {"BACKGROUND": 0, "SCENE": 1, "UI": 2}
 OPCODES = {"object.set_position": 1, "object.move_by": 2, "object.set_visibility": 3,
            "object.set_frame": 4, "object.clear_frame": 5}
@@ -40,9 +40,11 @@ def compile_object_chunks(scene, strings, frames, animations):
     for obj in objects:
         defaults = obj["defaults"]
         flags = int(defaults["visible"]) | (2 if obj.get("line_direction") == "up_right" else 0) | (4 if obj.get("focus_role") == "focus" else 0)
+        if obj["kind"] == "text":
+            flags |= ((obj["scale"] - 1) | (("left", "center", "right").index(obj["alignment"]) << 3)) << 3
         records.extend(OBJECT_RECORD.pack(strings[obj["object_id"]], KINDS[obj["kind"]], LAYERS[obj["layer"]],
             obj["z_order"], flags, obj["width"], obj["height"], defaults["x"], defaults["y"],
-            frame_indexes[defaults["visual_ref"]] if "visual_ref" in defaults else NONE,
+            strings[obj["text"]] if obj["kind"] == "text" else (frame_indexes[defaults["visual_ref"]] if "visual_ref" in defaults else NONE),
             clip_indexes[obj["animation_ref"]] if "animation_ref" in obj else NONE, 0))
     ranges, overrides, operations = bytearray(), bytearray(), bytearray()
     for state in scene["states"]:
@@ -99,7 +101,7 @@ def _objects(payload, strings, assets, animations):
         object_id = _stable_id(strings, name, "object ID")
         _require(object_id not in ids, "duplicate object ID")
         ids.add(object_id)
-        _require(kind in range(1, 9) and layer in range(3) and flags & ~7 == 0 and reserved == 0, "object kind/flags/reserved invalid")
+        _require(kind in range(1, 10) and layer in range(3) and (kind == 9 or flags & ~7 == 0) and reserved == 0, "object kind/flags/reserved invalid")
         _require(not flags & 2 or kind == 2, "line direction on non-line object")
         _require(1 <= width <= 168 and 1 <= height <= 144, "object dimensions invalid")
         if kind in {5, 6, 7, 8}:
@@ -116,6 +118,16 @@ def _objects(payload, strings, assets, animations):
                 _require(animation["loop_policy"] == 1, "object clip must loop")
                 for ref in animation["frame_indexes"]:
                     _frame(ref, obj, assets)
+        elif kind == 9:
+            from .system_fonts import runtime_text_layout, SystemFontError, SYSTEM_FONT_8X8_BASIC_ID
+            _require(clip == NONE and (flags >> 6) < 3, "text style or clip invalid")
+            text = _string(strings, frame, "runtime text")
+            scale, alignment = ((flags >> 3) & 7) + 1, ("left", "center", "right")[flags >> 6]
+            try:
+                runtime_text_layout(text, SYSTEM_FONT_8X8_BASIC_ID, scale, alignment, width, height)
+            except SystemFontError as exc:
+                _require(False, str(exc))
+            obj.update(text=text, font_id=SYSTEM_FONT_8X8_BASIC_ID, scale=scale, alignment=alignment)
         else:
             _require(frame == clip == NONE, "primitive references sprite content")
         objects.append(obj)

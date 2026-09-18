@@ -22,7 +22,7 @@ from .audio_assets import (
     pcm16_wav,
 )
 from .compatibility import build_compatibility_report
-from .v2_export import PROFILE_ID as V2_EXPORT_PROFILE_ID, public_v2_export_profile, public_v2_audio_profile
+from .v2_export import PROFILE_ID as V2_EXPORT_PROFILE_ID, public_v2_export_profile, public_v2_audio_profile, public_v2_text_profile
 from .compiler import EggCompileError, build_egg, build_preview_package, build_readiness_issues
 from .egg_format import EggFormatError, parse_egg
 from .project import (
@@ -59,7 +59,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 48
+SERVICE_API_VERSION = 49
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -178,6 +178,8 @@ def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
             "export_readiness_scope": "whole_project",
             "supported_commands": list(OBJECT_COMMANDS + COMMON_SCENE_COMMANDS) if scene["schema_version"] == 2 else None,
             "object_display_names": scene["schema_version"] == 2,
+            "runtime_text": scene["schema_version"] == 2,
+            "runtime_text_profile": public_v2_text_profile() if scene["schema_version"] == 2 else None,
             "legacy_command_catalog": scene["schema_version"] == 1,
             "state_management_commands": list(STATE_MANAGEMENT_COMMANDS),
             "graph_construction_commands": True,
@@ -425,6 +427,7 @@ class AuthoringService:
                 "scene_exit_action_kinds": [],
                 "multi_scene_export": True,
                 "audio_export": public_v2_audio_profile(),
+                "runtime_text": public_v2_text_profile(),
                 "route_destination_kinds": ["state", "system_exit", "scene"],
             },
             "target_profiles": {
@@ -506,7 +509,8 @@ class AuthoringService:
                 ],
                 "logical_input_events": ["press", "release", "hold", "repeat"],
                 "joystick_policies": ["four_way", "eight_way"],
-                "runtime_text": False,
+                "runtime_text": True,
+                "runtime_text_profile": public_v2_text_profile(),
                 "build_time_text": {
                     "source_format": "system_font_text",
                     "font_ids": ["peepshow.system.8x8.basic.v1"],

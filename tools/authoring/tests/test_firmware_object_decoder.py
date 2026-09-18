@@ -90,6 +90,21 @@ class FirmwareObjectDecoderTests(unittest.TestCase):
         self.assertEqual([self.expected(self.spans)], self.run_cases([self.spans]))
         self.assertIn("-2147483648 2147483647", self.expected(self.spans))
 
+    def test_runtime_text_wire_validation(self):
+        from build_runtime_text_fixture import runtime_text_bundle
+        self.package = parse_development_egg_v2(build_development_egg_v2(runtime_text_bundle()))
+        self.spans = tuple(next(c.payload for c in self.package.chunks if c.chunk_type == kind)
+                           for kind in (13, 14, 2, 7, 9))
+        offset = OBJECT_HEADER.size + OBJECT_RECORD.size  # First text object.
+        cases = [self.spans,
+                 self.changed(0, offset + 5, "B", 0xc1),  # Reserved alignment.
+                 self.changed(0, offset + 6, "H", 1),     # Text cannot fit.
+                 self.changed(0, offset + 14, "H", 0xffff),
+                 self.changed(0, offset + 16, "H", 0)]
+        self.assertEqual([self.expected(case) for case in cases], self.run_cases(cases))
+        self.assertTrue(self.expected(cases[0]).startswith("OK"))
+        self.assertEqual(["ERR"] * 4, [self.expected(case) for case in cases[1:]])
+
     def test_every_object_control_byte_mutation_matches_python(self):
         cases = []
         for slot in (0, 1):

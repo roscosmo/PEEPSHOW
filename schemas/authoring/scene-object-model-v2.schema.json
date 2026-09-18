@@ -28,7 +28,11 @@
       "properties": {
         "object_id": {"$ref": "#/$defs/id"},
         "display_name": {"type": "string", "minLength": 1, "maxLength": 96, "pattern": "\\S"},
-        "kind": {"enum": ["sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse", "filled_circle", "filled_ellipse"]},
+        "kind": {"enum": ["sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse", "filled_circle", "filled_ellipse", "text"]},
+        "text": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[\\x20-\\x7E\\n]+$"},
+        "font_id": {"const": "peepshow.system.8x8.basic.v1"},
+        "scale": {"type": "integer", "minimum": 1, "maximum": 8},
+        "alignment": {"enum": ["left", "center", "right"]},
         "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1},
         "z_order": {"type": "integer", "minimum": 0, "maximum": 255},
         "layer": {"enum": ["BACKGROUND", "SCENE", "UI"]},
@@ -38,6 +42,9 @@
         "defaults": {"$ref": "#/$defs/defaults"}
       },
       "allOf": [
+        {"if": {"properties": {"kind": {"const": "text"}}},
+         "then": {"required": ["text", "font_id", "scale", "alignment"]},
+         "else": {"not": {"anyOf": [{"required": ["text"]}, {"required": ["font_id"]}, {"required": ["scale"]}, {"required": ["alignment"]}]}}},
         {"if": {"properties": {"kind": {"const": "sprite"}}},
          "then": {"properties": {"defaults": {"required": ["visual_ref"]}}},
          "else": {"not": {"anyOf": [{"required": ["animation_ref"]}, {"properties": {"defaults": {"required": ["visual_ref"]}}, "required": ["defaults"]}]}}},

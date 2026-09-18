@@ -29,6 +29,7 @@ class ObjectAwakeTests(unittest.TestCase):
         names = ["SetBlack", "HorizontalLine", "VerticalLine", "Line", "FilledRect",
                  "EllipseRow", "RasterEllipse", "SetPanelPixelWhiteInBuffer",
                  "SetPanelPixelBlackInBuffer", "SetLogicalPixelInBuffer", "ResolveSpriteFrame", "ApplyPackageSprite",
+                 "GlyphRows", "DrawGlyph", "RuntimeText", "DrawRuntimeText",
                  "ValidateSceneModel", "DrawSceneElement"]
         (cls.work / "object_raster_under_test.inc").write_text(
             "\n".join(firmware_function(source, "DisplayRenderer_" + name) for name in names), encoding="ascii")

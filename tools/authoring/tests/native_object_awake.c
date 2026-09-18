@@ -2,6 +2,7 @@
 #include "native_package_validation.c"
 #undef main
 #include "native_object_trace_stubs.h"
+#include "ps_system_font.h"
 
 #define DISPLAY_WIDTH 144U
 #define DISPLAY_HEIGHT 168U
@@ -30,7 +31,7 @@ static void sprite_loop_equivalence(void)
 {
   uint8_t record[PS_EGG_ASSET_RECORD_SIZE] = {0}, payload[78];
   uint8_t expected[DISPLAY_RENDERER_BUFFER_SIZE], actual[DISPLAY_RENDERER_BUFFER_SIZE];
-  ps_egg_sprite_catalog_t catalog = {record, payload, sizeof(payload), 1};
+  ps_egg_sprite_catalog_t catalog = {record, payload, sizeof(payload), 1, NULL, 0};
   ps_scene_waiting_visual_bounds_t bounds = {0, 0, 17, 13};
   const uint16_t xs[] = {0, 1, 7, 8, 79, 150, 151};
   const uint16_t ys[] = {0, 1, 7, 8, 63, 130, 131};

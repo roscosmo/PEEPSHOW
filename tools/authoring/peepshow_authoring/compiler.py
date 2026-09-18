@@ -252,6 +252,7 @@ def _string_table(bundle: ProjectBundle, scenes: tuple[dict[str, Any], ...] | No
             if "target_scene" in record
         )
         values.update(obj["object_id"] for obj in scene.get("objects", []))
+        values.update(obj["text"] for obj in scene.get("objects", []) if obj["kind"] == "text")
         for model in scene.get("render_models", []):
             values.add(model["visual_id"])
             for element in model["elements"]:

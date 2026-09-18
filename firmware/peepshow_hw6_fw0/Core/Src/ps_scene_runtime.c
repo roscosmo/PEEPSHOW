@@ -210,7 +210,7 @@ static uint32_t PS_SceneRuntime_RenderElementValid(
 
   if ((element == NULL) || (element->element_id == 0UL) ||
       (element->type <= PS_SCENE_RENDER_ELEMENT_NONE) ||
-      (element->type > PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE) ||
+      (element->type > PS_SCENE_RENDER_ELEMENT_RUNTIME_TEXT) ||
       (element->layer >= PS_SCENE_RENDER_LAYER_COUNT) ||
       (element->visible > 1UL) ||
       (element->z_order > 255U) || (element->reserved != 0U) ||
@@ -232,6 +232,10 @@ static uint32_t PS_SceneRuntime_RenderElementValid(
             ((element->style_id == PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT) ||
              (element->style_id ==
               PS_SCENE_RENDER_STYLE_TEXT_2X_CENTER))) ? 1UL : 0UL;
+  }
+  if (element->type == PS_SCENE_RENDER_ELEMENT_RUNTIME_TEXT)
+  {
+    return ((element->asset_id < 65535UL) && (element->style_id <= 23UL)) ? 1UL : 0UL;
   }
   if (element->type == PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP)
   {
