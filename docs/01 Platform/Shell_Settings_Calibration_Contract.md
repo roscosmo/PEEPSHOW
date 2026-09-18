@@ -64,6 +64,18 @@ Package settings are separate and are governed by [[Package_Save_Settings_API_Co
 
 ## First Setup Flow
 
+HW6 system-time bring-up exception (2026-09-18): date/time setup is optional,
+not a boot gate. The planned shell Time item must show unavailable time honestly
+and offer setting it without forcing setup or blocking an existing game. Mandatory
+Tamagotchi-style first-boot setup remains future work. Local time only; packages
+cannot set it. See [[HW6_System_Time_Bringup]] for current implementation status.
+
+HW6 system-time bring-up exception (2026-09-18): date/time setup is optional,
+not a boot gate. The planned shell Time item must show unavailable time honestly
+and offer setting it without forcing setup or blocking an existing game. Mandatory
+Tamagotchi-style first-boot setup remains future work. Local time only; packages
+cannot set it. See [[HW6_System_Time_Bringup]] for current implementation status.
+
 Required first-setup states:
 
 ```text

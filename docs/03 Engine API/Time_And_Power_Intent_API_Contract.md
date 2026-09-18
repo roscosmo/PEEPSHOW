@@ -97,6 +97,78 @@ Packages do not own physical time or power policy.
 
 ---
 
+## HW6 System-Time Bring-Up Decision (2026-09-18)
+
+The first increment uses local civil time only, with no timezone or automatic
+daylight-saving conversion. Shell time setup is optional for now: missing time
+offers a system-owned setup prompt but does not block ordinary package boot.
+Future mandatory first-boot setup is not enabled by this increment. A missing
+or lost clock is explicitly unavailable, never an invented valid date.
+
+This supersedes any assumption below that calendar validity is unconditional
+for the current HW6 bring-up. Public calendar read/schedule capabilities remain
+unavailable until the corresponding owner/runtime path is implemented and tested.
+The wider conceptual API below is not an implementation advertisement.
+
+Gameplay time is event-driven, not polled:
+
+- Midnight and other calendar occurrences are scheduled deadlines.
+- A random-time event selects and retains one deadline within its authored
+  window. Wake, redraw and ordinary state changes must not reroll it.
+- Time-of-day conditions are evaluated only at explicit transition/handler
+  checks. They do not create periodic background work.
+- Clock edits discard stale calendar schedule generations and calculate future
+  occurrences from the newly set time. Crossed events are skipped, not replayed.
+- Relative countdowns, battery deadlines and measured sleep duration do not
+  change when the user changes local date/time.
+- Scheduled wake selection ultimately shares the earliest deadline with existing
+  relative timers and battery checks; it does not add a periodic gameplay poll.
+
+Initial virtual-pet use cases are midnight stat resets, retained random event
+deadlines and explicit time-of-day checks. Calendar schedule encoding, recurrence,
+random selection policy, consumed-occurrence persistence and off-device/shutdown
+delivery are later increments, not implemented by the time core. In particular,
+manual adjustment and ordinary late wake are distinct causes; skip-on-adjustment
+does not mean dropping a valid deadline because the device woke a little late.
+
+The implementation sequence and evidence limits are in [[HW6_System_Time_Bringup]].
+
+## HW6 System-Time Bring-Up Decision (2026-09-18)
+
+The first increment uses local civil time only, with no timezone or automatic
+daylight-saving conversion. Shell time setup is optional for now: missing time
+offers a system-owned setup prompt but does not block ordinary package boot.
+Future mandatory first-boot setup is not enabled by this increment. A missing
+or lost clock is explicitly unavailable, never an invented valid date.
+
+This supersedes any assumption below that calendar validity is unconditional
+for the current HW6 bring-up. Public calendar read/schedule capabilities remain
+unavailable until the corresponding owner/runtime path is implemented and tested.
+The wider conceptual API below is not an implementation advertisement.
+
+Gameplay time is event-driven, not polled:
+
+- Midnight and other calendar occurrences are scheduled deadlines.
+- A random-time event selects and retains one deadline within its authored
+  window. Wake, redraw and ordinary state changes must not reroll it.
+- Time-of-day conditions are evaluated only at explicit transition/handler
+  checks. They do not create periodic background work.
+- Clock edits discard stale calendar schedule generations and calculate future
+  occurrences from the newly set time. Crossed events are skipped, not replayed.
+- Relative countdowns, battery deadlines and measured sleep duration do not
+  change when the user changes local date/time.
+- Scheduled wake selection ultimately shares the earliest deadline with existing
+  relative timers and battery checks; it does not add a periodic gameplay poll.
+
+Initial virtual-pet use cases are midnight stat resets, retained random event
+deadlines and explicit time-of-day checks. Calendar schedule encoding, recurrence,
+random selection policy, consumed-occurrence persistence and off-device/shutdown
+delivery are later increments, not implemented by the time core. In particular,
+manual adjustment and ordinary late wake are distinct causes; skip-on-adjustment
+does not mean dropping a valid deadline because the device woke a little late.
+
+The implementation sequence and evidence limits are in [[HW6_System_Time_Bringup]].
+
 ## Calendar Time
 
 PeepOS local calendar time is system-owned and package-readable.

@@ -22,6 +22,11 @@ uint32_t PS_EggStateLoader_Load(const uint8_t *blob, uint32_t size,
   (void)blob; (void)size; (void)resident; (void)scene; return 1;
 }
 uint32_t PS_EggStateLoader_EntrySceneId(void) { return 1; }
+void PS_EggStateLoader_ReleaseActiveV2(void) { }
+uint32_t PS_EggStateLoader_DecodeActiveV2Scene(const uint8_t *blob, uint32_t size,
+  uint32_t id, ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
+  ps_egg_v2_profile_result_t *result)
+{ (void)blob; (void)size; (void)id; (void)scene; (void)catalog; (void)result; return 1; }
 uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
   uint32_t size, uint32_t id, ps_scene_runtime_state_scene_t *scene)
 { (void)blob; (void)size; (void)id; (void)scene; return 1; }
