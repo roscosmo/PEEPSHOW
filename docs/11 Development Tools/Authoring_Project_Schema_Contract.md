@@ -1751,6 +1751,32 @@ Python GUI frameworks should not be assumed as the primary editor direction.
 
 ---
 
+## Object Names and Asset Tags (Service API 47)
+
+Native V2 object definitions may contain `display_name`, a nonblank string of
+1..96 characters. `object.rename` sets this field using `scene_id`, `object_id`
+and `display_name`. It never renames the stable ID or rewrites references.
+Absent names display as the object's stable ID. Duplicate display names are
+allowed. Names are not state-overridable runtime properties.
+
+Sprite and sampled-audio asset catalog records may contain `tags`: an ordered
+array of at most 16 distinct, case-sensitive strings, each 1..32 characters,
+nonblank and without leading/trailing whitespace. Missing tags mean no tags.
+`asset.set_tags` and `audio_asset.set_tags` take `asset_id` and `tags`, replacing
+the whole list; `[]` clears it. Existing upsert commands accept the same field
+and retain their full-record replacement semantics. Tags do not apply to cues,
+individual frames or animations in this increment.
+
+These commands use ordinary revision checks, atomic command batches, undo/redo
+and project saving. Normalized objects expose names; normalized sprite/audio
+assets expose tags. Project copies retain metadata without remapping IDs.
+Names and tags are excluded from runtime encoding: otherwise identical projects
+must produce byte-identical eggs. No new firmware capability is implied.
+
+Capabilities: `service.hello.scene_object_authoring.display_names`, per-scene
+`object_display_names`, and `service.hello.asset_metadata.tags`. See
+`V2_Authoring_Metadata_Handoff.md` for Studio integration examples.
+
 ## Validation Cases
 
 1. project with valid metadata, one state scene, one entry graph, and complete reactive-wait contracts validates.

@@ -59,7 +59,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 46
+SERVICE_API_VERSION = 47
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -176,6 +176,7 @@ def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
             "export_profile_id": V2_EXPORT_PROFILE_ID if object_package else None,
             "export_readiness_scope": "whole_project",
             "supported_commands": list(OBJECT_COMMANDS + COMMON_SCENE_COMMANDS) if scene["schema_version"] == 2 else None,
+            "object_display_names": scene["schema_version"] == 2,
             "legacy_command_catalog": scene["schema_version"] == 1,
             "state_management_commands": list(STATE_MANAGEMENT_COMMANDS),
             "graph_construction_commands": True,
@@ -206,7 +207,7 @@ def _placement_ownership(bundle: ProjectBundle) -> dict[str, Any]:
                 states[state["state_id"]] = {
                     "changes": {ref: {"local_properties": sorted(set(item) - {"object_ref"}), "animated": False} for ref, item in overrides.items()},
                     "resolved_elements": [
-                        {**{key: value for key, value in obj.items() if key not in {"object_id", "defaults", "animation_ref"}},
+                        {**{key: value for key, value in obj.items() if key not in {"object_id", "defaults", "animation_ref", "display_name"}},
                          **resolve_object(obj, live[obj["object_id"]], overrides.get(obj["object_id"], {}), clips, 0),
                          "element_id": obj["object_id"]} for obj in objects
                     ],
@@ -370,6 +371,9 @@ class AuthoringService:
             "service_api_version": SERVICE_API_VERSION,
             "protocol_version": PROTOCOL_VERSION,
             "operations": list(SERVICE_OPERATIONS),
+            "asset_metadata": {"tags": {"supported": True, "commands": ["asset.set_tags", "audio_asset.set_tags"],
+                                        "maximum_count": 16, "maximum_length": 32, "case_sensitive": True,
+                                        "runtime_encoded": False}},
             "package_export": {
                 "operation": "project.build_package",
                 "container_versions": [1, 2],
@@ -388,6 +392,8 @@ class AuthoringService:
                 "empty_scene_is_editable_draft": True,
             },
             "scene_object_authoring": {
+                "display_names": {"supported": True, "command": "object.rename", "maximum_length": 96,
+                                  "fallback": "object_id", "runtime_encoded": False},
                 "status": "restricted_firmware_available", "schema_version": 2,
                 "execution_model": "scene_objects", "egg_export": True, "firmware_available": True,
                 "export_profile_id": V2_EXPORT_PROFILE_ID,
@@ -445,6 +451,7 @@ class AuthoringService:
                     "state_placement.clear_override",
                 ],
                 "asset_commands": [
+                    "asset.set_tags",
                     "asset.upsert",
                     "asset.delete",
                 ],
@@ -732,7 +739,7 @@ class AuthoringService:
                 "survives_same_package_scene_replacement": TARGET_SAMPLED_SFX[
                     "survives_same_package_scene_replacement"
                 ],
-                "asset_commands": ["audio_asset.upsert", "audio_asset.delete"],
+                "asset_commands": ["audio_asset.upsert", "audio_asset.delete", "audio_asset.set_tags"],
                 "cue_commands": ["audio_cue.upsert", "audio_cue.delete"],
                 "audition_operation": "project.audio_audition",
                 "unsupported": list(TARGET_SAMPLED_SFX["unsupported"]),

@@ -27,6 +27,7 @@
       "required": ["object_id", "kind", "width", "height", "z_order", "layer", "defaults"],
       "properties": {
         "object_id": {"$ref": "#/$defs/id"},
+        "display_name": {"type": "string", "minLength": 1, "maxLength": 96, "pattern": "\\S"},
         "kind": {"enum": ["sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse", "filled_circle", "filled_ellipse"]},
         "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1},
         "z_order": {"type": "integer", "minimum": 0, "maximum": 255},

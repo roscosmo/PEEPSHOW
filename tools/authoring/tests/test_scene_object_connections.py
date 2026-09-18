@@ -90,7 +90,7 @@ class SceneObjectConnectionTests(unittest.TestCase):
         self.assertEqual(before_routes, self.scene()["routes"])
         self.assertEqual("to_settings", exit_id)
         hello = self.call("service.hello")
-        self.assertEqual(46, hello["service_api_version"])
+        self.assertEqual(47, hello["service_api_version"])
         caps = hello["scene_object_authoring"]
         scene_caps = self.call("project.normalize")["scene_capabilities"]["main"]
         for item in (caps, scene_caps):

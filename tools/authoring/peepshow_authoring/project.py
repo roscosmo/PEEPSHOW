@@ -151,6 +151,9 @@ class ProjectBundle:
             "audio_assets": [
                 {
                     "asset_id": asset.asset_id,
+                    "tags": next((record.get("tags", []) for catalog in self.asset_catalogs
+                                  for record in catalog.get("audio_assets", [])
+                                  if record["asset_id"] == asset.asset_id), []),
                     "source_path": asset.source_path,
                     "source_sample_rate_hz": asset.source_sample_rate_hz,
                     "source_channels": asset.source_channels,
@@ -3027,6 +3030,31 @@ def _catalog_record(
     return None
 
 
+def _check_asset_tags(tags, path, issues):
+    if (not isinstance(tags, list) or len(tags) > 16
+            or any(not isinstance(tag, str) or not 1 <= len(tag) <= 32
+                   or tag != tag.strip() or not tag.strip() for tag in tags)
+            or len(set(tags)) != len(tags)):
+        _issue(issues, "ASSET_TAGS_INVALID", path,
+               "tags must be at most 16 distinct, trimmed strings of 1..32 characters")
+
+
+def _apply_asset_tags(catalogs, command):
+    _require_command_fields(command, {"kind", "asset_id", "tags"},
+                            {"kind", "asset_id", "tags", "command_id"})
+    issues = []
+    _stable_id(command["asset_id"], "command.asset_id", issues)
+    _check_asset_tags(command["tags"], "command.tags", issues)
+    if issues:
+        raise ProjectCommandError(issues[0].code, issues[0].message)
+    collection = "audio_assets" if command["kind"] == "audio_asset.set_tags" else "assets"
+    located = _catalog_record(catalogs, collection, "asset_id", command["asset_id"])
+    if located is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", "asset does not exist")
+    located[1]["tags"] = deepcopy(command["tags"])
+    return {"kind": command["kind"], "asset_id": command["asset_id"]}
+
+
 def _apply_asset_upsert(
     project: dict[str, Any],
     catalogs: list[dict[str, Any]],
@@ -5212,7 +5240,9 @@ def _check_asset(
         required = {"asset_id", "asset_type", "source_format", "font_id", "text", "scale", "frames"}
     else:
         required = {"asset_id", "asset_type", "source_format", "frames"}
-    _check_keys(asset, required, path, issues, required | {"display_name"})
+    _check_keys(asset, required, path, issues, required | {"display_name", "tags"})
+    if "tags" in asset:
+        _check_asset_tags(asset["tags"], f"{path}.tags", issues)
     _stable_id(asset.get("asset_id"), f"{path}.asset_id", issues)
     if asset.get("asset_type") != "masked_1bpp":
         _issue(issues, "ASSET_FORMAT_UNSUPPORTED", f"{path}.asset_type", "must be masked_1bpp")
@@ -6238,7 +6268,10 @@ def _compile_asset_catalogs(
                 {"asset_id", "asset_type", "source_path", "source_format"},
                 audio_path,
                 issues,
+                {"asset_id", "asset_type", "source_path", "source_format", "tags"},
             )
+            if "tags" in audio_asset:
+                _check_asset_tags(audio_asset["tags"], f"{audio_path}.tags", issues)
             _stable_id(audio_asset_id, f"{audio_path}.asset_id", issues)
             if audio_asset.get("asset_type") != "sampled_sfx":
                 _issue(
@@ -6929,6 +6962,12 @@ def apply_project_commands(
             applied.append(_apply_waiting_visual_delete(scenes, command))
         elif kind == "state.set_waiting_visual":
             applied.append(_apply_state_set_waiting_visual(scenes, command))
+        elif kind in ("asset.set_tags", "audio_asset.set_tags"):
+            applied.append(_apply_asset_tags(asset_catalogs, command))
+            if kind == "asset.set_tags":
+                for asset in assets:
+                    if asset["asset_id"] == command["asset_id"]:
+                        asset["tags"] = deepcopy(command["tags"])
         elif kind == "asset.upsert":
             applied.append(_apply_asset_upsert(project, asset_catalogs, asset_catalog_sources, command))
             assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
