@@ -58,6 +58,7 @@ STATE_WAITING_ANIMATION_QUANTUM_MS = 250
 STATE_GRAPH_ROUTE_RAIL_MAX = 8
 STATE_GRAPH_ROUTE_ACTION_TOKEN_MAX = 8
 STATE_GRAPH_ROUTE_LAYOUT_VERSION = 3
+STATE_GRAPH_HANDLER_LAYOUT_VERSION = 1
 SCENE_FLOW_REFERENCE_MAX = 64
 SCENE_FLOW_ROUTE_LAYOUT_VERSION = 1
 STATE_GRAPH_SYSTEM_EXIT_NODE_ID = "system-exit"
@@ -1175,7 +1176,7 @@ def _apply_event_binding_delete(
 
 
 def _apply_event_handler_command(
-    scenes: list[dict[str, Any]], command: dict[str, Any]
+    project: dict[str, Any], scenes: list[dict[str, Any]], command: dict[str, Any]
 ) -> dict[str, Any]:
     kind = command["kind"]
     deleting = kind == "event_handler.delete"
@@ -1209,7 +1210,16 @@ def _apply_event_handler_command(
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown handler '{handler_id}'")
     elif deleting:
         handlers.pop(index)
+        _handler_layout_records(project, scene["scene_id"]).pop(handler_id, None)
     else:
+        old = handlers[index]
+        layout = _handler_layout_records(project, scene["scene_id"]).get(handler_id)
+        if isinstance(layout, dict):
+            if any(old.get(key) != handler.get(key) for key in ("target_state", "target_scene")):
+                for key in ("termination", "target_handle", "target_side"):
+                    layout.pop(key, None)
+            if any(old.get(key) != handler.get(key) for key in ("guards", "actions")):
+                layout.pop("token_positions", None)
         handlers[index] = deepcopy(handler)
     return {"kind": kind, "scene_id": scene["scene_id"], field: deepcopy(handler)}
 
@@ -3828,6 +3838,105 @@ def _apply_state_graph_system_exit_delete(
     }
 
 
+def _handler_layout_records(project: dict[str, Any], scene_id: str, *, create: bool = False) -> dict[str, Any]:
+    current = project
+    for key in ("editor", "state_graph", "scenes", scene_id, "handlers"):
+        current = current.setdefault(key, {}) if create else current.get(key, {})
+        if not isinstance(current, dict):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "handler layout containers must be objects")
+    return current
+
+
+def _normalize_handler_layout(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "handler layout must be an object or null")
+    _require_command_fields(value, set(), {
+        "routing_version", "termination", "rails", "target_handle", "target_side", "token_positions"})
+    version = value.get("routing_version", STATE_GRAPH_HANDLER_LAYOUT_VERSION)
+    if isinstance(version, bool) or version != STATE_GRAPH_HANDLER_LAYOUT_VERSION:
+        raise ProjectCommandError("PROJECT_VALUE_INVALID", "unsupported handler routing_version")
+    result: dict[str, Any] = {"routing_version": STATE_GRAPH_HANDLER_LAYOUT_VERSION, "rails": []}
+    rails = value.get("rails", [])
+    if not isinstance(rails, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "handler rails must be an array")
+    if len(rails) > STATE_GRAPH_ROUTE_RAIL_MAX:
+        raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "handler layout supports at most eight rails")
+    previous = None
+    for rail in rails:
+        if not isinstance(rail, dict):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "handler rail must be an object")
+        _require_command_fields(rail, {"axis", "value"}, {"axis", "value"})
+        axis = rail["axis"]
+        if axis not in ("x", "y") or axis == previous:
+            raise ProjectCommandError("PROJECT_VALUE_INVALID", "handler rail axes must alternate x/y")
+        result["rails"].append({"axis": axis, "value": _layout_coordinate(rail["value"], "rail.value")})
+        previous = axis
+    if "termination" in value:
+        position = value["termination"]
+        if not isinstance(position, dict):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "termination must be an x/y position")
+        _require_command_fields(position, {"x", "y"}, {"x", "y"})
+        result["termination"] = {axis: _layout_coordinate(position[axis], f"termination.{axis}")
+                                 for axis in ("x", "y")}
+    handle, side = value.get("target_handle"), value.get("target_side")
+    if handle is not None or side is not None:
+        if not isinstance(handle, str) or handle not in STATE_GRAPH_ENTRY_HANDLE_SIDES:
+            raise ProjectCommandError("PROJECT_VALUE_INVALID", "target_handle must name a state entry socket")
+        if not isinstance(side, str) or side not in STATE_GRAPH_ENTRY_HANDLE_SIDES[handle]:
+            raise ProjectCommandError("PROJECT_VALUE_INVALID", "target_side must match target_handle")
+        result.update(target_handle=handle, target_side=side)
+    if "token_positions" in value:
+        tokens = value["token_positions"]
+        if isinstance(tokens, dict) and "guards" in tokens:
+            _require_command_fields(tokens, {"guards"}, {"guards", "actions"})
+            guards = tokens["guards"]
+            if not isinstance(guards, list):
+                raise ProjectCommandError("PROJECT_TYPE_INVALID", "guard positions must be an array")
+            if len(guards) > 8:
+                raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "at most eight guard positions")
+            normalized = _normalize_route_token_positions({"actions": tokens.get("actions", [])}, "token_positions")
+            normalized["guards"] = [_layout_fraction(item, "token_positions.guards") for item in guards]
+            ordered = normalized["guards"] + normalized.get("actions", [])
+            if any(b <= a for a, b in zip(ordered, ordered[1:])):
+                raise ProjectCommandError("PROJECT_VALUE_INVALID", "token positions must follow execution order")
+        else:
+            normalized = _normalize_route_token_positions(tokens, "token_positions")
+        result["token_positions"] = normalized
+    return result
+
+
+def _check_handler_layout_target(scene: dict[str, Any], handler_id: str, layout: dict[str, Any]) -> None:
+    handler = _command_record(scene, "event_handlers", "handler_id", handler_id)
+    binding = _command_record(scene, "event_bindings", "binding_id", handler.get("event_ref"))
+    if binding.get("event_type") != "time.scene_elapsed":
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", "layout requires a scene-timer handler")
+    if "termination" in layout and ("target_state" in handler or "target_scene" in handler):
+        raise ProjectCommandError("PROJECT_VALUE_INVALID", "termination position requires a targetless handler")
+    if layout.get("target_handle") is not None and "target_state" not in handler:
+        raise ProjectCommandError("PROJECT_VALUE_INVALID", "state entry socket requires a local target_state")
+
+
+def _apply_state_graph_handler_layout(project: dict[str, Any], scenes: list[dict[str, Any]],
+                                      command: dict[str, Any]) -> dict[str, Any]:
+    required = {"kind", "scene_id", "handler_id", "layout"}
+    _require_command_fields(command, required, required | {"command_id"})
+    scene = _command_scene(scenes, command["scene_id"])
+    handler_id = command["handler_id"]
+    issues: list[ValidationIssue] = []
+    _stable_id(handler_id, "command.handler_id", issues)
+    if issues:
+        raise ProjectCommandError(issues[0].code, issues[0].message)
+    layout = None if command["layout"] is None else _normalize_handler_layout(command["layout"])
+    _check_handler_layout_target(scene, handler_id, layout or {})
+    records = _handler_layout_records(project, scene["scene_id"], create=layout is not None)
+    if layout is None:
+        records.pop(handler_id, None)
+    else:
+        records[handler_id] = layout
+    return {"kind": command["kind"], "scene_id": scene["scene_id"], "handler_id": handler_id,
+            "layout": deepcopy(layout)}
+
+
 def _apply_state_graph_route_layout(
     project: dict[str, Any],
     scenes: list[dict[str, Any]],
@@ -4818,7 +4927,22 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
                                 if not isinstance(scene_layout, dict):
                                     _issue(issues, "PROJECT_TYPE_INVALID", scene_path, "must be an object")
                                     continue
-                                _check_keys(scene_layout, set(), scene_path, issues, {"entry", "nodes", "routes"})
+                                _check_keys(scene_layout, set(), scene_path, issues, {"entry", "nodes", "routes", "handlers"})
+                                handlers = scene_layout.get("handlers")
+                                if handlers is not None:
+                                    path = f"{scene_path}.handlers"
+                                    if not isinstance(handlers, dict):
+                                        _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
+                                    elif len(handlers) > STATE_EVENT_BINDING_MAX:
+                                        _issue(issues, "PROJECT_LIMIT_EXCEEDED", path, "too many handler layouts")
+                                    else:
+                                        for handler_id, layout in handlers.items():
+                                            handler_path = f"{path}[{handler_id}]"
+                                            _stable_id(handler_id, handler_path, issues)
+                                            try:
+                                                _normalize_handler_layout(layout)
+                                            except ProjectCommandError as exc:
+                                                _issue(issues, exc.code, handler_path, exc.message)
                                 entry_layout = scene_layout.get("entry")
                                 if entry_layout is not None:
                                     entry_path = f"{scene_path}.entry"
@@ -6545,6 +6669,16 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                             f"project.editor.state_graph.scenes[{scene_id}].nodes[{node_id}]",
                             f"unknown state graph node '{node_id}'",
                         )
+            handlers = scene_layout.get("handlers")
+            if isinstance(handlers, dict):
+                for handler_id, layout in handlers.items():
+                    if not isinstance(layout, dict):
+                        continue
+                    try:
+                        _check_handler_layout_target(target_scene, handler_id, layout)
+                    except ProjectCommandError as exc:
+                        _issue(issues, exc.code,
+                               f"project.editor.state_graph.scenes[{scene_id}].handlers[{handler_id}]", exc.message)
             routes = scene_layout.get("routes")
             if isinstance(routes, dict):
                 routes_by_id = {
@@ -6699,7 +6833,7 @@ def apply_project_commands(
         elif kind == "event_binding.delete":
             applied.append(_apply_event_binding_delete(scenes, command))
         elif kind in {"event_handler.add", "event_handler.update", "event_handler.delete"}:
-            applied.append(_apply_event_handler_command(scenes, command))
+            applied.append(_apply_event_handler_command(project, scenes, command))
         elif kind == "route.add":
             applied.append(_apply_route_add(scenes, command))
         elif kind == "route.delete":
@@ -6825,6 +6959,8 @@ def apply_project_commands(
             applied.append(_apply_state_graph_system_exit_delete(project, scenes, command))
         elif kind == "editor.state_graph.set_route_layout":
             applied.append(_apply_state_graph_route_layout(project, scenes, command))
+        elif kind == "editor.state_graph.set_handler_layout":
+            applied.append(_apply_state_graph_handler_layout(project, scenes, command))
         elif kind == "route.set_guard":
             applied.append(_apply_route_set_guard(scenes, command))
         elif kind in {"route.guard.add", "route.guard.delete", "route.guard.move"}:

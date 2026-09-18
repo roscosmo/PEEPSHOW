@@ -32,6 +32,7 @@ LOCAL_GRAPH_COMMANDS = (
     "route.guard.add", "route.guard.delete", "route.guard.move", "route.set_guard",
     "scene.set_reactive_wait_default", "scene.set_interaction_policy", "scene.set_joystick_policy",
     "editor.state_graph.set_route_layout", "editor.state_graph.delete_system_exit",
+    "editor.state_graph.set_handler_layout",
 )
 SCENE_FLOW_COMMANDS = (
     "editor.scene_flow.set_node_position", "editor.scene_flow.set_package_entry_position",

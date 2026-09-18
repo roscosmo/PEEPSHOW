@@ -84,7 +84,7 @@ class SceneObjectGraphAuthoringTests(unittest.TestCase):
 
     def test_hello_and_scene_advertise_exact_local_scope(self):
         hello = self.call("service.hello")
-        self.assertEqual(45, hello["service_api_version"])
+        self.assertEqual(46, hello["service_api_version"])
         scene_caps = self.call("project.normalize")["scene_capabilities"]["main"]
         for caps, command_key in ((hello["scene_object_authoring"], "commands"), (scene_caps, "supported_commands")):
             self.assertTrue(caps["graph_construction_commands"])
