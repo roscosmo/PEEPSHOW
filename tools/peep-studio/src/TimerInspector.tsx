@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Clock, Plus, Trash2 } from "lucide-react";
+import { Clock, Trash2 } from "lucide-react";
 import { EditableActionList, EditableGuardList, type SceneSelection } from "./SceneInspection";
 import { baseObjectRows } from "./sceneCapabilities";
 import { createTimerCommands, deleteTimerCommands, SCENE_TIMER, STATE_TIMER, timerBounds } from "./timerAuthoring";
@@ -21,12 +21,6 @@ function timerShortDetail(eventType: string | null | undefined): string {
 
 function timerStartLabel(policy: string | null | undefined): string {
   return policy === "action" ? "Started by action" : "When scene opens";
-}
-
-function timerOptionLabel(binding: { binding_id: string; event_type: string; configuration: { delay_ms?: number; start_policy?: string } }): string {
-  const delay = typeof binding.configuration.delay_ms === "number" ? `${binding.configuration.delay_ms} ms` : "delay unset";
-  const suffix = binding.event_type === SCENE_TIMER ? `, ${timerStartLabel(binding.configuration.start_policy).toLowerCase()}` : "";
-  return `${timerKindLabel(binding.event_type)} - ${delay}${suffix}`;
 }
 
 function stateName(scene: SceneDocument, stateId: string | undefined): string {
@@ -71,21 +65,11 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
   const all = (...kinds: string[]) => kinds.every(supports);
   const canCreate = (type: string) => !!timerBounds(service, profileId, type)
     && all("event_binding.add", "scene.set_reactive_wait_default", type === SCENE_TIMER ? "event_handler.add" : "route.add");
-  const begin = (type: string, from = stateId) => {
-    onSelect({ kind: "timerDraft", eventType: type, stateId: type === STATE_TIMER ? from : undefined });
-  };
   useEffect(() => { if (adding) {
     setDelay("5000"); setStart("scene_entry"); setSource(stateId ?? scene.entry_state ?? "");
     setDestination(adding === STATE_TIMER ? stateId ?? scene.entry_state ?? "" : "");
     section.current?.scrollIntoView({ block: "nearest" });
   } }, [adding, stateId, scene.scene_id]);
-  const selectTimer = (id: string) => {
-    const timer = bindings.find(item => item.binding_id === id);
-    const routes = (scene.routes ?? []).filter(item => item.event_ref === id);
-    if (timer?.event_type === STATE_TIMER && routes.length === 1)
-      onSelect({ kind: "route", id: routes[0].route_id, sourceState: routes[0].from_states[0] });
-    else onSelect(id ? { kind: "timer", id } : { kind: "scene" });
-  };
   useEffect(() => { if (binding) { setDelay(String(binding.configuration.delay_ms)); setStart(binding.configuration.start_policy ?? "scene_entry"); } },
     [binding?.binding_id, binding?.configuration.delay_ms, binding?.configuration.start_policy]);
 
@@ -108,33 +92,16 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
     : record?.target_state ?? "";
   const expiryActionsOnly = expiryValue === "";
   const selectedStateName = stateName(scene, source);
-  const createStateTimerDisabled = !canCreate(STATE_TIMER) || !stateId;
   const updateBinding = async (nextDelay: number, startPolicy: string) => {
     if (binding) await onApply([{ kind: "event_binding.update", scene_id: scene.scene_id, event_binding: {
       ...binding, configuration: { ...binding.configuration, delay_ms: nextDelay,
         ...(isScene ? { start_policy: startPolicy } : {}) },
     } }]);
   };
+  if (!adding && !binding) return null;
+
   return <section ref={section} className="inspector-section timer-inspector">
     <h3><Clock size={14} /> Timers</h3>
-    <div className="timer-create-grid">
-      <button className="timer-create-card" type="button" disabled={!canCreate(SCENE_TIMER)} onClick={() => begin(SCENE_TIMER)}>
-        <span className="timer-create-icon"><Plus size={13} /><TimerKindIcon eventType={SCENE_TIMER} /></span>
-        <span><strong>Scene timer</strong><small>{timerShortDetail(SCENE_TIMER)}</small></span>
-      </button>
-      <button className="timer-create-card" type="button" disabled={createStateTimerDisabled}
-        title={stateId ? undefined : "Select a source state first"} onClick={() => begin(STATE_TIMER)}>
-        <span className="timer-create-icon"><Plus size={13} /><TimerKindIcon eventType={STATE_TIMER} /></span>
-        <span><strong>State-entry timer</strong><small>{stateId ? `From ${stateName(scene, stateId)}` : timerShortDetail(STATE_TIMER)}</small></span>
-      </button>
-    </div>
-    {bindings.length > 0 && <label className="select-field">Existing timers
-      <select aria-label="Selected timer" value={selected} onChange={event => selectTimer(event.target.value)}>
-        <option value="">Select timer</option>
-        {bindings.map(item => <option key={item.binding_id} value={item.binding_id}>
-          {timerOptionLabel(item)}
-        </option>)}
-      </select></label>}
     {(adding || binding) && <>
       <div className={`timer-mode-card ${timerIsScene ? "scene" : "state"}`}>
         <span><TimerKindIcon eventType={timerType} /></span>
