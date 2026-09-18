@@ -13,7 +13,7 @@ from .scene_objects import (
 
 
 OBJECT_COMMANDS = (
-    "object.add", "object.delete", "object.set_defaults", "object.bind_animation",
+    "object.add", "object.delete", "object.rename", "object.set_defaults", "object.bind_animation",
     "object.clear_animation", "object_override.set", "object_override.clear",
     "object_actions.set",
 )
@@ -64,7 +64,7 @@ def graph_validation_view(scene):
     view["schema_version"] = 1
     elements = []
     for obj in view.pop("objects"):
-        element = {key: value for key, value in obj.items() if key not in {"object_id", "defaults", "animation_ref"}}
+        element = {key: value for key, value in obj.items() if key not in {"object_id", "defaults", "animation_ref", "display_name"}}
         element.update(obj["defaults"])
         element["element_id"] = obj["object_id"]
         element["focus_role"] = "none"
@@ -160,6 +160,7 @@ def apply_object_command(scenes, command):
     fields = {
         "object.add": {"object", "visible_in_states"},
         "object.delete": {"object_id"},
+        "object.rename": {"object_id", "display_name"},
         "object.set_defaults": {"object_id", "properties"},
         "object.bind_animation": {"object_id", "animation_ref"},
         "object.clear_animation": {"object_id"},
@@ -206,6 +207,8 @@ def apply_object_command(scenes, command):
             scene["objects"].remove(obj)
             for state in scene["states"]:
                 state["object_overrides"] = [item for item in state["object_overrides"] if item["object_ref"] != obj["object_id"]]
+        elif kind == "object.rename":
+            obj["display_name"] = command["display_name"]
         elif kind == "object.set_defaults":
             values = command["properties"]
             if not isinstance(values, dict) or not values or values.keys() - PROPERTY_KEYS:
