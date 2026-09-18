@@ -1,4 +1,5 @@
 #include "LS013B7DH05.h"
+#include "ps_hw6_trace.h"
 #include <string.h>
 #include <stdbool.h>
 
@@ -288,10 +289,15 @@ HAL_StatusTypeDef LCD_FlushRows_DMA(LS013B7DH05 *MemDisp, const uint8_t *buf,
     if ((rowCount == 0u) || (rowCount > LCD_DMA_MAX_ROWS_PER_TRANSFER)) return HAL_ERROR;
 
     uint16_t len = 0;
+    PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_WIRE, 0UL, rowCount);
     HAL_StatusTypeDef st = BuildWriteBurst(buf, rows, rowCount, &len);
+    PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_WIRE, 1UL, (uint32_t)st);
     if (st != HAL_OK) return st;
 
-    return lcd_dma_start(MemDisp, txBuf, len);
+    PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DMA_START, 0UL, len);
+    st = lcd_dma_start(MemDisp, txBuf, len);
+    PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DMA_START, 1UL, (uint32_t)st);
+    return st;
 }
 
 HAL_StatusTypeDef LCD_FlushRowRange_DMA_Async(LS013B7DH05 *MemDisp, const uint8_t *buf,
@@ -368,7 +374,9 @@ HAL_StatusTypeDef LCD_PresentRows_DMA(LS013B7DH05 *MemDisp, const uint8_t *buf,
         HAL_StatusTypeDef st = LCD_FlushRows_DMA(MemDisp, buf, &rows[offset], chunkRows);
         if (st != HAL_OK) return st;
 
+        PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DMA_WAIT, 0UL, timeout_ms);
         st = lcd_dma_wait(timeout_ms);
+        PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DMA_WAIT, 1UL, (uint32_t)st);
         if (st != HAL_OK) return st;
 
         offset = (uint16_t)(offset + chunkRows);

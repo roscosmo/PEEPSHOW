@@ -34,6 +34,9 @@ class InstalledSfxTests(unittest.TestCase):
         self.assertLessEqual(len(self.blob), 65536)
         self.assertIn("atomic effects and catalog lifetime passed", self.run_blob(self.blob, "audio"))
 
+    def test_trusted_scene_decode_skips_package_rescans_and_revokes_on_reload(self):
+        self.assertIn("lifetime invalidation passed", self.run_blob(self.blob, "trusted"))
+
     def test_public_audio_matches_hardware_tested_bytes(self):
         self.assertTrue(public_v2_export_profile()["audio"])
         self.assertEqual([], build_readiness_issues(self.bundle))

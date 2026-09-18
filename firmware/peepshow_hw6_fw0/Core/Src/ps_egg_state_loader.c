@@ -207,6 +207,7 @@ static ps_egg_context_t s_ps_egg_validation_context =
   .probe = &g_ps_egg_validation_probe
 };
 static ps_scene_runtime_state_scene_t s_ps_egg_validation_scene;
+static uint32_t s_ps_egg_active_v2_size;
 
 static uint32_t PS_EggFail(ps_egg_context_t *context, ps_egg_state_loader_reason_t reason);
 static uint32_t PS_EggValidateContainer(ps_egg_context_t *context, const uint8_t *blob,
@@ -3088,6 +3089,7 @@ uint32_t PS_EggStateLoader_Load(
   uint32_t resident_size,
   ps_scene_runtime_state_scene_t *scene)
 {
+  PS_EggStateLoader_ReleaseActiveV2();
   s_ps_egg_runtime_context.development = 0UL;
   return PS_EggContext_Load(&s_ps_egg_runtime_context, blob, package_size, resident_size, scene);
 }
@@ -3237,6 +3239,7 @@ static uint32_t PS_EggDecodeDevelopment(const uint8_t *blob,
           s_ps_egg_runtime_context = *context;
           s_ps_egg_runtime_context.probe = &g_ps_egg_state_loader_probe;
           g_ps_egg_state_loader_probe = g_ps_egg_validation_probe;
+          s_ps_egg_active_v2_size = size;
         }
       }
     }
@@ -3256,7 +3259,112 @@ uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
 uint32_t PS_EggStateLoader_LoadDevelopment(const uint8_t *blob,
   uint32_t size, ps_scene_runtime_state_scene_t *scene)
 {
+  PS_EggStateLoader_ReleaseActiveV2();
   return PS_EggDecodeDevelopment(blob, size, 0UL, scene, 1UL, 0UL, NULL, NULL);
+}
+
+void PS_EggStateLoader_ReleaseActiveV2(void)
+{
+  s_ps_egg_active_v2_size = 0UL;
+}
+
+uint32_t PS_EggStateLoader_IsActiveV2Source(const uint8_t *blob, uint32_t size)
+{
+  return ((blob != NULL) && (size != 0UL) &&
+    (blob == s_ps_egg_runtime_context.blob) &&
+    (size == s_ps_egg_active_v2_size)) ? 1UL : 0UL;
+}
+
+uint32_t PS_EggStateLoader_PrepareActiveV2Display(const uint8_t *blob, uint32_t size,
+  const ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
+  ps_egg_v2_profile_result_t *result)
+{
+  ps_egg_context_t *context = &s_ps_egg_runtime_context;
+  const uint8_t *active = context->blob;
+  const ps_egg_scene_catalog_entry_t *entry;
+  if (catalog != NULL) { (void)memset(catalog, 0, sizeof(*catalog)); }
+  if (result == NULL) { return 1UL; }
+  (void)memset(result, 0, sizeof(*result));
+  result->item_index = PS_SCENE_RUNTIME_INDEX_INVALID;
+  result->reason = PS_EGG_V2_PROFILE_ARGUMENT;
+  if ((blob == NULL) || (scene == NULL) || (catalog == NULL)) { return 1UL; }
+  if ((PS_EggStateLoader_IsActiveV2Source(active, size) == 0UL) ||
+      (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES) ||
+      ((blob != active) && (memcmp(blob, active, size) != 0)))
+  { return PS_EGG_STATE_LOADER_NOT_ACTIVE; }
+  if ((scene->scene_id == 0UL) || (scene->scene_id > context->scene_count)) { return 1UL; }
+  entry = &context->scene_catalog[scene->scene_id - 1UL];
+  if ((scene->object_definition.objects.data != active + context->chunks[entry->render_chunk_index].offset) ||
+      (scene->object_definition.controls.data != active + context->chunks[entry->waiting_chunk_index].offset) ||
+      (PS_SceneRuntime_ValidateDescriptor(scene, context->scene_count) != 0UL) ||
+      (PS_EggCheckV2Profile(context, scene, 1UL, result) != 0UL)) { return 1UL; }
+  *catalog = context->sprite_catalog;
+  if (catalog->records != NULL) { catalog->records = blob + (catalog->records - active); }
+  if (catalog->sprite_payload != NULL)
+  { catalog->sprite_payload = blob + (catalog->sprite_payload - active); }
+  result->scene_count = context->scene_count;
+  return 0UL;
+}
+
+uint32_t PS_EggStateLoader_DecodeActiveV2Scene(const uint8_t *blob, uint32_t size,
+  uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,
+  ps_egg_sprite_catalog_t *catalog, ps_egg_v2_profile_result_t *result)
+{
+  ps_egg_context_t *context = &s_ps_egg_validation_context;
+  const uint8_t *active = s_ps_egg_runtime_context.blob;
+  uint32_t index;
+  uint32_t status;
+  if (scene != NULL) { (void)memset(scene, 0, sizeof(*scene)); }
+  if (catalog != NULL) { (void)memset(catalog, 0, sizeof(*catalog)); }
+  if (result == NULL) { return 1UL; }
+  (void)memset(result, 0, sizeof(*result));
+  result->item_index = PS_SCENE_RUNTIME_INDEX_INVALID;
+  result->reason = PS_EGG_V2_PROFILE_ARGUMENT;
+  if ((blob == NULL) || (scene == NULL) || (size == 0UL)) { return 1UL; }
+  if ((s_ps_egg_active_v2_size != size) || (active == NULL) ||
+      (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES) ||
+      ((blob != active) && (memcmp(blob, active, size) != 0)))
+  { return PS_EGG_STATE_LOADER_NOT_ACTIVE; }
+
+  /* Use existing serialized scratch so failed destination work cannot mutate
+   * the live catalog. Rebase every borrowed catalog span before private decode. */
+  *context = s_ps_egg_runtime_context;
+  context->probe = &g_ps_egg_validation_probe;
+  context->blob = blob;
+  context->strings.payload = blob + (context->strings.payload - active);
+  if (context->sprite_catalog.records != NULL)
+  { context->sprite_catalog.records = blob + (context->sprite_catalog.records - active); }
+  if (context->sprite_catalog.sprite_payload != NULL)
+  { context->sprite_catalog.sprite_payload = blob + (context->sprite_catalog.sprite_payload - active); }
+  for (index = 0UL; index < context->audio_asset_count; ++index)
+  {
+    if (context->audio_assets[index].adpcm != NULL)
+    { context->audio_assets[index].adpcm = blob + (context->audio_assets[index].adpcm - active); }
+  }
+  (void)memset(&context->sprite_frame_scratch, 0, sizeof(context->sprite_frame_scratch));
+  (void)memset(&context->binding_scratch, 0, sizeof(context->binding_scratch));
+  scene_id = (scene_id == 0UL) ? context->entry_scene_id : scene_id;
+  result->scene_id = scene_id;
+  result->reason = PS_EGG_V2_PROFILE_PACKAGE;
+  status = PS_EggContext_LoadScene(context, scene_id, &s_ps_egg_validation_scene);
+  if (status == 0UL)
+  {
+    status = PS_SceneRuntime_ValidateDescriptor(&s_ps_egg_validation_scene, context->scene_count);
+    if (status != 0UL) { (void)PS_EggFail(context, PS_EGG_STATE_LOADER_REASON_GRAPH); }
+  }
+  if (status == 0UL)
+  { status = PS_EggCheckV2Profile(context, &s_ps_egg_validation_scene, 1UL, result); }
+  result->loader_reason = g_ps_egg_validation_probe.reason;
+  if (status == 0UL)
+  {
+    *scene = s_ps_egg_validation_scene;
+    if (catalog != NULL) { *catalog = context->sprite_catalog; }
+    result->scene_count = context->scene_count;
+  }
+  (void)memset(context, 0, sizeof(*context));
+  context->probe = &g_ps_egg_validation_probe;
+  (void)memset(&s_ps_egg_validation_scene, 0, sizeof(s_ps_egg_validation_scene));
+  return status;
 }
 
 uint32_t PS_EggStateLoader_ValidateV2Profile(const uint8_t *blob, uint32_t size,

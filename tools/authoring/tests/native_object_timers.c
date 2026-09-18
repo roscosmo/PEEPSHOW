@@ -103,8 +103,10 @@ static void service(uint32_t tick)
 static uint32_t reject_destination;
 static uint32_t admission_delay = 23;
 static uint32_t timer_scene_admission(const uint8_t *blob, uint32_t size,
-  uint32_t scene_id, const ps_scene_objects_t *objects)
+  uint32_t scene_id, const ps_scene_objects_t *objects,
+  const ps_scene_runtime_state_scene_t *prepared_scene)
 {
+  (void)prepared_scene;
   static ps_scene_runtime_state_scene_t scene;
   static ps_egg_sprite_catalog_t catalog;
   static ps_scene_object_graph_t graph;
@@ -123,7 +125,7 @@ static uint32_t timer_scene_admission(const uint8_t *blob, uint32_t size,
 static uint32_t timer_object_admission(const uint8_t *blob, uint32_t size,
   const ps_scene_objects_t *objects)
 {
-  return timer_scene_admission(blob, size, 1, objects);
+  return timer_scene_admission(blob, size, 1, objects, NULL);
 }
 
 static void replacement_timers(uint32_t mode)
@@ -310,7 +312,7 @@ int main(int argc, char **argv)
   mode = (uint32_t)atoi(argv[3]);
   if (mode == 20)
   {
-    uint32_t status = timer_scene_admission(candidate, size, 1, NULL);
+    uint32_t status = timer_scene_admission(candidate, size, 1, NULL, NULL);
     assert(size == 3356);
     if (status != 0)
     { fprintf(stderr, "Timer fixture preflight failed: status=%u loader reason=%u states=%u routes=%u\n",

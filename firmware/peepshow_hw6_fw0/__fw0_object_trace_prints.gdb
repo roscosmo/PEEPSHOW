@@ -2,7 +2,9 @@ set pagination off
 printf "--- HW6 one-press TraceX capture ---\n"
 p g_ps_object_trace_probe
 printf "Trace buffer bytes / running = %u / %u\n", g_ps_hw6_tracex_buffer_bytes, g_ps_hw6_tracex_runtime_enabled
-printf "Expected: request/armed/active=0, complete=1, arm/freeze=0, sequence>0, marker_errors=0. Counter before/after must differ.\n"
+printf "Expected: api=3, request/armed/active=0, complete=1, arm/freeze=0, sequence>0, marker_errors=0. Counter before/after must differ.\n"
+printf "Installed/development V2 captures leave STOP2 policy unchanged. hclk_start is sampled at ARM, not necessarily RECEIVE.\n"
+printf "Use matching RECEIVE/DONE markers and their clock records for the transaction. Do not convert preceding sleep or wake history using DWT cycles.\n"
 printf "At unchanged 24 MHz: 24000 timestamp counts = 1 ms. Verify hclk_start/end and clock events; do not apply one scale across clock changes.\n"
 printf "Ring wraps are not automatically loss: confirm matching 0x5172 RECEIVE/DONE markers remain in the dump.\n"
 printf "0x5170: runtime stage, sequence, candidate token, HCLK. Stage IDs follow __fw0_object_latency_prints.gdb.\n"
@@ -14,5 +16,10 @@ printf "0x5174: SysTick retune capture sequence / old LOAD / old VAL / target LO
 printf "0x5175 and 0x5176: capture sequence / sampled DWT cycles / ThreadX tick / ICSR, before and after the existing LOAD/VAL writes.\n"
 printf "All three retune records are emitted AFTER the writes; use their sampled cycle fields, not event timestamps, for the reset boundary. Pair ordered triples by thread and sequence.\n"
 printf "Same-rate clock requests now preserve the countdown and pending tick: expect no retune triples during a stable 24 MHz capture. Actual reload changes still emit triples. Absence alone is not timing proof; compare retained RECEIVE/DONE cycles with kernel ticks.\n"
+printf "0x5177: captured panel phase, begin=0/end=1, sequence, value. Only the matching presentation is scoped; candidate work is excluded.\n"
+printf "Panel phases: total=1 model-copy=2 clear=3 compose=4 base-copy=5 dirty-rows=6 stats/hash=7 transfer=8 wire-build=9 DMA-start=10 DMA-wait=11 commit=12.\n"
+printf "Begin values: copy/clear/commit bytes; compose elements; transfer/wire rows; DMA-start wire bytes; DMA-wait timeout ms. End values: compose black count; dirty-rows count; total/transfer/wire/start/wait HAL status; otherwise zero.\n"
+printf "Pair phases by display thread and sequence, including repeated transfer chunks. TOTAL contains all phases; TRANSFER contains WIRE/START/WAIT; COMPOSE contains raster VALIDATE. Do not sum nested intervals.\n"
+printf "DMA-start/wait are software call boundaries, not exact on-wire time. No markers are inserted in the polling loop or ISR. Marker overhead and unmarked interrupts remain included.\n"
 printf "Thread execution intervals may include unmarked ISRs. Capture does not prove isolated CPU time or physical button-to-panel latency.\n"
 source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_object_latency_prints.gdb

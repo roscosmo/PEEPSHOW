@@ -148,21 +148,47 @@ This is a tooling limitation, not evidence of a firmware lifecycle failure.
 
 ### One-Press V2 Raster Capture
 
-The HOME/AWAY awake development fixture supports an opt-in one-press TraceX
-capture through `__fw0_object_trace_enable.gdb`. The helper only writes a request;
+Installed V2 object scenes and the HOME/AWAY development fixture support an
+opt-in one-press TraceX capture through `__fw0_object_trace_enable.gdb` (object
+capture API 2). The helper only writes a request;
 thRuntime restarts the existing static trace ring through ThreadX APIs, verifies
 that DWT CYCCNT advances and then arms the existing latency probe. No inferior
 function calls, new trace allocation, clock change or STOP2 override is used.
-Existing Platform trace/user-event knobs must be enabled. This diagnostic only
-admits an awake development scene with no outstanding candidate/display lease.
+Existing Platform trace/user-event knobs must be enabled. This diagnostic admits
+a running V2 object scene with no outstanding candidate/display lease or lease
+fault. It does not require the awake-only fixture: installed HELD/LPBAM sleep
+selection and normal clock policy remain unchanged. Shell-suspended scenes and
+overlapping trace/latency captures cannot arm.
 
-Resume for one second before pressing the opposite L/R selection. The trace
-retains recent input/scheduler history and freezes after the matching runtime
+Resume for one second before pressing the chosen scene-change or selection
+button. For installed Lobby/Garden, A in quiet Lobby captures Garden entry;
+B in quiet Garden captures Lobby return. A pending request is serviced before
+the runtime records the next press even if the request waited through STOP2.
+In that case there is no pre-receipt input history in the restarted ring. When
+armed earlier, the ring may retain recent history. The trace freezes after the matching runtime
 transaction completes, whether successful or rejected. Re-arm explicitly for
 another capture; a reset cancels an armed capture. Do not halt during the press.
+Let any audio finish before halting; the frozen transaction is not overwritten
+by a later timer or sound. Do not launch a development fixture to measure an
+installed package.
 `__fw0_object_trace_prints.gdb` prints the capture state and latency summary;
 `__fw0_tracex_dump.gdb` accepts both running and successfully frozen trace buffers.
 The existing latest/timestamped `.trx` paths remain unchanged.
+
+Only matching RECEIVE/DONE markers bound the measured transaction. DWT does not
+measure STOP2 wall time, and a clock change before RECEIVE cannot be treated as
+one continuous fixed-rate history. `hclk_start` is the ARM sample, not necessarily
+the clock at runtime receipt. Inspect RECEIVE/DONE and intervening clock events;
+use 24000 cycles/ms only for an unchanged 24 MHz transaction. Neither these
+markers nor the cumulative WFI baseline establish physical-button-to-panel time
+or low-current residency. Tracing adds overhead; compare with untraced captures.
+
+The installed-capture extension passes 11 focused native tests for arm rejection,
+awake/autonomous eligibility, pending-request protection, marker lifecycle and
+freeze/rearm, plus the Debug firmware build. RAM/SRAM4 remain 553632/15480 bytes;
+the existing 32768-byte trace buffer is reused. Retention of the complete installed
+scene-change window still requires inspection of a hardware dump, not just a
+successful freeze status.
 
 Application markers use these ThreadX user-event IDs:
 

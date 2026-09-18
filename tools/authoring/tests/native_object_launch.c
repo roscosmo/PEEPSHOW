@@ -59,10 +59,10 @@ static uint32_t scene_set_launches;
 static uint32_t PS_SceneRuntime_EnterDevelopmentSceneSet(const uint8_t *egg, uint32_t size)
 { scene_set_launches++; return PS_SceneRuntime_EnterDevelopmentObjects(egg, size); }
 static uint32_t PS_HW6_RTOS_ObjectSceneCheck(const uint8_t *egg, uint32_t size,
-  uint32_t id, const ps_scene_objects_t *objects)
-{ (void)egg; (void)size; (void)id; (void)objects; return 0; }
+  uint32_t id, const ps_scene_objects_t *objects, const void *prepared_scene)
+{ (void)egg; (void)size; (void)id; (void)objects; (void)prepared_scene; return 0; }
 static void PS_SceneRuntime_SetObjectSceneAdmission(uint32_t (*callback)(const uint8_t *,
-  uint32_t, uint32_t, const ps_scene_objects_t *))
+  uint32_t, uint32_t, const ps_scene_objects_t *, const void *))
 { assert(callback == PS_HW6_RTOS_ObjectSceneCheck); }
 static void PS_HW6_RTOS_RuntimeSetState(uint32_t cls, uint32_t exec, uint32_t life)
 {

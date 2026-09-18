@@ -7,7 +7,9 @@
 #include <string.h>
 
 volatile ps_hw6_trace_probe_t g_ps_hw6_trace_probe;
-volatile ps_hw6_object_trace_probe_t g_ps_object_trace_probe = {.api_version = 1UL};
+volatile ps_hw6_object_trace_probe_t g_ps_object_trace_probe =
+  {.api_version = PS_HW6_OBJECT_TRACE_API_VERSION};
+static uint32_t ps_object_panel_sequence;
 
 extern volatile UINT g_ps_hw6_tracex_enable_status;
 extern volatile ULONG g_ps_hw6_tracex_runtime_enabled;
@@ -79,7 +81,8 @@ uint32_t PS_HW6_TraceObjectArm(uint32_t allowed)
       (g_ps_object_trace_probe.armed != 0UL))
   { g_ps_object_trace_probe.arm_status = TX_NOT_DONE; return 0UL; }
   (void)memset((void *)&g_ps_object_trace_probe, 0, sizeof(g_ps_object_trace_probe));
-  g_ps_object_trace_probe.api_version = 1UL;
+  ps_object_panel_sequence = 0UL;
+  g_ps_object_trace_probe.api_version = PS_HW6_OBJECT_TRACE_API_VERSION;
   g_ps_object_trace_probe.arm_status = TX_FEATURE_NOT_ENABLED;
   g_ps_object_trace_probe.freeze_status = PS_HW6_TRACE_STATUS_NOT_RUN;
   if ((KNOB_DEBUG_TRACEX_ENABLE == 0UL) || (KNOB_DEBUG_TRACEX_USER_EVENTS_ENABLE == 0UL) ||
@@ -155,6 +158,27 @@ void PS_HW6_TraceObjectOwnerEnd(uint32_t stage, uint32_t sequence, uint32_t stat
     sequence, status);
 }
 
+void PS_HW6_TraceObjectPanel(uint32_t stage, uint32_t end, uint32_t value)
+{
+  if ((g_ps_object_trace_probe.active == 0UL) || (ps_object_panel_sequence == 0UL) ||
+      (ps_object_panel_sequence != g_ps_object_trace_probe.sequence)) { return; }
+  PS_HW6_ObjectTraceInsert(PS_HW6_TRACE_EVENT_OBJECT_PANEL, stage, end,
+    ps_object_panel_sequence, value);
+}
+
+void PS_HW6_TraceObjectPanelBegin(void)
+{
+  if (g_ps_object_trace_probe.active == 0UL) { return; }
+  ps_object_panel_sequence = g_ps_object_trace_probe.sequence;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_TOTAL, 0UL, PS_HW6_TRACE_STATUS_NOT_RUN);
+}
+
+void PS_HW6_TraceObjectPanelEnd(uint32_t status)
+{
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_TOTAL, 1UL, status);
+  ps_object_panel_sequence = 0UL;
+}
+
 void PS_HW6_TraceObjectEnd(uint32_t status)
 {
   if (g_ps_object_trace_probe.active == 0UL) { return; }
@@ -164,6 +188,7 @@ void PS_HW6_TraceObjectEnd(uint32_t status)
   g_ps_object_trace_probe.freeze_status = tx_trace_disable();
   if (g_ps_object_trace_probe.freeze_status == TX_SUCCESS) { g_ps_hw6_tracex_runtime_enabled = 0UL; }
   g_ps_object_trace_probe.active = 0UL;
+  ps_object_panel_sequence = 0UL;
   __DMB();
   g_ps_object_trace_probe.complete = 1UL;
 }

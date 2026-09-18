@@ -188,6 +188,27 @@ uint32_t PS_EggStateLoader_DecodeV2Candidate(const uint8_t *blob, uint32_t size,
 uint32_t PS_EggStateLoader_DecodeV2SceneCandidate(const uint8_t *blob, uint32_t size,
   uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,
   ps_egg_sprite_catalog_t *catalog, ps_egg_v2_profile_result_t *result);
+/* thRuntime only. Decode a destination using the published immutable V2 package
+ * metadata, without repeating container/audio validation. A different buffer
+ * must match the complete active bytes; all returned spans then borrow that
+ * buffer (including a display owner's private leased copy). catalog is optional.
+ * Returns 0 on success, 1 on destination rejection, NOT_ACTIVE for no matching
+ * loaded lifetime. Outputs are cleared on failure; active catalogs are unchanged.
+ * New/untrusted packages must still use the full candidate entry points above.
+ */
+#define PS_EGG_STATE_LOADER_NOT_ACTIVE (2UL)
+uint32_t PS_EggStateLoader_IsActiveV2Source(const uint8_t *blob, uint32_t size);
+/* Same-thread runtime admission only: reuse a validated scene, but give the
+ * display a catalog backed exclusively by the byte-identical private copy. */
+uint32_t PS_EggStateLoader_PrepareActiveV2Display(const uint8_t *blob, uint32_t size,
+  const ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
+  ps_egg_v2_profile_result_t *result);
+uint32_t PS_EggStateLoader_DecodeActiveV2Scene(const uint8_t *blob, uint32_t size,
+  uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,
+  ps_egg_sprite_catalog_t *catalog, ps_egg_v2_profile_result_t *result);
+/* Revoke metadata reuse before the loaded package lifetime ends. Does not clear
+ * audio/display catalogs that may still be draining under their owner barriers. */
+void PS_EggStateLoader_ReleaseActiveV2(void);
 /* Pure lookup in a validated immutable view; never falls back to active assets. */
 uint32_t PS_EggStateLoader_GetCatalogSpriteFrame(const ps_egg_sprite_catalog_t *catalog,
   uint32_t frame_id, ps_egg_state_loader_sprite_frame_t *frame);

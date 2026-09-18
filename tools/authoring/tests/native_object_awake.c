@@ -12,6 +12,7 @@
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint8_t *s_display_draw_framebuffer = s_display_framebuffer;
 static const ps_egg_sprite_catalog_t *s_display_candidate_catalog;
+static const ps_scene_render_element_t *s_display_draw_clip;
 static uint32_t s_rotate_ccw = 1U;
 static const char *DisplayRenderer_SceneText(uint32_t id)
 { (void)id; assert(0); return NULL; }

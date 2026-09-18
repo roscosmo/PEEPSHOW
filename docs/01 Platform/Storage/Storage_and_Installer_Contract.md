@@ -210,6 +210,19 @@ The 2026-09-15 firmware increment admits up to eight V2 scenes in the same
 Every scene's initial presentation must pass exact display-owner admission
 before storage replacement; later scene changes require fresh destination
 admission. Exits have no actions and enter the destination default state afresh.
+
+For a published immutable resident V2 package, scene changes reuse the loaded
+container, scene table and asset catalogs. They must not repeat whole-package
+CRC/audio-bank validation on each input. Destination descriptor/profile checks,
+fresh graph construction, and exact display-owner admission remain required.
+The loader uses serialized private scratch, leaving the active catalog unchanged
+on rejection. A display candidate still owns a leased private byte copy: metadata
+reuse requires exact equality with the active package, and every borrowed span
+is rebased into that private copy before it is queued. Exit, installed reload,
+and a new loader publication attempt revoke active-metadata reuse, including
+failed load attempts. New install/preflight candidates keep full validation;
+an identical pointer or package ID alone is not candidate identity.
+
 Installed HOME/AWAY functional hardware testing passed on 2026-09-16, including
 four successful scene replacements and 19 reconciled sleep intervals. Public
 multi-scene export remains disabled pending the Studio fixture and remaining

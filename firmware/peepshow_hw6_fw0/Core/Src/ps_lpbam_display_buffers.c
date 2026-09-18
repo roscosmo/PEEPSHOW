@@ -268,7 +268,13 @@ HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimationProfiled(uint32_t seque
   if (workspace != NULL)
   {
     started = PS_DisplayWork_Begin(profile);
-    (void)memset(workspace, 0, sizeof(*workspace));
+    (void)memset(workspace->previous, 0, sizeof(workspace->previous));
+    (void)memset(workspace->target, 0, sizeof(workspace->target));
+    (void)memset(workspace->length, 0, sizeof(workspace->length));
+    (void)memset(workspace->band, 0, sizeof(workspace->band));
+    workspace->frames_composed = 0UL;
+    /* Wire bytes are built before use; only populated slots below used_slots
+     * are compared. Unused payload bytes need no initialization. */
     PS_DisplayWork_End(profile, PS_DISPLAY_WORK_COPY, started);
   }
   if ((workspace == NULL) || (compose == NULL) || (sequence_count == 0UL))

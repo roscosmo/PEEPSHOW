@@ -313,7 +313,10 @@ typedef uint32_t (*ps_scene_object_admission_fn_t)(const uint8_t *blob,
   uint32_t size, const ps_scene_objects_t *objects);
 void PS_SceneRuntime_SetObjectAdmission(ps_scene_object_admission_fn_t admission);
 typedef uint32_t (*ps_scene_object_scene_admission_fn_t)(const uint8_t *blob,
-  uint32_t size, uint32_t scene_id, const ps_scene_objects_t *objects);
+  uint32_t size, uint32_t scene_id, const ps_scene_objects_t *objects,
+  const ps_scene_runtime_state_scene_t *prepared_scene);
+/* prepared_scene is runtime-validated, same-thread only; NULL requests full
+ * preflight. Neither it nor the staged bank may be retained by admission. */
 void PS_SceneRuntime_SetObjectSceneAdmission(ps_scene_object_scene_admission_fn_t admission);
 /* Explicit development only. Bytes remain immutable for the session. NULL
  * objects in the admission callback requests the selected fresh entry. */

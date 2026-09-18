@@ -1448,6 +1448,52 @@ ignore them rather than carrying obsolete helper geometry into the rail router.
 Route layouts are editor-only and must not alter action order, transition
 behavior, preview behavior, or compiled package bytes.
 
+### Scene-Timer Handler Layout (Service API 46)
+
+Scene-timer handler geometry is stored separately from state-source routes:
+`project.editor.state_graph.scenes[scene_id].handlers[handler_id]`.
+The stable semantic `handler_id` identifies the path; its existing `event_ref`
+identifies the timer binding. No synthetic source state or runtime node is added.
+
+`editor.state_graph.set_handler_layout` takes `scene_id`, `handler_id`, and
+`layout`. It replaces the complete layout record; omitted fields revert to
+automatic placement. `layout: null` removes the record. Optional `command_id`
+uses the normal command envelope. The command uses normal atomic batches,
+revision checks, undo/redo and project save/reload.
+
+Handler layout version 1 fields:
+
+- `routing_version`: 1 (defaults to 1 on input; written explicitly).
+- `termination`: optional `{x, y}` for a targetless action-only handler's visual
+  termination node. Rejected when `target_state` or `target_scene` exists.
+- `rails`: zero to eight alternating `x`/`y` axis/value records, using the
+  existing STATE route coordinate rules; defaults to an empty list.
+- `target_handle` and `target_side`: optional paired STATE entry-socket geometry,
+  accepted only for a handler with a local `target_state`. Both may be null.
+- `token_positions`: optional `condition` for an aggregate guard chip, or
+  `guards[]` for individual guard chips, plus `actions[]` for effect chips.
+  `condition` and `guards` are mutually exclusive. Guard/action arrays each
+  permit at most eight fractions; all present positions must increase in
+  execution order and lie between 0.02 and 0.98, rounded to four decimals.
+
+Coordinates are rounded to integers in [-100000, 100000]. Unknown handlers,
+unknown fields, incompatible endpoint geometry and malformed positions are
+rejected. Layout fractions describe placement only: they never reorder actions
+or introduce sequential/fallback guard execution. Existing timer semantics and
+target export restrictions remain unchanged.
+
+Deleting a handler removes its layout. `event_handler.update` preserves middle
+rails, discards endpoint geometry if the destination changes, and discards token
+positions if guards/actions change. Undo restores semantic and editor records
+together. Loading a project validates handler references and geometry.
+
+Discover support through
+`service.hello.state_scene_graph.scene_timers.editor_layout` and the per-scene
+`scene_capabilities[scene_id].timer_handler_layout` object returned by project
+operations. The command also appears in the editor command catalog and V2
+supported/local-graph command lists. This is an editor capability, not an
+expansion of firmware timer or package-format support.
+
 Rules:
 
 - editor-only data must be clearly namespaced.

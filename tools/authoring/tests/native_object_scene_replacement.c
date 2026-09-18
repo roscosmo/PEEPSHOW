@@ -138,7 +138,7 @@ static void hardware_fixture(void)
 
 static void installed_sfx(uint32_t size)
 {
-  uint32_t cue, timer, epoch, next;
+  uint32_t cue, timer, epoch, next, full_loads;
   ps_egg_state_loader_audio_cue_t short_cue, long_cue, after;
   memcpy(baseline, candidate, size);
   baseline_size = size;
@@ -193,6 +193,7 @@ static void installed_sfx(uint32_t size)
   PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
   assert(ps_package_validation_status == 0);
   source_unchanged();
+  full_loads = g_ps_egg_validation_probe.load_count;
   assert(PS_SceneRuntime_HandleStateSceneInput(1, 1) == PS_SCENE_RUNTIME_INPUT_APPLIED);
   assert(g_ps_scene_runtime_probe.scene_id == 2);
   assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0);
@@ -210,8 +211,155 @@ static void installed_sfx(uint32_t size)
          s_ps_object_snapshot.objects[1].effective.x == 32 &&
          !(s_ps_object_snapshot.objects[2].effective.flags & 1));
   assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0);
+  assert(g_ps_egg_validation_probe.load_count == full_loads);
   PS_SceneRuntime_ExitStateScene();
   puts("installed resident SFX: owner admission, atomic effects and catalog lifetime passed");
+}
+
+static void trusted_metadata(uint32_t size)
+{
+  static ps_scene_runtime_state_scene_t decoded;
+  ps_egg_sprite_catalog_t catalog;
+  ps_egg_v2_profile_result_t profile;
+  uint32_t full_loads, misses, index, next, decodes;
+  memcpy(baseline, candidate, size);
+  baseline_size = size;
+  PS_SceneRuntime_SetObjectSceneAdmission(PS_HW6_RTOS_ObjectSceneCheck);
+  assert(PS_EggStateLoader_DecodeActiveV2Scene(candidate, size, 1,
+    &decoded, &catalog, &profile) == PS_EGG_STATE_LOADER_NOT_ACTIVE);
+  assert(PS_SceneRuntime_EnterStateScene() != PS_SCENE_RUNTIME_INDEX_INVALID);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0);
+  save_source();
+  full_loads = g_ps_egg_validation_probe.load_count;
+  for (index = 1; index <= 2; ++index)
+  {
+    assert(PS_EggStateLoader_DecodeActiveV2Scene(candidate, size, index,
+      &decoded, &catalog, &profile) == 0);
+    assert(profile.scene_id == index && profile.scene_count == 2);
+    assert(decoded.object_definition.objects.data >= candidate &&
+      decoded.object_definition.objects.data + decoded.object_definition.objects.size <= candidate + size);
+    assert(decoded.object_definition.controls.data >= candidate &&
+      decoded.object_definition.controls.data + decoded.object_definition.controls.size <= candidate + size);
+    assert(decoded.object_definition.animations.data >= candidate &&
+      decoded.object_definition.animations.data + decoded.object_definition.animations.size <= candidate + size);
+    assert(catalog.records >= candidate && catalog.records < candidate + size);
+    assert(catalog.sprite_payload >= candidate &&
+      catalog.sprite_payload + catalog.sprite_size <= candidate + size);
+    source_unchanged();
+  }
+  assert(g_ps_egg_validation_probe.load_count == full_loads);
+  assert(PS_EggStateLoader_DecodeActiveV2Scene(candidate, size, 3,
+    &decoded, &catalog, &profile) == 1);
+  assert(decoded.scene_id == 0 && catalog.records == NULL && profile.scene_count == 0);
+  source_unchanged();
+  assert(PS_EggStateLoader_DecodeActiveV2Scene(candidate, size - 1, 1,
+    &decoded, &catalog, &profile) == PS_EGG_STATE_LOADER_NOT_ACTIVE);
+  /* Same address/size is insufficient for a candidate copy. Corruption falls
+   * back to complete validation and rejects without changing the active scene. */
+  candidate[0] ^= 1;
+  assert(PS_EggStateLoader_DecodeActiveV2Scene(candidate, size, 1,
+    &decoded, &catalog, &profile) == PS_EGG_STATE_LOADER_NOT_ACTIVE);
+  assert(PS_HW6_RTOS_ObjectSceneCheck(candidate, size, 1, &s_ps_object_graph.objects, NULL) == 1);
+  assert(g_ps_egg_validation_probe.load_count > full_loads);
+  source_unchanged();
+  candidate[0] ^= 1;
+  full_loads = g_ps_egg_validation_probe.load_count;
+  misses = ps_candidate_cache_misses;
+  decodes = g_ps_egg_validation_probe.scene_decode_count;
+  for (index = 0; index < 4; ++index)
+  {
+    assert(PS_SceneRuntime_HandleStateSceneInput(1, 1) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+    assert(g_ps_scene_runtime_probe.scene_id == 2);
+    assert(PS_SceneRuntime_HandleStateSceneInput(1, 2) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+    assert(g_ps_scene_runtime_probe.scene_id == 1);
+  }
+  assert(ps_candidate_cache_misses >= misses + 8);
+  assert(g_ps_egg_validation_probe.load_count == full_loads);
+  assert(g_ps_egg_validation_probe.scene_decode_count == decodes + 8);
+
+  /* Runtime admission consumes the prepared graph, not a second decoded scene.
+   * Cache hits must also avoid initializing the unused candidate graph. */
+  decoded = *s_ps_object_graph.scene;
+  decodes = g_ps_egg_validation_probe.scene_decode_count;
+  memset(&ps_candidate_scene, 0, sizeof(ps_candidate_scene));
+  assert(PS_HW6_RTOS_ObjectSceneCheck(baseline, size, decoded.scene_id,
+    &s_ps_object_graph.objects, &decoded) == 0);
+  assert(ps_candidate_cache_runtime == 1);
+  assert(g_ps_egg_validation_probe.scene_decode_count == decodes);
+  assert(ps_candidate_catalog.records >= ps_candidate_owned_bytes &&
+    ps_candidate_catalog.records < ps_candidate_owned_bytes + size);
+  assert(PS_EggStateLoader_PrepareActiveV2Display(candidate, size,
+    &decoded, &catalog, &profile) == 0);
+  assert(catalog.records >= candidate && catalog.records < candidate + size);
+  candidate[0] ^= 1;
+  assert(PS_EggStateLoader_PrepareActiveV2Display(candidate, size,
+    &decoded, &catalog, &profile) == PS_EGG_STATE_LOADER_NOT_ACTIVE);
+  assert(catalog.records == NULL && profile.scene_count == 0);
+  candidate[0] ^= 1;
+  assert(PS_HW6_RTOS_ObjectSceneCheck(candidate, size, decoded.scene_id,
+    &s_ps_object_graph.objects, &decoded) == 1);
+  decoded.scene_id = 2;
+  assert(PS_EggStateLoader_PrepareActiveV2Display(candidate, size,
+    &decoded, &catalog, &profile) == 1);
+  assert(catalog.records == NULL);
+  decoded = *s_ps_object_graph.scene;
+  /* Public preflight cannot hit a catalog-only runtime cache. */
+  assert(PS_HW6_ObjectCandidate_CheckScene(candidate, size, decoded.scene_id) == 0);
+  assert(ps_candidate_cache_runtime == 0);
+  assert(g_ps_egg_validation_probe.load_count > full_loads);
+  full_loads = g_ps_egg_validation_probe.load_count;
+  assert(PS_HW6_RTOS_ObjectSceneCheck(baseline, size, decoded.scene_id,
+    &s_ps_object_graph.objects, &decoded) == 0);
+  assert(ps_candidate_cache_runtime == 1);
+  decodes = g_ps_egg_validation_probe.scene_decode_count;
+  assert(PS_HW6_RTOS_ObjectSceneCheck(baseline, size, decoded.scene_id,
+    &s_ps_object_graph.objects, &decoded) == 0);
+  assert(g_ps_egg_validation_probe.scene_decode_count == decodes);
+
+  /* A timed-out display still owns its private bytes when the source exits and
+   * its buffer is reused. Late completion must not depend on that source. */
+  withhold_scene = 2;
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 1) == PS_SCENE_RUNTIME_INPUT_ERROR);
+  assert(ps_candidate_busy && ps_candidate_catalog.sprite_payload >= ps_candidate_owned_bytes &&
+    ps_candidate_catalog.sprite_payload + ps_candidate_catalog.sprite_size <= ps_candidate_owned_bytes + size);
+  PS_SceneRuntime_ExitStateScene();
+  assert(PS_EggStateLoader_DecodeActiveV2Scene(candidate, size, 1,
+    &decoded, &catalog, &profile) == PS_EGG_STATE_LOADER_NOT_ACTIVE);
+  memset(baseline, 0, size);
+  withhold_scene = 0;
+  PS_HW6_RTOS_CandidateDisplay(queued);
+  PS_HW6_RTOS_CandidateReap();
+  assert(!ps_candidate_busy && g_ps_object_candidate_probe.status == 0);
+  assert(!PS_SceneRuntime_StateSceneActive());
+  assert(PS_SceneRuntime_EnterStateScene() == PS_SCENE_RUNTIME_INDEX_INVALID);
+  assert(PS_EggStateLoader_DecodeActiveV2Scene(candidate, size, 1,
+    &decoded, &catalog, &profile) == PS_EGG_STATE_LOADER_NOT_ACTIVE);
+  memcpy(baseline, candidate, size);
+  assert(PS_SceneRuntime_EnterStateScene() != PS_SCENE_RUNTIME_INDEX_INVALID);
+  assert(g_ps_egg_validation_probe.load_count > full_loads);
+  assert(PS_EggStateLoader_DecodeActiveV2Scene(candidate, size, 1,
+    &decoded, &catalog, &profile) == 0);
+  decoded = *s_ps_object_graph.scene;
+  assert(PS_HW6_RTOS_ObjectSceneCheck(baseline, size, decoded.scene_id,
+    &s_ps_object_graph.objects, &decoded) == 0);
+  assert(ps_candidate_cache_valid && ps_candidate_cache_runtime);
+  PS_EggStateLoader_ReleaseActiveV2();
+  assert(PS_HW6_RTOS_ObjectSceneCheck(baseline, size, decoded.scene_id,
+    &s_ps_object_graph.objects, &decoded) == 1);
+  PS_SceneRuntime_ExitStateScene();
+  assert(PS_SceneRuntime_EnterStateScene() != PS_SCENE_RUNTIME_INDEX_INVALID);
+  /* A failed publication attempt revokes trust even at the same address. */
+  baseline[0] ^= 1;
+  assert(PS_EggStateLoader_LoadDevelopment(baseline, size, &decoded) == 1);
+  baseline[0] ^= 1;
+  assert(PS_EggStateLoader_DecodeActiveV2Scene(candidate, size, 1,
+    &decoded, &catalog, &profile) == PS_EGG_STATE_LOADER_NOT_ACTIVE);
+  PS_SceneRuntime_ExitStateScene();
+  assert(PS_EggStateLoader_IsActiveV2Source(baseline, size) == 0);
+  assert(PS_EggStateLoader_PrepareActiveV2Display(candidate, size,
+    &decoded, &catalog, &profile) == PS_EGG_STATE_LOADER_NOT_ACTIVE);
+  assert(catalog.records == NULL);
+  puts("trusted metadata: one decode per replacement, private spans, rejection and lifetime invalidation passed");
 }
 
 int main(int argc, char **argv)
@@ -235,6 +383,11 @@ int main(int argc, char **argv)
   if (argc == 3 && strcmp(argv[2], "audio") == 0)
   {
     installed_sfx(size);
+    return 0;
+  }
+  if (argc == 3 && strcmp(argv[2], "trusted") == 0)
+  {
+    trusted_metadata(size);
     return 0;
   }
   installed_test = argc == 3;

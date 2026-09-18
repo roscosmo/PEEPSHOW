@@ -15,6 +15,10 @@ void PS_HW6_TraceObjectRaster(uint32_t stage, uint32_t end)
 #endif
 }
 void PS_HW6_TraceObjectEnd(uint32_t status) { (void)status; }
+void PS_HW6_TraceObjectPanelBegin(void) { }
+void PS_HW6_TraceObjectPanel(uint32_t stage, uint32_t end, uint32_t value)
+{ (void)stage; (void)end; (void)value; }
+void PS_HW6_TraceObjectPanelEnd(uint32_t status) { (void)status; }
 uint32_t PS_HW6_TraceObjectOwnerBegin(uint32_t stage) { (void)stage; return 0; }
 void PS_HW6_TraceObjectOwnerEnd(uint32_t stage, uint32_t sequence, uint32_t status)
 { (void)stage; (void)sequence; (void)status; }

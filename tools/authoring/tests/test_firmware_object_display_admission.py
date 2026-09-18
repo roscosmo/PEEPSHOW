@@ -74,6 +74,17 @@ class ObjectDisplayAdmissionTests(unittest.TestCase):
         scene["objects"][0]["defaults"]["visible"] = False
         self.assertIn("steps=1 chunks=1 bytes=584", self.check(replace(bundle, scenes=(scene,))))
 
+    def test_enclosing_border_preserves_complete_animation_payloads(self):
+        for factory, steps, chunks, size in ((structured_fixture_bundle, 4, 8, 4672),
+                                             (dual_fixture_bundle, 8, 16, 9344)):
+            bundle = factory()
+            scene = deepcopy(bundle.scenes[0])
+            scene["objects"].append({"object_id": "enclosing_border", "kind": "outline_rect",
+                "width": 168, "height": 144, "z_order": 0, "layer": "BACKGROUND",
+                "defaults": {"x": 0, "y": 0, "visible": True}})
+            self.assertIn(f"steps={steps} chunks={chunks} bytes={size}",
+                          self.check(replace(bundle, scenes=(scene,))))
+
     def test_band_comparisons_match_row_packer_for_every_frame_byte(self):
         result = subprocess.run([str(self.exe)], capture_output=True, text=True,
                                 timeout=10, env=self.env)
@@ -86,6 +97,12 @@ class ObjectDisplayAdmissionTests(unittest.TestCase):
         clips[1]["frame_duration_ms"] = [700] * 4
         self.assertIn("schedule rejection isolated", self.check(replace(bundle, animations=clips), 2))
 
+    def test_poisoned_workspace_and_retries_preserve_payloads(self):
+        result = subprocess.run([str(self.exe), "poisoned-workspace"], capture_output=True,
+                                text=True, timeout=10, env=self.env)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("poisoned and reused workspace preserves admission", result.stdout)
+
     def test_incremental_pixels_match_full_rendering(self):
         result = subprocess.run([str(self.exe), "raster-cache"], capture_output=True, text=True,
                                 timeout=10, env=self.env)
@@ -97,6 +114,12 @@ class ObjectDisplayAdmissionTests(unittest.TestCase):
                                 timeout=30, env=self.env)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertIn("byte clearing matches pixel oracle", result.stdout)
+
+    def test_clipped_regions_preserve_pixels_without_border_fanout(self):
+        result = subprocess.run([str(self.exe), "clip-regions"], capture_output=True, text=True,
+                                timeout=10, env=self.env)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("border 18 not 50 draws", result.stdout)
 
     def test_payload_overflow_does_not_disturb_live_data(self):
         bundle = structured_fixture_bundle()

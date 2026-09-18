@@ -47,6 +47,7 @@ static void cached_frame_matches(ps_scene_frame_cache_t *cache,
   assert(DisplayRenderer_CopyCandidateSceneFrameCached(frame_model, catalog, cache, actual, sizeof(actual)));
   assert(s_display_draw_framebuffer == s_display_framebuffer);
   assert(raster_copy_groups == 1); /* Only the completed frame goes to the packer. */
+  assert(s_display_draw_clip == NULL);
   assert(s_rotate_ccw == rotation);
   raster_observe = 0;
   assert(memcmp(actual, expected, sizeof(actual)) == 0);
@@ -195,11 +196,98 @@ static void raster_cache_equivalence(void)
   puts("cached pixels match full raster: motion, overlap, masks, layers, removal and invalidation");
 }
 
+static void clipped_regions_equivalence(void)
+{
+  static ps_scene_frame_cache_t cache;
+  uint8_t record[PS_EGG_ASSET_RECORD_SIZE] = {0}, payload[78];
+  ps_egg_sprite_catalog_t catalog = {record, payload, sizeof(payload), 1};
+  ps_scene_render_model_t m = {.api_version=PS_SCENE_RENDER_MODEL_API_VERSION,
+    .scene_id=1, .element_count=10};
+  record[4] = 17; record[6] = 13; record[8] = 3;
+  record[20] = 39; record[24] = 39; record[28] = 39;
+  for (uint32_t i = 0; i < sizeof(payload); ++i) { payload[i] = (uint8_t)(i * 37U + 19U); }
+  m.elements[0] = (ps_scene_render_element_t){.element_id=1, .visible=1,
+    .type=PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT, .x=4, .y=4, .width=160, .height=136};
+  m.elements[1] = (ps_scene_render_element_t){.element_id=2, .visible=1, .z_order=1,
+    .type=PS_SCENE_RENDER_ELEMENT_FILLED_RECT, .x=72, .y=32, .width=24, .height=24};
+  for (uint32_t i = 2; i < m.element_count; ++i)
+  {
+    m.elements[i] = (ps_scene_render_element_t){.element_id=i+1, .visible=1, .z_order=1,
+      .type=PS_SCENE_RENDER_ELEMENT_FILLED_RECT, .x=(uint16_t)(10+16*i),
+      .y=100, .width=8, .height=8};
+  }
+  cached_frame_matches(&cache, &m, &catalog);
+  for (uint32_t i = 0; i < 4; ++i)
+  {
+    m.elements[1].type = (i & 1) ? PS_SCENE_RENDER_ELEMENT_FILLED_RECT :
+      PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT;
+    cached_frame_matches(&cache, &m, &catalog);
+  }
+  assert(cache.full_frames == 1 && cache.reused_frames == 4);
+  /* Ten initially; only border + digit intersect each subsequent clip. The
+   * border's edges are outside the clip and cannot damage unchanged pixels. */
+  assert(cache.elements_drawn == 18);
+
+  const uint32_t shapes[] = {PS_SCENE_RENDER_ELEMENT_LINE, PS_SCENE_RENDER_ELEMENT_LINE_UP_RIGHT,
+    PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE, PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT,
+    PS_SCENE_RENDER_ELEMENT_FILLED_RECT, PS_SCENE_RENDER_ELEMENT_CIRCLE,
+    PS_SCENE_RENDER_ELEMENT_ELLIPSE, PS_SCENE_RENDER_ELEMENT_FILLED_CIRCLE,
+    PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE};
+  m.element_count = 3;
+  m.elements[1] = (ps_scene_render_element_t){.element_id=2, .visible=1, .layer=1,
+    .type=PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP, .asset_id=65537, .width=17, .height=13};
+  m.elements[2] = (ps_scene_render_element_t){.element_id=3, .visible=1, .layer=2,
+    .type=PS_SCENE_RENDER_ELEMENT_LINE_UP_RIGHT, .x=30, .y=30, .width=90, .height=90};
+  for (uint32_t shape = 0; shape < sizeof(shapes) / sizeof(shapes[0]); ++shape)
+  {
+    m.elements[0] = (ps_scene_render_element_t){.element_id=1, .visible=1,
+      .type=shapes[shape], .x=50, .y=40, .width=51, .height=51};
+    for (uint32_t opaque = 0; opaque < 2; ++opaque)
+    {
+      record[32] = opaque ? PS_EGG_ASSET_FLAG_OPAQUE : 0;
+      cache.valid = 0;
+      for (uint32_t pos = 0; pos <= 151; ++pos)
+      {
+        m.elements[1].x = (uint16_t)pos;
+        m.elements[1].y = (uint16_t)(pos % 132);
+        cached_frame_matches(&cache, &m, &catalog);
+      }
+      /* Multiple changed regions, visibility, geometry, ordering and one-pixel damage. */
+      m.elements[0].width = 1; m.elements[0].height = 1;
+      m.elements[0].type = PS_SCENE_RENDER_ELEMENT_FILLED_RECT;
+      m.elements[2].visible ^= 1;
+      cached_frame_matches(&cache, &m, &catalog);
+      m.elements[0].x++; m.elements[0].y++;
+      m.elements[0].layer = 3;
+      cached_frame_matches(&cache, &m, &catalog);
+      m.elements[0].type = shapes[shape];
+      m.elements[0].width = 51; m.elements[0].height = 51;
+      m.elements[0].layer = 0;
+    }
+  }
+  puts("clipped regions match full raster: border 18 not 50 draws, partial shapes and masked/opaque sprites");
+}
+
 static uint32_t full_frame_oracle(void *context, uint32_t step, uint8_t *destination, uint32_t capacity)
 {
   (void)context;
   assert(PS_ObjectWaiting_Project(&program, step, &scratch, &model) == PS_OBJECT_WAITING_OK);
   return DisplayRenderer_CopyCandidateSceneFrame(&model, &candidate_catalog, destination, capacity);
+}
+
+static void packing_equivalence(const ps_lpbam_display_check_workspace_t *a,
+  const ps_lpbam_display_check_workspace_t *b)
+{
+  assert(memcmp(a->previous, b->previous, sizeof(a->previous)) == 0);
+  assert(memcmp(a->target, b->target, sizeof(a->target)) == 0);
+  assert(memcmp(a->length, b->length, sizeof(a->length)) == 0);
+  assert(memcmp(a->band, b->band, sizeof(a->band)) == 0);
+  assert(a->frames_composed == b->frames_composed);
+  for (uint32_t slot = 0; slot < PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT; ++slot)
+  {
+    assert(a->length[slot] <= sizeof(a->payload[slot]));
+    assert(memcmp(a->payload[slot], b->payload[slot], a->length[slot]) == 0);
+  }
 }
 
 static void timing_equivalence(uint32_t expected_status)
@@ -213,13 +301,13 @@ static void timing_equivalence(uint32_t expected_status)
   ps_lpbam_display_admission_t oracle_result;
   assert(PS_LpbamDisplay_CheckFullSceneAnimation(program.step_count, full_frame_oracle, NULL,
     &oracle, &oracle_result) == (expected_status ? HAL_ERROR : HAL_OK));
-  assert(memcmp(&oracle, &saved_packing, sizeof(oracle)) == 0);
+  packing_equivalence(&oracle, &saved_packing);
   assert(memcmp(&oracle_result, &checked.payload, sizeof(oracle_result)) == 0);
   profile_clock_calls = UINT32_MAX - 3U; /* Exercise elapsed subtraction across wrap. */
   assert(PS_ObjectDisplay_CheckWaitingProfiled(&program, &candidate_catalog,
     &check_workspace, &checked, &timing) == expected_status);
   assert(memcmp(&saved_result, &checked, sizeof(checked)) == 0);
-  assert(memcmp(&saved_packing, &check_workspace.packing, sizeof(saved_packing)) == 0);
+  packing_equivalence(&saved_packing, &check_workspace.packing);
   assert(timing.calls[PS_DISPLAY_WORK_PROJECT] == checked.frames_composed);
   assert(timing.calls[PS_DISPLAY_WORK_RASTER] == checked.frames_composed);
   assert(timing.calls[PS_DISPLAY_WORK_COMPARE] == checked.payload.sequence_used + expected_status);
@@ -233,12 +321,12 @@ static void timing_equivalence(uint32_t expected_status)
     &check_workspace, &checked, &timing) == expected_status);
   assert(profile_clock_calls == 0); /* NULL clock is inert, even with a profile. */
   assert(memcmp(&saved_result, &checked, sizeof(checked)) == 0);
-  assert(memcmp(&saved_packing, &check_workspace.packing, sizeof(saved_packing)) == 0);
+  packing_equivalence(&saved_packing, &check_workspace.packing);
   for (stage = 0; stage < PS_DISPLAY_WORK_COUNT; ++stage)
   { assert(timing.ticks[stage] == 0 && timing.calls[stage] == 0); }
   assert(PS_ObjectDisplay_CheckWaitingCached(&program, &candidate_catalog,
     &check_workspace, &checked, NULL, 1) == expected_status);
-  assert(memcmp(&saved_packing, &check_workspace.packing, sizeof(saved_packing)) == 0);
+  packing_equivalence(&saved_packing, &check_workspace.packing);
   if (expected_status == 0)
   {
     assert(check_workspace.raster_cache.full_frames == 0);
@@ -378,6 +466,60 @@ static void resource_boundaries(void)
   assert(payload_snapshot(payload_after) == before && memcmp(payload_before, payload_after, before) == 0);
 }
 
+static void poisoned_workspace_equivalence(void)
+{
+  static ps_lpbam_display_check_workspace_t clean, poisoned;
+  static const struct { uint32_t steps, fail, hold; } cases[] = {
+    {3, 0, 0}, {4, 0, 0}, {12, 0, 1}, {13, 0, 1},
+    {3, 4, 1}, {1, 1, 0}, {1, 2, 0}, {0, 0, 0}, {1, 0, 1}
+  };
+  uint32_t before = payload_snapshot(payload_before);
+  for (uint32_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index)
+  {
+    ps_lpbam_display_admission_t expected, actual;
+    compose_test_t test = {0, cases[index].fail, cases[index].hold};
+    memset(&clean, 0, sizeof(clean));
+    HAL_StatusTypeDef status = PS_LpbamDisplay_CheckFullSceneAnimation(
+      cases[index].steps, synthetic_frame, &test, &clean, &expected);
+    for (uint32_t pattern = 0; pattern < 2; ++pattern)
+    {
+      uint8_t poison = pattern ? 0x5A : 0xA5;
+      memset(&poisoned, poison, sizeof(poisoned));
+      for (uint32_t repeat = 0; repeat < 2; ++repeat)
+      {
+        test = (compose_test_t){0, cases[index].fail, cases[index].hold};
+        assert(PS_LpbamDisplay_CheckFullSceneAnimation(cases[index].steps,
+          synthetic_frame, &test, &poisoned, &actual) == status);
+        assert(memcmp(&expected, &actual, sizeof(actual)) == 0);
+        packing_equivalence(&clean, &poisoned);
+        /* Untouched tails remain poison; the comparison must not depend on them. */
+        for (uint32_t slot = 0; slot < PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT; ++slot)
+        {
+          for (uint32_t byte = poisoned.length[slot]; byte < sizeof(poisoned.payload[slot]); ++byte)
+          { assert(poisoned.payload[slot][byte] == poison); }
+        }
+      }
+    }
+  }
+  /* A smaller check after a full workspace must not retain occupied slots. */
+  compose_test_t test = {0};
+  ps_lpbam_display_admission_t result;
+  assert(PS_LpbamDisplay_CheckFullSceneAnimation(3, synthetic_frame, &test, &poisoned, &result) == HAL_OK);
+  test = (compose_test_t){0, 0, 1};
+  assert(PS_LpbamDisplay_CheckFullSceneAnimation(1, synthetic_frame, &test, &poisoned, &result) == HAL_OK);
+  assert(result.chunk_used == 1 && result.payload_used_bytes == 584);
+  for (uint32_t slot = 1; slot < PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT; ++slot)
+  { assert(poisoned.length[slot] == 0 && poisoned.band[slot] == 0); }
+  memset(&poisoned, 0xA5, sizeof(poisoned));
+  assert(PS_LpbamDisplay_CheckFullSceneAnimation(1, NULL, NULL, &poisoned, &result) == HAL_ERROR);
+  assert(poisoned.frames_composed == 0);
+  assert(poisoned.wire[0] == 0xA5 && poisoned.payload[0][0] == 0xA5);
+  for (uint32_t slot = 0; slot < PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT; ++slot)
+  { assert(poisoned.length[slot] == 0 && poisoned.band[slot] == 0); }
+  assert(payload_snapshot(payload_after) == before && memcmp(payload_before, payload_after, before) == 0);
+  puts("poisoned and reused workspace preserves admission and valid payload bytes");
+}
+
 int main(int argc, char **argv)
 {
   static ps_egg_context_t saved_catalog;
@@ -389,8 +531,10 @@ int main(int argc, char **argv)
   uint32_t size, expected_failure, step, snapshot_size, status;
   HAL_StatusTypeDef packed;
   if (argc == 1) { band_equivalence(); return 0; }
+  if (argc == 2 && strcmp(argv[1], "poisoned-workspace") == 0) { poisoned_workspace_equivalence(); return 0; }
   if (argc == 2 && strcmp(argv[1], "raster-cache") == 0) { raster_cache_equivalence(); return 0; }
   if (argc == 2 && strcmp(argv[1], "clear-rect") == 0) { clear_rect_equivalence(); return 0; }
+  if (argc == 2 && strcmp(argv[1], "clip-regions") == 0) { clipped_regions_equivalence(); return 0; }
   assert(argc == 4);
   expected_failure = (uint32_t)atoi(argv[3]);
   baseline_size = read_blob(argv[1], baseline);

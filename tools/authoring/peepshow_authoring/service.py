@@ -136,6 +136,30 @@ def _require_fields(params: dict[str, Any], required: set[str]) -> None:
         )
 
 
+def _timer_handler_layout_capability() -> dict[str, Any]:
+    return {
+        "supported": True,
+        "editor_only": True,
+        "routing_version": 1,
+        "commands": ["editor.state_graph.set_handler_layout"],
+        "addressing": ["scene_id", "handler_id"],
+        "storage": "project.editor.state_graph.scenes[scene_id].handlers[handler_id]",
+        "termination_position": True,
+        "rail_max": 8,
+        "guard_token_max": 8,
+        "action_token_max": 8,
+        "coordinate_min": -100000,
+        "coordinate_max": 100000,
+        "token_positions": ["condition", "guards", "actions"],
+        "condition_and_guards_mutually_exclusive": True,
+        "token_fraction_min": 0.02,
+        "token_fraction_max": 0.98,
+        "local_target_socket": True,
+        "update_mode": "replace_layout",
+        "clear_with_null": True,
+    }
+
+
 def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
     if not bundle.valid:
         return {}
@@ -155,6 +179,7 @@ def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
             "legacy_command_catalog": scene["schema_version"] == 1,
             "state_management_commands": list(STATE_MANAGEMENT_COMMANDS),
             "graph_construction_commands": True,
+            "timer_handler_layout": _timer_handler_layout_capability(),
             "local_graph_commands": list(LOCAL_GRAPH_COMMANDS),
             "scene_connection_commands": True,
             "connection_commands": list(SCENE_CONNECTION_COMMANDS),
@@ -508,6 +533,7 @@ class AuthoringService:
                     "handler_collection": "event_handlers",
                     "handler_target_optional": True,
                     "element_actions_require_target_state": True,
+                    "editor_layout": _timer_handler_layout_capability(),
                 },
                 "command_batch_maximum": 64,
                 "target_scene_actions": ["play_sfx"],
@@ -614,6 +640,7 @@ class AuthoringService:
                     "editor.state_graph.set_entry_layout",
                     "editor.state_graph.delete_system_exit",
                     "editor.state_graph.set_route_layout",
+                    "editor.state_graph.set_handler_layout",
                 ],
                 "state_commands": [
                     "state.create",

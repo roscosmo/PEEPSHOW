@@ -14,6 +14,7 @@ typedef struct
   uint32_t valid;
   uint32_t full_frames;
   uint32_t reused_frames;
+  /* Element draw calls, including clipped calls in each damaged region. */
   uint32_t elements_drawn;
 } ps_scene_frame_cache_t;
 

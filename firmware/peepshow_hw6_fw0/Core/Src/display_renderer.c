@@ -41,6 +41,8 @@ static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 /* thDisplay selects a private raster only within synchronous composition. */
 static uint8_t *s_display_draw_framebuffer = s_display_framebuffer;
 static const ps_egg_sprite_catalog_t *s_display_candidate_catalog;
+/* Non-NULL only during synchronous private-cache region composition. */
+static const ps_scene_render_element_t *s_display_draw_clip;
 static uint8_t s_display_committed_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint8_t s_display_cursor_base_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint16_t s_display_dirty_rows[DISPLAY_RENDERER_DIRTY_ROW_MAX];
@@ -110,11 +112,17 @@ static void DisplayRenderer_MarkPanelRowDirty(uint16_t panel_y)
   }
 
   panel_row = (uint16_t)(panel_y + 1U);
-  insert_at = 0U;
-  while ((insert_at < s_display_dirty_row_count) &&
-         (s_display_dirty_rows[insert_at] < panel_row))
+  insert_at = s_display_dirty_row_count;
+  /* Frame comparison visits rows in order, so normally only append. */
+  if ((insert_at != 0U) &&
+      (s_display_dirty_rows[insert_at - 1U] > panel_row))
   {
-    ++insert_at;
+    insert_at = 0U;
+    while ((insert_at < s_display_dirty_row_count) &&
+           (s_display_dirty_rows[insert_at] < panel_row))
+    {
+      ++insert_at;
+    }
   }
   for (i = s_display_dirty_row_count; i > insert_at; --i)
   {
@@ -140,10 +148,12 @@ static void DisplayRenderer_ComputeDirtyRowsFromCommitted(void)
   uint16_t row;
   uint32_t row_offset;
 
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DIRTY_ROWS, 0UL, 0UL);
   DisplayRenderer_ResetDirtyRows();
   if (s_display_committed_valid == 0UL)
   {
     DisplayRenderer_MarkAllRowsDirty();
+    PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DIRTY_ROWS, 1UL, s_display_dirty_row_count);
     return;
   }
 
@@ -157,6 +167,7 @@ static void DisplayRenderer_ComputeDirtyRowsFromCommitted(void)
       DisplayRenderer_MarkPanelRowDirty(row);
     }
   }
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_DIRTY_ROWS, 1UL, s_display_dirty_row_count);
 }
 
 static uint32_t DisplayRenderer_CountBlackPixels(void)
@@ -264,6 +275,10 @@ static uint32_t DisplayRenderer_ApplyPackageSprite(
   uint32_t count = 0UL;
   uint16_t x;
   uint16_t y;
+  uint16_t x_begin = 0U;
+  uint16_t y_begin = 0U;
+  uint16_t x_end;
+  uint16_t y_end;
 
   if ((bounds == NULL) || (destination == NULL) ||
       (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
@@ -276,17 +291,40 @@ static uint32_t DisplayRenderer_ApplyPackageSprite(
     return 0UL;
   }
 
+  x_end = frame.width;
+  y_end = frame.height;
+  if (s_display_draw_clip != NULL)
+  {
+    uint32_t clip_right = (uint32_t)s_display_draw_clip->x + s_display_draw_clip->width;
+    uint32_t clip_bottom = (uint32_t)s_display_draw_clip->y + s_display_draw_clip->height;
+    if ((bounds->x >= clip_right) || (bounds->y >= clip_bottom) ||
+        ((uint32_t)bounds->x + x_end <= s_display_draw_clip->x) ||
+        ((uint32_t)bounds->y + y_end <= s_display_draw_clip->y))
+    {
+      if (black_pixels != NULL) { *black_pixels = 0UL; }
+      return 1UL;
+    }
+    if (bounds->x < s_display_draw_clip->x)
+    { x_begin = (uint16_t)(s_display_draw_clip->x - bounds->x); }
+    if (bounds->y < s_display_draw_clip->y)
+    { y_begin = (uint16_t)(s_display_draw_clip->y - bounds->y); }
+    if ((uint32_t)bounds->x + x_end > clip_right)
+    { x_end = (uint16_t)(clip_right - bounds->x); }
+    if ((uint32_t)bounds->y + y_end > clip_bottom)
+    { y_end = (uint16_t)(clip_bottom - bounds->y); }
+  }
+
   /* Bounds were checked once above. A logical row walks upward through panel
    * rows; its destination bit is constant. Clear transparent pixels in this
    * same pass when requested, preserving opaque white and mask semantics. */
-  for (y = 0U; y < frame.height; ++y)
+  for (y = y_begin; y < y_end; ++y)
   {
     uint32_t source_row = (uint32_t)y * frame.row_stride_bytes;
     uint32_t panel_x = (uint32_t)bounds->y + y;
-    uint32_t target = ((DISPLAY_RENDERER_WIDTH - 1UL - bounds->x) * LINE_WIDTH) +
+    uint32_t target = ((DISPLAY_RENDERER_WIDTH - 1UL - bounds->x - x_begin) * LINE_WIDTH) +
                       (panel_x >> 3U);
     uint8_t target_bit = (uint8_t)(1U << (panel_x & 7U));
-    for (x = 0U; x < frame.width; ++x)
+    for (x = x_begin; x < x_end; ++x)
     {
       uint8_t bit = (uint8_t)(0x80U >> (x & 7U));
       uint32_t offset = source_row + ((uint32_t)x >> 3U);
@@ -513,10 +551,12 @@ static void DisplayRenderer_ClearListCursor(uint32_t row)
 
 static void DisplayRenderer_RecordCursorBaseFrame(void)
 {
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_BASE_COPY, 0UL, sizeof(s_display_cursor_base_framebuffer));
   (void)memcpy(s_display_cursor_base_framebuffer,
                s_display_framebuffer,
                sizeof(s_display_cursor_base_framebuffer));
   s_display_cursor_base_valid = 1UL;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_BASE_COPY, 1UL, 0UL);
 }
 
 static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
@@ -530,6 +570,7 @@ static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
     return;
   }
 
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_STATS, 0UL, 0UL);
   stats->width = DISPLAY_WIDTH;
   stats->height = DISPLAY_HEIGHT;
   stats->framebuffer_hash = DisplayRenderer_FramebufferHash();
@@ -542,10 +583,12 @@ static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
   stats->primitive_id = primitive_id;
   stats->previous_focus_row = previous_focus_row;
   stats->current_focus_row = current_focus_row;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_STATS, 1UL, 0UL);
 }
 
 void DisplayRenderer_ClearWhite(void)
 {
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_CLEAR, 0UL, sizeof(s_display_framebuffer));
   DisplayRenderer_ResetDirtyRows();
   (void)memset(s_display_framebuffer, 0xFF,
                sizeof(s_display_framebuffer));
@@ -555,6 +598,7 @@ void DisplayRenderer_ClearWhite(void)
   s_display_pending_list_invalidates = 1UL;
   s_display_pending_focus_valid = 0UL;
   s_display_pending_focus_invalidates = 1UL;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_CLEAR, 1UL, 0UL);
 }
 
 const uint8_t *DisplayRenderer_GetBuffer(void)
@@ -573,6 +617,7 @@ uint32_t DisplayRenderer_GetDirtyRows(const uint16_t **rows)
 
 void DisplayRenderer_CommitPresentedFrame(void)
 {
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMMIT, 0UL, sizeof(s_display_committed_framebuffer));
   (void)memcpy(s_display_committed_framebuffer,
                s_display_framebuffer,
                sizeof(s_display_committed_framebuffer));
@@ -603,6 +648,7 @@ void DisplayRenderer_CommitPresentedFrame(void)
   }
   s_display_pending_focus_valid = 0UL;
   s_display_pending_focus_invalidates = 0UL;
+  PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMMIT, 1UL, 0UL);
 }
 
 static uint32_t DisplayRenderer_ApplyCursorBlinkPhase(
@@ -1820,6 +1866,12 @@ static uint32_t DisplayRenderer_SetBlack(uint16_t x, uint16_t y)
   uint32_t index;
   uint8_t mask;
 
+  if ((s_display_draw_clip != NULL) &&
+      ((x < s_display_draw_clip->x) || (y < s_display_draw_clip->y) ||
+       (x >= (uint32_t)s_display_draw_clip->x + s_display_draw_clip->width) ||
+       (y >= (uint32_t)s_display_draw_clip->y + s_display_draw_clip->height)))
+  { return 0UL; }
+
   if (s_rotate_ccw != 0UL)
   {
     if ((x >= DISPLAY_RENDERER_WIDTH) || (y >= DISPLAY_RENDERER_HEIGHT))
@@ -1853,6 +1905,16 @@ static uint32_t DisplayRenderer_HorizontalLine(uint16_t x0,
   uint32_t count = 0UL;
   uint16_t x;
 
+  if (s_display_draw_clip != NULL)
+  {
+    uint16_t right = (uint16_t)(s_display_draw_clip->x + s_display_draw_clip->width - 1U);
+    if ((y < s_display_draw_clip->y) ||
+        (y >= (uint32_t)s_display_draw_clip->y + s_display_draw_clip->height) ||
+        (x1 < s_display_draw_clip->x) || (x0 > right)) { return 0UL; }
+    if (x0 < s_display_draw_clip->x) { x0 = s_display_draw_clip->x; }
+    if (x1 > right) { x1 = right; }
+  }
+
   for (x = x0; x <= x1; ++x)
   {
     count += DisplayRenderer_SetBlack(x, y);
@@ -1866,6 +1928,16 @@ static uint32_t DisplayRenderer_VerticalLine(uint16_t x,
 {
   uint32_t count = 0UL;
   uint16_t y;
+
+  if (s_display_draw_clip != NULL)
+  {
+    uint16_t bottom = (uint16_t)(s_display_draw_clip->y + s_display_draw_clip->height - 1U);
+    if ((x < s_display_draw_clip->x) ||
+        (x >= (uint32_t)s_display_draw_clip->x + s_display_draw_clip->width) ||
+        (y1 < s_display_draw_clip->y) || (y0 > bottom)) { return 0UL; }
+    if (y0 < s_display_draw_clip->y) { y0 = s_display_draw_clip->y; }
+    if (y1 > bottom) { y1 = bottom; }
+  }
 
   for (y = y0; y <= y1; ++y)
   {
@@ -2641,50 +2713,58 @@ uint32_t DisplayRenderer_CopyCandidateSceneFrameCached(const ps_scene_render_mod
            (memcmp(&cache->model.elements[local], &model->elements[local], sizeof(*element)) != 0)))
       { dirty |= 1UL << index; }
     }
-    /* Expand to whole overlapping objects so no primitive needs partial clipping.
-     * At most 24 objects can be added; this is a bounded closure, not a retry. */
-    for (uint32_t pass = 0UL; pass < count; ++pass)
+    /* Keep only changed old/new bounds. Remove contained regions (including
+     * duplicates); intersecting unchanged objects must not expand the damage. */
+    for (index = 0UL; index < count; ++index)
     {
-      uint32_t before = dirty;
-      for (index = 0UL; index < count; ++index)
+      const ps_scene_render_element_t *element = DisplayRenderer_CacheElement(cache, model, index);
+      if ((dirty & (1UL << index)) == 0UL) { continue; }
+      for (uint32_t other = 0UL; other < count; ++other)
       {
-        const ps_scene_render_element_t *element = DisplayRenderer_CacheElement(cache, model, index);
-        if ((element->visible == 0UL) || ((dirty & (1UL << index)) != 0UL)) { continue; }
-        for (uint32_t other = 0UL; other < count; ++other)
+        const ps_scene_render_element_t *region = DisplayRenderer_CacheElement(cache, model, other);
+        if ((other != index) && ((dirty & (1UL << other)) != 0UL) &&
+            (element->x >= region->x) && (element->y >= region->y) &&
+            ((uint32_t)element->x + element->width <= (uint32_t)region->x + region->width) &&
+            ((uint32_t)element->y + element->height <= (uint32_t)region->y + region->height))
         {
-          if (((dirty & (1UL << other)) != 0UL) &&
-              (DisplayRenderer_ElementsOverlap(element, DisplayRenderer_CacheElement(cache, model, other)) != 0UL))
-          { dirty |= 1UL << index; break; }
+          dirty &= ~(1UL << index);
+          break;
         }
       }
-      if (before == dirty) { break; }
     }
     PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_OVERLAP, 1UL);
     if (dirty != 0UL)
     {
-      /* Modify the private cache in place; neither live pixels nor DMA storage
-       * are scratch. The draw destination is restored before returning. */
-      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_CLEAR, 0UL);
-      for (index = 0UL; index < count; ++index)
-      {
-        const ps_scene_render_element_t *element = DisplayRenderer_CacheElement(cache, model, index);
-        if ((dirty & (1UL << index)) == 0UL) { continue; }
-        DisplayRenderer_ClearLogicalRectInBuffer(cache->frame,
-          element->x, element->y, element->width, element->height);
-      }
-      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_CLEAR, 1UL);
-      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_DRAW, 0UL);
       saved_rotation = s_rotate_ccw;
       s_rotate_ccw = 1UL;
       s_display_draw_framebuffer = cache->frame;
-      (void)DisplayRenderer_DrawSceneModelMasked(model, dirty >> cache->model.element_count);
+      /* Each region is independently cleared and completely recomposed in
+       * layer order. Overlapping regions are safe; pixels outside stay intact. */
+      for (index = 0UL; index < count; ++index)
+      {
+        const ps_scene_render_element_t *element = DisplayRenderer_CacheElement(cache, model, index);
+        uint32_t draw_mask = 0UL;
+        if ((dirty & (1UL << index)) == 0UL) { continue; }
+        for (uint32_t draw = 0UL; draw < model->element_count; ++draw)
+        {
+          if ((model->elements[draw].visible != 0UL) &&
+              (DisplayRenderer_ElementsOverlap(element, &model->elements[draw]) != 0UL))
+          { draw_mask |= 1UL << draw; cache->elements_drawn++; }
+        }
+        PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_CLEAR, 0UL);
+        DisplayRenderer_ClearLogicalRectInBuffer(cache->frame,
+          element->x, element->y, element->width, element->height);
+        PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_CLEAR, 1UL);
+        PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_DRAW, 0UL);
+        s_display_draw_clip = element;
+        (void)DisplayRenderer_DrawSceneModelMasked(model, draw_mask);
+        s_display_draw_clip = NULL;
+        PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_DRAW, 1UL);
+      }
       s_display_draw_framebuffer = s_display_framebuffer;
       s_rotate_ccw = saved_rotation;
-      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_DRAW, 1UL);
     }
     cache->reused_frames++;
-    for (index = 0UL; index < model->element_count; ++index)
-    { cache->elements_drawn += ((dirty >> (cache->model.element_count + index)) & 1UL); }
   }
   if (cache->valid != 0UL)
   {
@@ -3988,7 +4068,9 @@ void DisplayRenderer_PrepareUIPage(
   {
     DisplayRenderer_ClearWhite();
     s_rotate_ccw = 1UL;
+    PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMPOSE, 0UL, scene_model->element_count);
     black_pixels = DisplayRenderer_DrawSceneModel(scene_model);
+    PS_HW6_TraceObjectPanel(PS_TRACE_PANEL_COMPOSE, 1UL, black_pixels);
     if (page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_CUE)
     {
       DisplayRenderer_WhiteRect(27U, 62U, 106U, 36U);
