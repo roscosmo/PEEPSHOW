@@ -1,5 +1,6 @@
 #include "ps_hw6_rtos_probe.h"
 #include "ps_battery_wake.h"
+#include "ps_hw6_system_time.h"
 
 #include <string.h>
 
@@ -8557,6 +8558,137 @@ static void PS_HW6_RTOS_RuntimePackageReturn(void)
     (uint32_t)PS_STATUS_OK : (uint32_t)PS_STATUS_INTERNAL_ERROR);
 }
 
+/* System-time transaction: thUI submits/consumes, thPower samples and edits. */
+static ps_system_time_t ps_system_clock;
+static uint32_t ps_system_time_seconds;
+static uint32_t ps_system_time_debug_token;
+volatile uint32_t g_ps_system_time_request;
+volatile ps_system_datetime_t g_ps_system_time_request_local;
+volatile ps_hw6_system_time_probe_t g_ps_system_time_probe = {
+  .api_version = 1UL, .send_status = 0xFFFFFFFFUL,
+  .result = {.status = PS_SYSTEM_TIME_UNSET, .source_status = 0xFFFFFFFFUL}
+};
+
+uint32_t PS_HW6_SystemTime_Request(uint32_t operation,
+  const ps_system_datetime_t *local, uint32_t *token)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+  uint32_t seconds = 0UL;
+  UINT status;
+  if (tx_thread_identify() != &ps_threads[PS_HW6_RTOS_OWNER_UI]) { return TX_CALLER_ERROR; }
+  if ((token == NULL) || ((operation != PS_HW6_SYSTEM_TIME_READ) &&
+      (operation != PS_HW6_SYSTEM_TIME_SET))) { return TX_PTR_ERROR; }
+  if ((operation == PS_HW6_SYSTEM_TIME_SET) &&
+      (PS_SystemTime_Encode(local, &seconds) != PS_SYSTEM_TIME_OK)) { return TX_PTR_ERROR; }
+  if ((g_ps_hw6_rtos_probe.runtime_complete == 0UL) ||
+      (g_ps_system_time_probe.pending != 0UL)) { return TX_NOT_AVAILABLE; }
+  if (g_ps_system_time_probe.request == UINT32_MAX) { return TX_NOT_AVAILABLE; }
+  g_ps_system_time_probe.request++;
+  g_ps_system_time_probe.pending = 1UL;
+  g_ps_system_time_probe.operation = operation;
+  ps_system_time_seconds = seconds;
+  message[0] = PS_HW6_SYSTEM_TIME_MAGIC;
+  message[1] = g_ps_system_time_probe.request;
+  message[2] = operation;
+  message[3] = seconds;
+  __DMB();
+  status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_POWER], message, TX_NO_WAIT);
+  g_ps_system_time_probe.send_status = status;
+  if (status != TX_SUCCESS)
+  {
+    g_ps_system_time_probe.pending = 0UL;
+    return status;
+  }
+  *token = (uint32_t)message[1];
+  return TX_SUCCESS;
+}
+
+uint32_t PS_HW6_SystemTime_Take(uint32_t token, ps_hw6_system_time_result_t *result)
+{
+  if (tx_thread_identify() != &ps_threads[PS_HW6_RTOS_OWNER_UI]) { return TX_CALLER_ERROR; }
+  if ((result == NULL) || (token == 0UL) ||
+      (token != g_ps_system_time_probe.request) ||
+      (g_ps_system_time_probe.pending == 0UL)) { return TX_PTR_ERROR; }
+  if (g_ps_system_time_probe.complete != token) { return TX_NO_EVENTS; }
+  __DMB();
+  *result = g_ps_system_time_probe.result;
+  g_ps_system_time_probe.pending = 0UL;
+  return TX_SUCCESS;
+}
+
+static void PS_HW6_SystemTime_Owner(const ULONG *message)
+{
+  RTC_TimeTypeDef time;
+  RTC_DateTypeDef date;
+  ps_system_datetime_t raw, requested;
+  ps_hw6_system_time_result_t result = {0};
+  uint32_t seconds;
+  if ((tx_thread_identify() != &ps_threads[PS_HW6_RTOS_OWNER_POWER]) ||
+      (message[0] != PS_HW6_SYSTEM_TIME_MAGIC) ||
+      (g_ps_system_time_probe.pending == 0UL) ||
+      (message[1] != g_ps_system_time_probe.request) ||
+      (message[1] == g_ps_system_time_probe.complete) ||
+      (message[2] != g_ps_system_time_probe.operation) ||
+      (message[3] != ps_system_time_seconds))
+  {
+    g_ps_system_time_probe.rejected_messages++;
+    return;
+  }
+  result.source_status = HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN);
+  if (result.source_status == HAL_OK)
+  { result.source_status = HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN); }
+  if (result.source_status == HAL_OK)
+  {
+    raw = (ps_system_datetime_t){(uint16_t)(2000U + date.Year), date.Month,
+      date.Date, time.Hours, time.Minutes, time.Seconds};
+    if ((PS_SystemTime_Encode(&raw, &seconds) != PS_SYSTEM_TIME_OK) ||
+        (time.SubSeconds > time.SecondFraction))
+    { result.source_status = HAL_ERROR; }
+    else
+    {
+      result.source_ms = (uint64_t)seconds * 1000ULL +
+        (uint64_t)(time.SecondFraction - time.SubSeconds) * 1000ULL /
+        ((uint64_t)time.SecondFraction + 1ULL);
+    }
+  }
+  if (result.source_status != HAL_OK)
+  {
+    PS_SystemTime_Invalidate(&ps_system_clock);
+    result.status = PS_SYSTEM_TIME_SOURCE_LOST;
+  }
+  else if (message[2] == PS_HW6_SYSTEM_TIME_SET)
+  {
+    result.status = PS_SystemTime_Decode((uint32_t)message[3], &requested);
+    if (result.status == PS_SYSTEM_TIME_OK)
+    { result.status = PS_SystemTime_Set(&ps_system_clock, &requested, result.source_ms); }
+    if (result.status == PS_SYSTEM_TIME_OK)
+    { result.status = PS_SystemTime_Read(&ps_system_clock, result.source_ms, &result.snapshot); }
+  }
+  else
+  { result.status = PS_SystemTime_Read(&ps_system_clock, result.source_ms, &result.snapshot); }
+  g_ps_system_time_probe.result = result;
+  __DMB();
+  g_ps_system_time_probe.complete = (uint32_t)message[1];
+}
+
+static void PS_HW6_SystemTime_DebugUi(void)
+{
+  ps_hw6_system_time_result_t result;
+  ps_system_datetime_t local;
+  uint32_t operation;
+  if (ps_system_time_debug_token != 0UL)
+  {
+    if (PS_HW6_SystemTime_Take(ps_system_time_debug_token, &result) == TX_SUCCESS)
+    { ps_system_time_debug_token = 0UL; }
+  }
+  if ((g_ps_system_time_request == 0UL) || (ps_system_time_debug_token != 0UL)) { return; }
+  operation = g_ps_system_time_request;
+  local = g_ps_system_time_request_local;
+  g_ps_system_time_request = 0UL;
+  g_ps_system_time_probe.send_status = PS_HW6_SystemTime_Request(operation, &local,
+    &ps_system_time_debug_token);
+}
+
 static HAL_StatusTypeDef PS_HW6_RTOS_ObjectRtcMilliseconds(uint64_t *value)
 {
   static const uint16_t before_month[12] =
@@ -12090,6 +12222,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
 
   now = tx_time_get();
   g_ps_hw6_rtos_probe.owner_last_tick[owner_id] = (uint32_t)now;
+  if (owner_id == PS_HW6_RTOS_OWNER_POWER) { PS_SystemTime_Init(&ps_system_clock); }
   g_ps_hw6_rtos_probe.owner_start_mask |= (1UL << owner_id);
   PS_HW6_RTOS_RecordThreadStackProbe(owner_id);
   PS_HW6_RTOS_UpdateRuntimeComplete();
@@ -12140,7 +12273,12 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
           (uint32_t)message[word];
       }
 
-      if ((message[0] == PS_HW6_RTOS_PACKAGE_WORKFLOW_MAGIC) &&
+      if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+          (message[0] == PS_HW6_SYSTEM_TIME_MAGIC))
+      {
+        PS_HW6_SystemTime_Owner(message);
+      }
+      else if ((message[0] == PS_HW6_RTOS_PACKAGE_WORKFLOW_MAGIC) &&
           (message[1] == owner_id))
       {
         PS_HW6_RTOS_PackageWorkflowHandleMessage(owner_id, message);
@@ -13256,6 +13394,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     }
     if (owner_id == PS_HW6_RTOS_OWNER_UI)
     {
+      PS_HW6_SystemTime_DebugUi();
       PS_HW6_RTOS_PackageWorkflowServiceUi();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
