@@ -54,6 +54,7 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_COMMAND_MAGIC         (0x434D4421UL)
 #define PS_HW6_RTOS_COMMAND_TOKEN         (0xC0DEC0DEUL)
 #define PS_HW6_RTOS_DISPLAY_UI_MAGIC      (0x44554921UL)
+#define PS_HW6_RTOS_DISPLAY_TIME_MAGIC    (0x4454494DUL)
 #define PS_HW6_RTOS_UI_INPUT_MAGIC        (0x55494221UL)
 #define PS_HW6_RTOS_UI_LIFECYCLE_MAGIC    (0x554C4621UL)
 #define PS_HW6_RTOS_RUNTIME_INPUT_MAGIC   (0x52494221UL)
@@ -5585,6 +5586,11 @@ static uint32_t PS_HW6_RTOS_Stop2AutoUiAllowsIdle(void)
   uint32_t page = g_ps_ui_router_probe.current_page;
   uint32_t nav = g_ps_ui_router_probe.nav_state;
 
+  if ((g_ps_system_time_probe.pending != 0UL) ||
+      ((page == PS_UI_ROUTER_PAGE_TIME) &&
+       ((g_ps_ui_time_probe.status == PS_UI_TIME_LOADING) ||
+        (g_ps_ui_time_probe.status == PS_UI_TIME_SAVING)))) { return 0UL; }
+
   if ((g_ps_ui_router_request != 0UL) ||
       (g_ps_ui_router_probe.pending_action !=
        (uint32_t)PS_UI_ROUTER_ACTION_NONE) ||
@@ -5606,6 +5612,7 @@ static uint32_t PS_HW6_RTOS_Stop2AutoUiAllowsIdle(void)
   return ((page == (uint32_t)PS_UI_ROUTER_PAGE_HOME) ||
           (page == (uint32_t)PS_UI_ROUTER_PAGE_MENU) ||
           (page == (uint32_t)PS_UI_ROUTER_PAGE_SETTINGS) ||
+          (page == (uint32_t)PS_UI_ROUTER_PAGE_TIME) ||
           (page == (uint32_t)PS_UI_ROUTER_PAGE_PACKAGE_BROWSER) ||
           (page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF)) ?
          1UL : 0UL;
@@ -6234,6 +6241,7 @@ static uint32_t PS_HW6_RTOS_InputPolicyShellPageActive(void)
     case PS_UI_ROUTER_PAGE_HOME:
     case PS_UI_ROUTER_PAGE_MENU:
     case PS_UI_ROUTER_PAGE_SETTINGS:
+    case PS_UI_ROUTER_PAGE_TIME:
     case PS_UI_ROUTER_PAGE_CALIBRATION:
     case PS_UI_ROUTER_PAGE_PACKAGE_BROWSER:
       return 1UL;
@@ -7219,6 +7227,20 @@ static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void)
        ((g_ps_ui_router_probe.shutdown_state >= PS_UI_ROUTER_SHUTDOWN_MSC_EXPORT) &&
         (g_ps_ui_router_probe.shutdown_state <= PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY))))
   {
+    return;
+  }
+  if (g_ps_ui_router_probe.current_page ==
+      (uint32_t)PS_UI_ROUTER_PAGE_TIME)
+  {
+    ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+    ps_system_datetime_t local = g_ps_ui_time_probe.draft;
+    uint32_t seconds = 0UL;
+    (void)PS_SystemTime_Encode(&local, &seconds);
+    message[0] = PS_HW6_RTOS_DISPLAY_TIME_MAGIC;
+    message[1] = seconds;
+    message[2] = display_focus;
+    message[3] = g_ps_ui_time_probe.status;
+    (void)tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_DISPLAY], message, TX_NO_WAIT);
     return;
   }
   if (g_ps_ui_router_probe.current_page ==
@@ -8710,6 +8732,31 @@ static HAL_StatusTypeDef PS_HW6_RTOS_ObjectRtcMilliseconds(uint64_t *value)
     ((uint64_t)(time.SecondFraction - time.SubSeconds) * 1000ULL) /
       ((uint64_t)time.SecondFraction + 1ULL);
   return HAL_OK;
+}
+
+/* Consume only our own token; late results cannot reopen an abandoned editor. */
+static void PS_HW6_SystemTime_EditorUi(void)
+{
+  static uint32_t token, session, operation;
+  ps_hw6_system_time_result_t result;
+  ps_system_datetime_t local;
+  uint32_t status;
+  if (token != 0UL)
+  {
+    if (PS_HW6_SystemTime_Take(token, &result) != TX_SUCCESS) { return; }
+    token = 0UL;
+    if (PS_UIRouter_CompleteTimeRequest(session, operation, result.status,
+                                       &result.snapshot.local) != 0UL)
+    { PS_HW6_RTOS_SendCurrentUiRenderCommand(); }
+  }
+  operation = PS_UIRouter_TakeTimeRequest(&session, &local);
+  if (operation == 0UL) { return; }
+  status = PS_HW6_SystemTime_Request(operation, &local, &token);
+  if (status != TX_SUCCESS)
+  {
+    if (PS_UIRouter_CompleteTimeRequest(session, operation, UINT32_MAX, &local) != 0UL)
+    { PS_HW6_RTOS_SendCurrentUiRenderCommand(); }
+  }
 }
 
 uint32_t PS_HW6_RTOS_ObjectSleepClockBegin(void)
@@ -12406,6 +12453,26 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (void)tx_event_flags_set(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
           PS_HW6_RTOS_OBJECT_DISPLAY_ACK, TX_OR);
       }
+      else if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
+               (message[0] == PS_HW6_RTOS_DISPLAY_TIME_MAGIC))
+      {
+        ps_system_datetime_t local;
+        if ((g_ps_hw6_battery_fault_wait_probe.active != 0UL) ||
+            (g_ps_ui_router_probe.current_page != PS_UI_ROUTER_PAGE_TIME) ||
+            (message[2] > 7UL) || (message[3] > PS_UI_TIME_SAVE_ERROR) ||
+            (PS_SystemTime_Decode((uint32_t)message[1], &local) != PS_SYSTEM_TIME_OK))
+        { continue; }
+        (void)PS_HW6_RTOS_RequestDisplayClockCapabilities(
+          PS_HW6_RTOS_DISPLAY_CLOCK_REASON_TRANSFER,
+          PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES);
+        /* TIME payload: encoded civil seconds, focus, no shutdown, editor status. */
+        (void)PS_HW6_DisplayOwner_RenderUI(PS_UI_ROUTER_PAGE_TIME,
+          (uint32_t)message[1], (uint32_t)message[2], PS_UI_ROUTER_SHUTDOWN_NONE,
+          (uint32_t)message[3]);
+        (void)PS_HW6_RTOS_RequestDisplayClockCapabilities(
+          PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE, 0UL);
+        PS_HW6_RTOS_ResetDisplayCursorBlink((uint32_t)tx_time_get());
+      }
       else if (PS_HW6_RTOS_DisplayUiCommandIsValid(owner_id, message) != 0UL)
       {
         if (g_ps_hw6_battery_fault_wait_probe.active != 0UL) { continue; }
@@ -12516,7 +12583,9 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
             router_status = PS_UIRouter_Dispatch(
               PS_HW6_RTOS_RouterEventForLogicalSource(button));
           }
-          if (router_status == PS_STATUS_OK)
+          if ((router_status == PS_STATUS_OK) &&
+              ((g_ps_ui_router_probe.current_page != PS_UI_ROUTER_PAGE_TIME) ||
+               (dispatch != 0UL)))
           {
             PS_HW6_RTOS_SendCurrentUiRenderCommand();
           }
@@ -13395,6 +13464,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     if (owner_id == PS_HW6_RTOS_OWNER_UI)
     {
       PS_HW6_SystemTime_DebugUi();
+      PS_HW6_SystemTime_EditorUi();
       PS_HW6_RTOS_PackageWorkflowServiceUi();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&

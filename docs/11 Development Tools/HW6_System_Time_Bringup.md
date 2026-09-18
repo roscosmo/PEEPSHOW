@@ -2,14 +2,16 @@
 
 ## Scope and Status
 
-Second checkpoint: local-time core plus a power-owned read/set transaction.
+Third checkpoint: optional shell Time editor over the power-owned read/set transaction.
 `thUI` submits one copied request to `thPower`, which samples the RTC and owns
 the local-time mapping. The debugger mailbox exercises this same request path.
 Firmware build and native tests pass. HW6 owner read/set, midnight rollover,
 forward/backward edits and reset-to-UNSET passed the bench checks below. Debugger
 cleanup caused a separate unresolved lockup; safe automated detach is not validated.
-No user-visible Time page, new wake
-source, calendar event, persistent record or public capability is enabled.
+The shell editor builds and passes native tests. The user confirmed physical
+entry, draft cancellation, SAVED feedback, advancing time on reopening, and that
+the layout fits. No new wake source, calendar event, persistent record or public
+capability is enabled.
 
 Authority: [[Time_And_Power_Intent_API_Contract]],
 [[Shell_Settings_Calibration_Contract]], [[Authority_and_Invariants]].
@@ -141,13 +143,92 @@ snapshot cannot prove oscillator drift, current consumption or shipping retentio
 
 ## Next Checkpoints
 
-1. Shell Time entry/editor with explicit Save/Cancel, validation and an unset
-   prompt. Opening/cancelling must not change time. Save completion must reflect
-   owner acceptance rather than merely queued work.
+1. Complete remaining shell edge-case checks: month/leap-day edits, idle/wake,
+   package resume and reset through the shell. Basic editor checks passed below.
 2. Bench relative timers across shell editing, pause/resume and STOP2. Confirm backup
    and oscillator supply facts before persistence promises.
 3. Advertise validated clock reads and later bounded calendar schedules separately.
    Pet midnight/random events require their own scheduler and editor increment.
+
+## Shell Time Editor
+
+SYSTEM now offers TIME, CALIB and PACKAGES. TIME replaces the nonfunctional
+SETTINGS placeholder row; calibration and package routes are unchanged. Setup
+is optional and never prevents normal package boot. No automatic first-boot prompt
+is introduced in this checkpoint. The router API is 19; existing page/event IDs
+are preserved and TIME is appended as page 12.
+
+- Opening requests one owner snapshot. Valid local time seeds the draft; unset,
+  lost or out-of-range time shows TIME NOT SET and a draft of 2000-01-01 00:00:00.
+  That draft is not committed until Save. Queue/transport failures show retry/back.
+- Joystick left/right or L/R selects YEAR, MONTH, DAY, HOUR, MINUTE, SECOND,
+  SAVE or CANCEL. Up/down changes a date/time field, wrapping its legal range.
+  Changing month/year clamps an invalid day, including leap-day cases.
+- A advances to the next field, or activates focused SAVE/CANCEL. B cancels.
+  SAVE validates and submits once; SAVING blocks editing, duplicate Save and
+  user cancellation until the matching owner result arrives. No success is shown
+  merely because the request was queued. A failed Save preserves the draft.
+- A successful Save shows SAVED and leaves the editor open. It is an editing
+  snapshot, not a ticking clock. Reopening requests a fresh snapshot.
+- A read can finish after Cancel without reopening the editor. Session identity
+  prevents stale completion from changing a newer draft. A power overlay may
+  interrupt an accepted Save; it cannot undo the owner transaction. Its completion
+  updates only the matching session and never dismisses the power overlay.
+- The footer states RESET CLEARS TIME. No flash, backup-domain persistence,
+  raw RTC edit, calendar scheduling or public game-time API is added.
+
+The UI service consumes the existing single-flight token without blocking or
+introducing a new polling cadence. Only explicit entry/Save/retry requests sample
+the RTC. Loading/saving or an outstanding time transaction temporarily blocks
+ordinary automatic idle; settled editing is eligible for the normal held-display
+STOP2 path. Battery fault/shutdown handling remains authoritative.
+
+Display data is copied into a dedicated four-word message: TIME magic, encoded
+civil seconds, focus and status. On thDisplay the existing RenderUI call uses
+page TIME, calibration argument=encoded seconds, focus=field, shutdown=NONE,
+countdown argument=editor status. The renderer does not read the mutable draft.
+The page clears and redraws on input/completion, has no cursor-blink animation,
+and invalidates the old list-focus cache. Joystick-state updates without a
+dispatched direction do not redraw TIME.
+
+Native evidence: `test_firmware_time_editor.py` exercises the actual router/time
+core and production text drawing functions. It covers Cancel, field wrapping,
+month/leap-day clamping, Save failure/retry, duplicate Save, abandoned reads,
+stale sessions and shutdown overlays. All 56 focus/status rendering combinations
+are nonblank with no out-of-bounds or overlapping black-pixel writes. This is not
+a physical panel-transfer or joystick test. Owner tests also exercise the real
+editor service with queue/RTC stubs; shell/package workflow tests remain passing.
+
+### Shell Bench Check
+
+User-confirmed hardware results for this checkpoint: entered through START/system
+navigation; cancelled edits and reopened to a reset draft; saved and observed SAVED;
+reopened after saving and observed advancing time; all text fitted on screen.
+This is observed UI behaviour, not queue-counter inference. The report does not
+separately establish month/leap-day handling on target, idle current, shell idle/wake,
+package-resume/relative-timer regression, or a new reset-through-editor test. The
+earlier owner-level reset-to-UNSET evidence remains valid. No debugger cleanup
+experiment was repeated for these shell checks.
+
+Reflash the normal Debug firmware; keep the installed egg unchanged. No GDB
+time-setting helper or low-power-debug manipulation is needed for this test.
+
+1. HOLD START to open the system root, choose SYSTEM, then TIME. After reboot
+   expect TIME NOT SET and the editable default draft.
+2. Change several fields, then B. Reopen TIME: it must still be unset. Try the
+   focused CANCEL action as well.
+3. Set a recognizable date/time, select SAVE and press A. Expect SAVED, then
+   leave/reopen after several seconds. The newly read time must have advanced.
+4. Try January 31 -> February and a leap-year change; the day must clamp to a
+   valid date. Check left/right selection, up/down adjustment and all labels fit.
+5. Leave the editor idle, then wake normally and continue editing. Resume the
+   package and confirm its normal inputs, presentation and relative timers.
+6. An intentional reset must return TIME to TIME NOT SET without blocking the egg.
+
+Optional read-only debugger evidence: `p g_ps_ui_time_probe` shows draft/session,
+editor status and pending request; `p g_ps_system_time_probe` shows the completed
+owner transaction. Editor status LOADING/UNSET/EDIT/SAVING/SAVED/READ_ERROR/
+SAVE_ERROR=0/1/2/3/4/5/6. These do not prove the panel was physically updated.
 
 ## HW6 Bench Results: 2026-09-18
 

@@ -39,6 +39,7 @@ typedef struct
 volatile ps_ui_router_probe_t g_ps_ui_router_probe;
 volatile uint32_t g_ps_ui_router_request;
 volatile uint32_t g_ps_ui_router_request_event;
+volatile ps_ui_time_probe_t g_ps_ui_time_probe;
 
 static ps_ui_router_state_t ps_ui_router_state;
 
@@ -98,6 +99,8 @@ static void PS_UIRouter_UpdateProbe(void)
 
 static uint32_t PS_UIRouter_CanNavigate(void)
 {
+  if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_TIME) &&
+      (g_ps_ui_time_probe.status == PS_UI_TIME_SAVING)) { return 0UL; }
   if ((ps_ui_router_state.nav_state == PS_UI_ROUTER_NAV_TEXT_ENTRY) ||
       (ps_ui_router_state.nav_state == PS_UI_ROUTER_NAV_NUMERIC_ENTRY) ||
       (ps_ui_router_state.nav_state == PS_UI_ROUTER_NAV_MODAL_LOCK) ||
@@ -182,6 +185,8 @@ static ps_status_t PS_UIRouter_ShowLowBatteryChargeRecovery(void)
 
 static ps_status_t PS_UIRouter_GotoPage(uint32_t page)
 {
+  if ((page == PS_UI_ROUTER_PAGE_TIME) && (g_ps_ui_time_probe.session == UINT32_MAX))
+  { return PS_STATUS_INVALID_STATE; }
   if (PS_UIRouter_CanNavigate() == 0UL)
   {
     return PS_STATUS_INVALID_STATE;
@@ -206,6 +211,129 @@ static ps_status_t PS_UIRouter_GotoPage(uint32_t page)
   {
     ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
   }
+  if (page == PS_UI_ROUTER_PAGE_TIME)
+  {
+    g_ps_ui_time_probe.draft = (ps_system_datetime_t){2000U, 1U, 1U, 0U, 0U, 0U};
+    g_ps_ui_time_probe.session++;
+    g_ps_ui_time_probe.status = PS_UI_TIME_LOADING;
+    g_ps_ui_time_probe.result_status = PS_UI_ROUTER_STATUS_NOT_RUN;
+    g_ps_ui_time_probe.request = 1UL;
+  }
+  else { g_ps_ui_time_probe.request = 0UL; }
+  return PS_STATUS_OK;
+}
+
+uint32_t PS_UIRouter_TakeTimeRequest(uint32_t *session, ps_system_datetime_t *local)
+{
+  uint32_t operation = g_ps_ui_time_probe.request;
+  if ((session == 0) || (local == 0)) { return 0UL; }
+  if ((ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_TIME) ||
+      (operation == 0UL)) { return 0UL; }
+  *session = g_ps_ui_time_probe.session;
+  *local = g_ps_ui_time_probe.draft;
+  g_ps_ui_time_probe.request = 0UL;
+  return operation;
+}
+
+uint32_t PS_UIRouter_CompleteTimeRequest(uint32_t session, uint32_t operation,
+  uint32_t status, const ps_system_datetime_t *local)
+{
+  uint32_t seconds;
+  if ((session != g_ps_ui_time_probe.session) ||
+      ((operation == 1UL) && (g_ps_ui_time_probe.status != PS_UI_TIME_LOADING)) ||
+      ((operation == 2UL) && (g_ps_ui_time_probe.status != PS_UI_TIME_SAVING)) ||
+      ((operation != 1UL) && (operation != 2UL))) { return 0UL; }
+  if ((status == PS_SYSTEM_TIME_OK) && (PS_SystemTime_Encode(local, &seconds) != PS_SYSTEM_TIME_OK))
+  { status = PS_SYSTEM_TIME_ARGUMENT; }
+  g_ps_ui_time_probe.result_status = status;
+  if (status == PS_SYSTEM_TIME_OK)
+  {
+    g_ps_ui_time_probe.draft = *local;
+    g_ps_ui_time_probe.status = (operation == 1UL) ? PS_UI_TIME_EDIT : PS_UI_TIME_SAVED;
+  }
+  else if ((operation == 1UL) && ((status == PS_SYSTEM_TIME_UNSET) ||
+           (status == PS_SYSTEM_TIME_SOURCE_LOST) || (status == PS_SYSTEM_TIME_RANGE)))
+  { g_ps_ui_time_probe.status = PS_UI_TIME_UNSET; }
+  else
+  { g_ps_ui_time_probe.status = (operation == 1UL) ? PS_UI_TIME_READ_ERROR : PS_UI_TIME_SAVE_ERROR; }
+  return (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_TIME) ? 1UL : 0UL;
+}
+
+static ps_status_t PS_UIRouter_TimeInput(uint32_t event)
+{
+  uint32_t field = ps_ui_router_state.focus_index;
+  uint32_t value, min = 0UL, max = 59UL, seconds;
+  uint32_t forward = (event == PS_UI_ROUTER_EVENT_INPUT_JOY_UP);
+  ps_system_datetime_t local = g_ps_ui_time_probe.draft;
+  if (g_ps_ui_time_probe.status == PS_UI_TIME_SAVING) { return PS_STATUS_BUSY; }
+  if (event == PS_UI_ROUTER_EVENT_INPUT_BTN_B)
+  { return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU); }
+  if (g_ps_ui_time_probe.status == PS_UI_TIME_LOADING) { return PS_STATUS_BUSY; }
+  if (g_ps_ui_time_probe.status == PS_UI_TIME_READ_ERROR)
+  {
+    if (event != PS_UI_ROUTER_EVENT_INPUT_BTN_A) { return PS_STATUS_INVALID_STATE; }
+    g_ps_ui_time_probe.status = PS_UI_TIME_LOADING;
+    g_ps_ui_time_probe.request = 1UL;
+    return PS_STATUS_OK;
+  }
+  if (event == PS_UI_ROUTER_EVENT_INPUT_BTN_A)
+  {
+    if (field == 7UL) { return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU); }
+    if (field == 6UL)
+    {
+      if (PS_SystemTime_Encode(&local, &seconds) != PS_SYSTEM_TIME_OK)
+      { return PS_STATUS_INVALID_ARGUMENT; }
+      g_ps_ui_time_probe.status = PS_UI_TIME_SAVING;
+      g_ps_ui_time_probe.request = 2UL;
+    }
+    else { ps_ui_router_state.focus_index = field + 1UL; }
+    return PS_STATUS_OK;
+  }
+  if ((event == PS_UI_ROUTER_EVENT_INPUT_JOY_LEFT) ||
+      (event == PS_UI_ROUTER_EVENT_INPUT_BTN_L))
+  { ps_ui_router_state.focus_index = (field == 0UL) ? 7UL : field - 1UL; return PS_STATUS_OK; }
+  if ((event == PS_UI_ROUTER_EVENT_INPUT_JOY_RIGHT) ||
+      (event == PS_UI_ROUTER_EVENT_INPUT_BTN_R))
+  { ps_ui_router_state.focus_index = (field + 1UL) % 8UL; return PS_STATUS_OK; }
+  if ((event != PS_UI_ROUTER_EVENT_INPUT_JOY_UP) &&
+      (event != PS_UI_ROUTER_EVENT_INPUT_JOY_DOWN)) { return PS_STATUS_UNSUPPORTED; }
+  if (field >= 6UL) { return PS_STATUS_OK; }
+  switch (field)
+  {
+    case 0UL: value = local.year; min = 2000UL; max = 2099UL; break;
+    case 1UL: value = local.month; min = 1UL; max = 12UL; break;
+    case 2UL:
+      value = local.day; min = 1UL; max = 31UL;
+      local.day = 31U;
+      for (uint32_t i = 0UL; i < 3UL; ++i)
+      {
+        if (PS_SystemTime_Encode(&local, &seconds) == PS_SYSTEM_TIME_OK) { break; }
+        --local.day;
+      }
+      max = local.day;
+      break;
+    case 3UL: value = local.hour; max = 23UL; break;
+    case 4UL: value = local.minute; break;
+    default: value = local.second; break;
+  }
+  value = forward ? ((value == max) ? min : value + 1UL) : ((value == min) ? max : value - 1UL);
+  switch (field)
+  {
+    case 0UL: local.year = (uint16_t)value; break;
+    case 1UL: local.month = (uint8_t)value; break;
+    case 2UL: local.day = (uint8_t)value; break;
+    case 3UL: local.hour = (uint8_t)value; break;
+    case 4UL: local.minute = (uint8_t)value; break;
+    default: local.second = (uint8_t)value; break;
+  }
+  /* A month/year edit clamps the day; at most three decrements are needed. */
+  for (uint32_t i = 0UL; i < 3UL; ++i)
+  {
+    if (PS_SystemTime_Encode(&local, &seconds) == PS_SYSTEM_TIME_OK) { break; }
+    --local.day;
+  }
+  g_ps_ui_time_probe.draft = local;
+  if (g_ps_ui_time_probe.status != PS_UI_TIME_UNSET) { g_ps_ui_time_probe.status = PS_UI_TIME_EDIT; }
   return PS_STATUS_OK;
 }
 
@@ -282,7 +410,7 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
   {
     if (ps_ui_router_state.focus_index == 0UL)
     {
-      return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_SETTINGS);
+      return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_TIME);
     }
     if (ps_ui_router_state.focus_index == 1UL)
     {
@@ -534,6 +662,7 @@ void PS_UIRouter_Init(void)
   ps_ui_router_state.last_status = PS_UI_ROUTER_STATUS_NOT_RUN;
   g_ps_ui_router_request = 0UL;
   g_ps_ui_router_request_event = 0UL;
+  g_ps_ui_time_probe = (ps_ui_time_probe_t){0};
   PS_UIRouter_UpdateProbe();
 }
 
@@ -579,6 +708,17 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
   uint32_t entry_page = ps_ui_router_state.current_page;
 
   ps_ui_router_state.last_event = event;
+  if ((entry_page == PS_UI_ROUTER_PAGE_TIME) &&
+      (((event >= PS_UI_ROUTER_EVENT_INPUT_BTN_A) && (event <= PS_UI_ROUTER_EVENT_INPUT_BTN_R)) ||
+       ((event >= PS_UI_ROUTER_EVENT_INPUT_JOY_LEFT) && (event <= PS_UI_ROUTER_EVENT_INPUT_JOY_DOWN))))
+  {
+    status = PS_UIRouter_TimeInput(event);
+    ps_ui_router_state.last_status = status;
+    if (status == PS_STATUS_OK) { ps_ui_router_state.transition_count++; }
+    else { ps_ui_router_state.rejected_event_count++; }
+    PS_UIRouter_UpdateProbe();
+    return status;
+  }
   switch (event)
   {
     case PS_UI_ROUTER_EVENT_BOOT_COMPLETE:
@@ -592,6 +732,9 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       break;
     case PS_UI_ROUTER_EVENT_NAV_SETTINGS:
       status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_SETTINGS);
+      break;
+    case PS_UI_ROUTER_EVENT_NAV_TIME:
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_TIME);
       break;
     case PS_UI_ROUTER_EVENT_NAV_CALIBRATION:
       status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_CALIBRATION);
@@ -965,6 +1108,13 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       break;
   }
 
+  if ((entry_page == PS_UI_ROUTER_PAGE_TIME) &&
+      (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_TIME) &&
+      (g_ps_ui_time_probe.request != 0UL))
+  {
+    g_ps_ui_time_probe.request = 0UL;
+    g_ps_ui_time_probe.status = PS_UI_TIME_READ_ERROR;
+  }
   if (status != PS_STATUS_OK)
   {
     ps_ui_router_state.rejected_event_count++;

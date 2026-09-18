@@ -29,10 +29,14 @@ class SystemTimeOwnerTests(unittest.TestCase):
         env["PATH"] = str(Path(compiler).parent) + os.pathsep + env.get("PATH", "")
         with tempfile.TemporaryDirectory() as temp:
             (Path(temp) / "system_time_owner.inc").write_text(block)
+            begin = source.index("static void PS_HW6_SystemTime_EditorUi(void)")
+            end = source.index("uint32_t PS_HW6_RTOS_ObjectSleepClockBegin(void)", begin)
+            (Path(temp) / "system_time_editor_owner.inc").write_text(source[begin:end])
             exe = Path(temp) / "system_time_owner.exe"
             result = subprocess.run([compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", "-O2",
                 "-I", temp, "-I", str(firmware / "Core/Inc"),
                 str(firmware / "Core/Src/ps_system_time.c"),
+                str(firmware / "Core/Src/ps_ui_router.c"),
                 str(Path(__file__).with_name("native_system_time_owner.c")), "-o", str(exe)],
                 capture_output=True, text=True, timeout=30, env=env)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)

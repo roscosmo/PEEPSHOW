@@ -68,7 +68,8 @@ class FirmwarePackageWorkflowTests(unittest.TestCase):
                 compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", "-O2",
                 "-I", str(work), "-I", str(firmware / "Core/Inc"),
                 str(Path(__file__).with_name("native_shell_recovery.c")),
-                str(firmware / "Core/Src/ps_ui_router.c"), "-o", str(executable),
+                str(firmware / "Core/Src/ps_ui_router.c"),
+                str(firmware / "Core/Src/ps_system_time.c"), "-o", str(executable),
             ], capture_output=True, text=True, timeout=60, env=environment)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             result = subprocess.run([str(executable)], capture_output=True, text=True,
@@ -114,7 +115,8 @@ class FirmwarePackageWorkflowTests(unittest.TestCase):
                 compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", "-O2",
                 "-I", str(work), "-I", str(firmware / "Core/Inc"),
                 str(Path(__file__).with_name("native_package_workflow.c")),
-                str(firmware / "Core/Src/ps_ui_router.c"), "-o", str(executable),
+                str(firmware / "Core/Src/ps_ui_router.c"),
+                str(firmware / "Core/Src/ps_system_time.c"), "-o", str(executable),
             ], capture_output=True, text=True, timeout=60, env=environment)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             result = subprocess.run([str(executable)], capture_output=True, text=True,

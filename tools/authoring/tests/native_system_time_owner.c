@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "ps_hw6_system_time.h"
+#include "ps_ui_router.h"
 
 typedef uint32_t ULONG;
 typedef uint32_t UINT;
@@ -54,6 +55,11 @@ static UINT HAL_RTC_GetDate(void *handle, RTC_DateTypeDef *date, UINT format)
 }
 
 #include "system_time_owner.inc"
+static uint32_t renders;
+static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void) { ++renders; }
+void PS_HW6_TraceUiDispatch(uint32_t event, uint32_t from, uint32_t to, uint32_t status)
+{ (void)event; (void)from; (void)to; (void)status; }
+#include "system_time_editor_owner.inc"
 
 static void deliver(void)
 {
@@ -181,6 +187,32 @@ int main(void)
   PS_HW6_SystemTime_DebugUi();
   PS_HW6_SystemTime_DebugUi();
   assert(reads == count && g_ps_system_time_probe.pending == 0);
+  PS_UIRouter_Init();
+  assert(PS_UIRouter_Dispatch(PS_UI_ROUTER_EVENT_NAV_TIME) == PS_STATUS_OK);
+  PS_HW6_SystemTime_EditorUi();
+  assert(g_ps_ui_time_probe.status == PS_UI_TIME_LOADING);
+  PS_HW6_SystemTime_EditorUi();
+  assert(g_ps_ui_time_probe.status == PS_UI_TIME_EDIT && renders == 1);
+  count = reads;
+  PS_HW6_SystemTime_EditorUi();
+  assert(reads == count && renders == 1);
+  assert(PS_UIRouter_Dispatch(PS_UI_ROUTER_EVENT_INPUT_BTN_B) == PS_STATUS_OK);
+  assert(PS_UIRouter_Dispatch(PS_UI_ROUTER_EVENT_NAV_TIME) == PS_STATUS_OK);
+  immediate = 0;
+  PS_HW6_SystemTime_EditorUi();
+  assert(PS_UIRouter_Dispatch(PS_UI_ROUTER_EVENT_INPUT_BTN_B) == PS_STATUS_OK);
+  deliver();
+  PS_HW6_SystemTime_EditorUi();
+  assert(g_ps_system_time_probe.pending == 0 && renders == 1);
+  assert(g_ps_ui_router_probe.current_page == PS_UI_ROUTER_PAGE_MENU);
+  send_status = TX_QUEUE_FULL;
+  assert(PS_UIRouter_Dispatch(PS_UI_ROUTER_EVENT_NAV_TIME) == PS_STATUS_OK);
+  PS_HW6_SystemTime_EditorUi();
+  assert(g_ps_ui_time_probe.status == PS_UI_TIME_READ_ERROR && renders == 2);
+  count = sends;
+  PS_HW6_SystemTime_EditorUi();
+  assert(sends == count);
+  send_status = TX_SUCCESS;
   ps_system_clock.generation = UINT32_MAX;
   result = transact(2, &local);
   assert(result.status == PS_SYSTEM_TIME_GENERATION_EXHAUSTED);

@@ -4,12 +4,13 @@
 #include <stdint.h>
 
 #include "ps_status.h"
+#include "ps_system_time.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define PS_UI_ROUTER_API_VERSION (18UL)
+#define PS_UI_ROUTER_API_VERSION (19UL)
 #define PS_UI_ROUTER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 #define PS_UI_ROUTER_PACKAGE_MENU_FOCUS_BASE (100UL)
 
@@ -26,7 +27,8 @@ typedef enum
   PS_UI_ROUTER_PAGE_SHUTDOWN,
   PS_UI_ROUTER_PAGE_INTERACTION_CUE,
   PS_UI_ROUTER_PAGE_INTERACTION_ACTIVATION,
-  PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC
+  PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC,
+  PS_UI_ROUTER_PAGE_TIME
 } ps_ui_router_page_t;
 
 typedef enum
@@ -153,7 +155,8 @@ typedef enum
   PS_UI_ROUTER_EVENT_SYSTEM_MENU_DISCARD,
   PS_UI_ROUTER_EVENT_SYSTEM_MENU_RESUMED,
   PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_BEGIN,
-  PS_UI_ROUTER_EVENT_PACKAGE_LAUNCH_ERROR
+  PS_UI_ROUTER_EVENT_PACKAGE_LAUNCH_ERROR,
+  PS_UI_ROUTER_EVENT_NAV_TIME
 } ps_ui_router_event_t;
 
 typedef enum
@@ -206,6 +209,31 @@ typedef struct
 extern volatile ps_ui_router_probe_t g_ps_ui_router_probe;
 extern volatile uint32_t g_ps_ui_router_request;
 extern volatile uint32_t g_ps_ui_router_request_event;
+
+typedef enum
+{
+  PS_UI_TIME_LOADING = 0,
+  PS_UI_TIME_UNSET,
+  PS_UI_TIME_EDIT,
+  PS_UI_TIME_SAVING,
+  PS_UI_TIME_SAVED,
+  PS_UI_TIME_READ_ERROR,
+  PS_UI_TIME_SAVE_ERROR
+} ps_ui_time_status_t;
+
+/* thUI-owned draft. Display requests copy encoded seconds, focus and status. */
+typedef struct
+{
+  ps_system_datetime_t draft;
+  uint32_t session;
+  uint32_t status;
+  uint32_t request;
+  uint32_t result_status;
+} ps_ui_time_probe_t;
+extern volatile ps_ui_time_probe_t g_ps_ui_time_probe;
+uint32_t PS_UIRouter_TakeTimeRequest(uint32_t *session, ps_system_datetime_t *local);
+uint32_t PS_UIRouter_CompleteTimeRequest(uint32_t session, uint32_t operation,
+  uint32_t status, const ps_system_datetime_t *local);
 
 void PS_UIRouter_Init(void);
 ps_status_t PS_UIRouter_Dispatch(uint32_t event);
