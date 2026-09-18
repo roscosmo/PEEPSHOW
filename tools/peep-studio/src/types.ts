@@ -54,6 +54,7 @@ export type SceneCapabilities = {
   multi_scene_export?: boolean;
   route_destination_kinds?: string[];
   timer_handler_layout?: TimerHandlerLayoutCapability;
+  object_display_names?: boolean;
   schema_version: number;
   execution_model: string;
   host_editing: boolean;
@@ -68,6 +69,7 @@ export type SceneCapabilities = {
 
 export type SceneObject = Omit<RenderElement, "element_id" | "x" | "y" | "visible" | "visual_ref"> & {
   object_id: string;
+  display_name?: string;
   defaults: { x: number; y: number; visible: boolean; visual_ref?: string };
   animation_ref?: string;
 };
@@ -347,6 +349,7 @@ export type AssetFrameRecord = {
 export type AssetRecord = {
   asset_id: string;
   display_name?: string;
+  tags?: string[];
   asset_type: string;
   source_path?: string;
   source_format: string;
@@ -358,6 +361,7 @@ export type AssetRecord = {
 
 export type AudioAssetRecord = {
   asset_id: string;
+  tags?: string[];
   source_path: string;
   source_sample_rate_hz: number;
   source_channels: number;
@@ -380,10 +384,21 @@ export type AudioCueRecord = {
   volume: number;
 };
 
+export type ProjectSettings = {
+  sfx_import?: {
+    normalization: "none" | "peak";
+    target_peak_dbfs: number;
+  };
+  runtime_preferences?: {
+    inactivity_timeout_ms: number | null;
+  };
+};
+
 export type ProjectDocument = {
   animations?: AuthoredClip[];
   project?: {
     editor?: ProjectEditorData;
+    settings?: ProjectSettings;
   };
   scenes?: SceneDocument[];
   assets?: AssetRecord[];
@@ -585,6 +600,35 @@ export type TimerHandlerLayoutCapability = {
 };
 
 export type ServiceHello = {
+  project_settings?: {
+    read_operation: string;
+    edit_command: string;
+    replacement: string;
+    persisted: boolean;
+    undo_redo: boolean;
+    runtime_encoded: boolean;
+    sfx_import: {
+      status: string;
+      import_applied: boolean;
+      normalization: Array<"none" | "peak">;
+      target_peak_dbfs: { minimum: number; maximum: number; integer: boolean };
+    };
+    runtime_preferences: {
+      status: string;
+      firmware_enforced: boolean;
+      inactivity_timeout_ms: { minimum: number; maximum: number; nullable: boolean; integer: boolean };
+    };
+  };
+  asset_metadata?: {
+    tags?: {
+      supported: boolean;
+      commands: string[];
+      maximum_count: number;
+      maximum_length: number;
+      case_sensitive: boolean;
+      runtime_encoded: boolean;
+    };
+  };
   package_export?: {
     operation: string;
     container_versions: number[];
@@ -605,6 +649,13 @@ export type ServiceHello = {
     version_parameter: string; supported_versions: number[]; default_version: number;
   };
   scene_object_authoring?: {
+    display_names?: {
+      supported: boolean;
+      command: string;
+      maximum_length: number;
+      fallback: string;
+      runtime_encoded: boolean;
+    };
     audio_export?: V2AudioExportCapability;
     clip_loop_policies?: string[];
     local_graph_commands?: string[];

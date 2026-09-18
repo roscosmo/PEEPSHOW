@@ -23,6 +23,9 @@ function canPreviewSceneObjects(service, capability) {
 function supportsObjectCommand(service, capability, command) {
     return service?.operations.includes("project.apply_commands") === true
         && service.scene_object_authoring?.execution_model === "scene_objects"
+        && (command !== "object.rename" || (service.scene_object_authoring.display_names?.supported === true
+            && service.scene_object_authoring.display_names.command === command
+            && capability?.object_display_names === true))
         && service.scene_object_authoring.commands.includes(command)
         && capability?.execution_model === "scene_objects" && capability.host_editing
         && capability.supported_commands?.includes(command) === true;
@@ -57,7 +60,7 @@ function supportsSceneConnection(service, capability, command) {
 function baseObjectRows(scene, ownership) {
     if (!usesSceneObjects(scene))
         return scene.render_models?.[0]?.elements ?? [];
-    return (ownership?.objects ?? []).map(({ object_id, defaults, animation_ref: _clip, ...geometry }) => ({
+    return (ownership?.objects ?? []).map(({ object_id, display_name: _name, defaults, animation_ref: _clip, ...geometry }) => ({
         ...geometry, ...defaults, element_id: object_id,
     }));
 }

@@ -88,8 +88,37 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
   };
   return <section className="inspector-section placement-inspector scene-object-inspector">
     <h3>Object</h3>
+    <div className="asset-name-editor">
+      <label>
+        Object name
+        <input
+          key={`${object.object_id}-${object.display_name ?? ""}`}
+          type="text"
+          maxLength={96}
+          defaultValue={object.display_name ?? label}
+          disabled={busy || !supports("object.rename")}
+          onBlur={event => {
+            const value = event.currentTarget.value.trim();
+            const current = object.display_name ?? label;
+            if (value.length === 0) {
+              event.currentTarget.value = current;
+            } else if (value !== current) {
+              void onApply([{ kind: "object.rename", scene_id: scene.scene_id,
+                object_id: object.object_id, display_name: value }]);
+            }
+          }}
+          onKeyDown={event => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.currentTarget.value = object.display_name ?? label;
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      </label>
+    </div>
     <dl className="inspector-list">
-      <div><dt>Name</dt><dd>{label}</dd></div>
       <div><dt>Scene</dt><dd>{scene.display_name}</dd></div>
       <div><dt>Size</dt><dd>{object.width} x {object.height}</dd></div>
       <div><dt>Internal ID</dt><dd>{object.object_id}</dd></div>

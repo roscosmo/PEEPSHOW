@@ -17,6 +17,9 @@ export function canPreviewSceneObjects(service: ServiceHello | null, capability?
 export function supportsObjectCommand(service: ServiceHello | null, capability: SceneCapabilities | undefined, command: string): boolean {
   return service?.operations.includes("project.apply_commands") === true
     && service.scene_object_authoring?.execution_model === "scene_objects"
+    && (command !== "object.rename" || (service.scene_object_authoring.display_names?.supported === true
+      && service.scene_object_authoring.display_names.command === command
+      && capability?.object_display_names === true))
     && service.scene_object_authoring.commands.includes(command)
     && capability?.execution_model === "scene_objects" && capability.host_editing
     && capability.supported_commands?.includes(command) === true;
@@ -55,7 +58,7 @@ export function supportsSceneConnection(service: ServiceHello | null, capability
 // Presentation adapter only: defaults are displayed verbatim; state resolution stays in the host.
 export function baseObjectRows(scene: SceneDocument, ownership?: PlacementOwnership["scenes"][string] | null): RenderElement[] {
   if (!usesSceneObjects(scene)) return scene.render_models?.[0]?.elements ?? [];
-  return (ownership?.objects ?? []).map(({ object_id, defaults, animation_ref: _clip, ...geometry }) => ({
+  return (ownership?.objects ?? []).map(({ object_id, display_name: _name, defaults, animation_ref: _clip, ...geometry }) => ({
     ...geometry, ...defaults, element_id: object_id,
   }));
 }

@@ -2306,6 +2306,21 @@ button:focus-visible {
   color: #145e84;
 }
 
+.asset-tag-filter {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: #68736d;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.asset-tag-filter select {
+  min-width: 110px;
+  height: 34px;
+}
+
 .asset-library-match-count {
   margin-left: auto;
   color: #68736d;
@@ -3524,6 +3539,33 @@ button:focus-visible {
   font-weight: 750;
 }
 
+.project-settings-inspector .project-settings-group + .project-settings-group {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #d7ded9;
+}
+
+.settings-status-note {
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  border: 1px solid #c8d6ce;
+  border-radius: 6px;
+  background: #eef4f0;
+  color: #526159;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.studio-shell[data-theme="dark"] .settings-status-note {
+  border-color: #48564f;
+  background: #18201c;
+  color: #aebdb5;
+}
+
+.studio-shell[data-theme="dark"] .project-settings-inspector .project-settings-group + .project-settings-group {
+  border-top-color: #34423b;
+}
+
 .audio-cue-settings {
   display: grid;
   gap: 12px;
@@ -3831,6 +3873,76 @@ button:focus-visible {
 .asset-name-editor input:disabled {
   color: #818b85;
   background: #eef3f0;
+}
+
+.asset-tag-editor {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  background: #f7faf8;
+}
+
+.asset-tag-editor-title {
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.asset-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.asset-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 3px 4px 3px 8px;
+  border: 1px solid #aebdb5;
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.asset-tag button {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  place-items: center;
+}
+
+.asset-tag-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 6px;
+}
+
+.asset-tag-entry input {
+  width: 100%;
+  min-width: 0;
+}
+
+.studio-shell[data-theme="dark"] .asset-tag-editor,
+.studio-shell[data-theme="dark"] .asset-tag {
+  border-color: #48564f;
+  background: #18201c;
+  color: #e3ebe6;
+}
+
+.studio-shell[data-theme="dark"] .asset-tag-editor-title {
+  color: #9aaba2;
 }
 
 .asset-frame-strip-panel,

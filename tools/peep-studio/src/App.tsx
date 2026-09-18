@@ -43,6 +43,7 @@ import { AnimationClipEditor } from "./AnimationClipEditor";
 import { canBuildProject } from "./exportReadiness";
 import { AudioWaveform } from "./AudioWaveform";
 import { AudioImportWaveform } from "./AudioImportWaveform";
+import { AssetTagEditor } from "./AssetTagEditor";
 import { EmulatorPanel } from "./EmulatorPanel";
 import type { EmulatorPopoutState } from "./EmulatorPopoutApp";
 import {
@@ -87,6 +88,7 @@ import type {
   EditorRouteTokenPositions,
   Framebuffer,
   PackageBuildResult,
+  ProjectSettings,
   PlacementPreviewSnapshot,
   ProjectCommandResult,
   ProjectHistoryResult,
@@ -866,6 +868,7 @@ export default function App() {
   const [assetTab, setAssetTab] = useState<AssetTab>("sprite");
   const [assetSearchQuery, setAssetSearchQuery] = useState("");
   const [spriteAssetFilter, setSpriteAssetFilter] = useState<SpriteAssetFilter>("all");
+  const [assetTagFilter, setAssetTagFilter] = useState("");
   const [fontAssets, setFontAssets] = useState<FontAssetRecord[]>([]);
   const [fontPreviewFamilies, setFontPreviewFamilies] = useState<Record<string, string>>({});
   const [bakedTextSources, setBakedTextSources] = useState<BakedTextSourceRecord[]>([]);
@@ -1580,6 +1583,30 @@ export default function App() {
     }
   };
 
+  const updateProjectSettings = async (settings: ProjectSettings) => {
+    const capability = service?.project_settings;
+    if (bridge === undefined || project === null || busy !== null || capability?.persisted !== true
+      || capability.edit_command !== "project.settings.set"
+      || service?.operations.includes("project.apply_commands") !== true) return false;
+    setBusy("Updating project settings");
+    setPlaying(false);
+    stopAudioPlayback();
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: capability.edit_command, settings }],
+      });
+      applyProjectResult(result);
+      setMessage("Project preferences updated. Save to write them to the project.");
+      return true;
+    } catch (error) {
+      setMessage(errorText(error));
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const applyProjectResult = (
     result: ProjectHistoryResult | ProjectCommandResult | ProjectSaveResult,
     options: ApplyProjectResultOptions = {},
@@ -1693,6 +1720,7 @@ export default function App() {
     if (tab === assetTab) return;
     setAssetTab(tab);
     setAssetSelection(null);
+    setAssetTagFilter("");
     setAssetPreviewPlaying(false);
     stopAudioPlayback();
   };
@@ -4327,6 +4355,29 @@ export default function App() {
     () => new Map(audioAssets.map((asset) => [asset.asset_id, asset])),
     [audioAssets],
   );
+  const assetTagCapability = service?.asset_metadata?.tags;
+  const updateAssetTags = async (kind: "sprite" | "audio", assetId: string, tags: string[]) => {
+    const commandKind = kind === "sprite" ? "asset.set_tags" : "audio_asset.set_tags";
+    if (bridge === undefined || project === null || busy !== null
+      || assetTagCapability?.supported !== true || !assetTagCapability.commands.includes(commandKind)) return false;
+    setBusy("Updating asset tags");
+    setPlaying(false);
+    stopAudioPlayback();
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: commandKind, asset_id: assetId, tags }],
+      });
+      applyProjectResult(result);
+      setMessage("Asset tags updated. Save to write them to the project.");
+      return true;
+    } catch (error) {
+      setMessage(errorText(error));
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
   const bakedTextSourceByAssetId = useMemo(
     () => new Map(bakedTextSources.map((source) => [source.asset_id, source])),
     [bakedTextSources],
@@ -4470,6 +4521,7 @@ export default function App() {
             asset_type: "sampled_sfx",
             source_path: imported.sourcePath,
             source_format: "wav",
+            tags: selectedAudioAsset.tags ?? [],
           },
         }],
       });
@@ -6302,10 +6354,14 @@ export default function App() {
     const assetTabs: AssetTab[] = ["sprite", "audio", "font"];
     const fontPreviewText = preferences.fontPreviewText.trim() || DEFAULT_FONT_PREVIEW_TEXT;
     const normalizedAssetSearch = assetSearchQuery.trim().toLocaleLowerCase();
-    const matchesAssetSearch = (displayName: string) => normalizedAssetSearch === ""
-      || displayName.toLocaleLowerCase().includes(normalizedAssetSearch);
+    const availableAssetTags = [...new Set((assetTab === "sprite" ? assets : assetTab === "audio" ? audioAssets : [])
+      .flatMap(asset => asset.tags ?? []))].sort((left, right) => left.localeCompare(right));
+    const matchesAssetSearch = (displayName: string, tags: string[] = []) => normalizedAssetSearch === ""
+      || displayName.toLocaleLowerCase().includes(normalizedAssetSearch)
+      || tags.some(tag => tag.toLocaleLowerCase().includes(normalizedAssetSearch));
+    const matchesTagFilter = (tags: string[] = []) => assetTagFilter === "" || tags.includes(assetTagFilter);
     const filteredAnimationClips = spriteAssetFilter === "all" || spriteAssetFilter === "animation"
-      ? animationClips.filter((clip) => matchesAssetSearch(animationLabel(clip)))
+      ? animationClips.filter((clip) => assetTagFilter === "" && matchesAssetSearch(animationLabel(clip)))
       : [];
     const filteredSourceSpriteGroups = sourceSpriteGroups.flatMap((sourceGroup) => {
       const textGroup = sourceGroup.label === "Text sprite" || sourceGroup.label === "Text";
@@ -6313,7 +6369,10 @@ export default function App() {
         || (spriteAssetFilter === "text" && textGroup)
         || (spriteAssetFilter === "static" && !textGroup);
       if (!typeVisible) return [];
-      const items = sourceGroup.items.filter((group) => matchesAssetSearch(assetById.get(group.assetId)?.display_name ?? group.assetId));
+      const items = sourceGroup.items.filter((group) => {
+        const asset = assetById.get(group.assetId);
+        return matchesTagFilter(asset?.tags) && matchesAssetSearch(asset?.display_name ?? group.assetId, asset?.tags);
+      });
       if (items.length === 0) return [];
       return [{
         ...sourceGroup,
@@ -6322,7 +6381,10 @@ export default function App() {
       }];
     });
     const filteredAudioCueGroups = audioCueGroups.flatMap((cueGroup) => {
-      const items = cueGroup.items.filter((cue) => matchesAssetSearch(audioCueDisplayName(cue)));
+      const items = cueGroup.items.filter((cue) => {
+        const asset = audioAssetById.get(cue.asset_ref);
+        return matchesTagFilter(asset?.tags) && matchesAssetSearch(audioCueDisplayName(cue), asset?.tags);
+      });
       if (items.length === 0) return [];
       return [{
         ...cueGroup,
@@ -6502,6 +6564,13 @@ export default function App() {
                 </button>
               ))}
             </div>}
+            {assetTab !== "font" && availableAssetTags.length > 0 && <label className="asset-tag-filter">
+              <span>Tag</span>
+              <select value={assetTagFilter} onChange={event => setAssetTagFilter(event.target.value)}>
+                <option value="">All tags</option>
+                {availableAssetTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+              </select>
+            </label>}
             <span className="asset-library-match-count">
               {matchingAssetCount === totalAssetCount ? totalAssetCount : `${matchingAssetCount} of ${totalAssetCount}`}
             </span>
@@ -6709,6 +6778,7 @@ export default function App() {
                   event.stopPropagation();
                   setAssetSearchQuery("");
                   setSpriteAssetFilter("all");
+                  setAssetTagFilter("");
                 }}>Clear filters</button>
               </div>
             )}
@@ -6797,6 +6867,12 @@ export default function App() {
                     />
                   </label>
                 </div>
+              )}
+              {sourceAsset !== null && assetTagCapability?.supported === true
+                && assetTagCapability.commands.includes("asset.set_tags") && (
+                <AssetTagEditor tags={sourceAsset.tags ?? []} disabled={busy !== null}
+                  maximumCount={assetTagCapability.maximum_count} maximumLength={assetTagCapability.maximum_length}
+                  onApply={tags => updateAssetTags("sprite", sourceAsset.asset_id, tags)} />
               )}
               {canAuthorAnimations && selectedAnimationFrames.length > 0 && (
                 <div className="asset-animation-frame-panel">
@@ -7037,6 +7113,12 @@ export default function App() {
             disabled={busy !== null || service?.state_scene_audio.cue_commands.includes("audio_cue.upsert") !== true}
             onApply={(nextCue) => void updateAudioCueSettings(nextCue)}
           />
+          {selectedAudioAsset !== null && assetTagCapability?.supported === true
+            && assetTagCapability.commands.includes("audio_asset.set_tags") && (
+            <AssetTagEditor tags={selectedAudioAsset.tags ?? []} disabled={busy !== null}
+              maximumCount={assetTagCapability.maximum_count} maximumLength={assetTagCapability.maximum_length}
+              onApply={tags => updateAssetTags("audio", selectedAudioAsset.asset_id, tags)} />
+          )}
           <div className="audio-inspector-controls">
             {selectedAudioTrim === null ? (
               <AudioWaveform
@@ -7829,7 +7911,13 @@ export default function App() {
         const elements = [...baseObjectRows(scene, ownership)].sort((left, right) => left.z_order - right.z_order);
         const objectLabelCounts = new Map<string, number>();
         const objectLabelById = new Map<string, string>();
+        const authoredObjectNames = new Map((ownership?.objects ?? []).map(object => [object.object_id, object.display_name]));
         for (const element of elements) {
+          const authoredName = authoredObjectNames.get(element.element_id);
+          if (authoredName) {
+            objectLabelById.set(element.element_id, authoredName);
+            continue;
+          }
           const baseLabel = placementObjectLabelBase(element);
           const occurrence = (objectLabelCounts.get(baseLabel) ?? 0) + 1;
           objectLabelCounts.set(baseLabel, occurrence);
@@ -8318,7 +8406,7 @@ export default function App() {
       return <>{renderPlacementEditScope()}<SceneObjectInspector
         key={`${selectedSceneDocument.scene_id}:${selectedPlacementElement}:${placementEditStateIds.join(",")}`}
         scene={selectedSceneDocument} object={object}
-        label={selectedElement === null ? "" : placementObjectLabelBase(selectedElement)}
+        label={object?.display_name ?? (selectedElement === null ? "" : placementObjectLabelBase(selectedElement))}
         stateIds={placementEditStateTargets()} ownership={placementOwnershipScene}
         frames={compiledAssetFrames} clips={project?.document?.animations ?? []} busy={busy !== null}
         assets={assets}
@@ -8754,11 +8842,11 @@ export default function App() {
       </section>
       {project !== null && (
         <section className="inspector-section project-settings-inspector">
-          <h3>Project settings</h3>
+          <h3>Current SFX import</h3>
           <div className="project-settings-group">
             <div className="project-settings-group-heading">
-              <strong>Audio defaults</strong>
-              <span>Used when new SFX assets are imported into this project.</span>
+              <strong>Studio processing</strong>
+              <span>Applied to WAV imports during this Studio session. This is separate from the saved project preference.</span>
             </div>
             <label className="toggle-field">
               <input
@@ -9278,6 +9366,94 @@ export default function App() {
                 </label>
               </div>
             </section>
+            {project !== null && service?.project_settings?.persisted === true
+              && service.operations.includes(service.project_settings.read_operation) && (() => {
+              const capability = service.project_settings;
+              const projectSettings = project.document?.project?.settings ?? {};
+              const sfx = projectSettings.sfx_import;
+              const inactivity = projectSettings.runtime_preferences?.inactivity_timeout_ms;
+              const inactivityMode = projectSettings.runtime_preferences === undefined
+                ? "unset" : inactivity === null ? "system" : "custom";
+              const replaceGroup = (group: keyof ProjectSettings, value: ProjectSettings[typeof group] | undefined) => {
+                const next = { ...projectSettings };
+                if (value === undefined) delete next[group];
+                else Object.assign(next, { [group]: value });
+                void updateProjectSettings(next);
+              };
+              return <section className="inspector-section project-settings-inspector">
+                <h3>Project preferences</h3>
+                <p className="settings-status-note">Saved with this project. These preferences are not currently applied to imports, firmware, or exported packages.</p>
+                <div className="project-settings-group">
+                  <div className="project-settings-group-heading">
+                    <strong>SFX import preference</strong>
+                    <span>Stored for future import integration.</span>
+                  </div>
+                  <label className="select-field">Normalization
+                    <select value={sfx?.normalization ?? "unset"} disabled={busy !== null}
+                      onChange={event => {
+                        const normalization = event.target.value;
+                        replaceGroup("sfx_import", normalization === "unset" ? undefined : {
+                          normalization: normalization as "none" | "peak",
+                          target_peak_dbfs: sfx?.target_peak_dbfs ?? -6,
+                        });
+                      }}>
+                      <option value="unset">Not set</option>
+                      {capability.sfx_import.normalization.includes("none") && <option value="none">None</option>}
+                      {capability.sfx_import.normalization.includes("peak") && <option value="peak">Peak</option>}
+                    </select>
+                  </label>
+                  {sfx !== undefined && <label className="select-field">Target peak (dBFS)
+                    <input type="number" step={1}
+                      min={capability.sfx_import.target_peak_dbfs.minimum}
+                      max={capability.sfx_import.target_peak_dbfs.maximum}
+                      defaultValue={sfx.target_peak_dbfs} key={`sfx-peak-${sfx.target_peak_dbfs}`}
+                      disabled={busy !== null} onBlur={event => {
+                        const value = Number(event.currentTarget.value);
+                        if (!Number.isInteger(value) || value < capability.sfx_import.target_peak_dbfs.minimum
+                          || value > capability.sfx_import.target_peak_dbfs.maximum) {
+                          event.currentTarget.value = String(sfx.target_peak_dbfs);
+                          return;
+                        }
+                        if (value !== sfx.target_peak_dbfs) replaceGroup("sfx_import", { ...sfx, target_peak_dbfs: value });
+                      }} />
+                  </label>}
+                </div>
+                <div className="project-settings-group">
+                  <div className="project-settings-group-heading">
+                    <strong>Inactivity preference</strong>
+                    <span>Stored for future device-policy support.</span>
+                  </div>
+                  <label className="select-field">Timeout source
+                    <select value={inactivityMode} disabled={busy !== null} onChange={event => {
+                      const mode = event.target.value;
+                      replaceGroup("runtime_preferences", mode === "unset" ? undefined : {
+                        inactivity_timeout_ms: mode === "system" ? null : (typeof inactivity === "number" ? inactivity : 30000),
+                      });
+                    }}>
+                      <option value="unset">Not set</option>
+                      <option value="system">System selection</option>
+                      <option value="custom">Project preference</option>
+                    </select>
+                  </label>
+                  {inactivityMode === "custom" && typeof inactivity === "number" && <label className="select-field">Timeout (seconds)
+                    <input type="number" step={1}
+                      min={capability.runtime_preferences.inactivity_timeout_ms.minimum / 1000}
+                      max={capability.runtime_preferences.inactivity_timeout_ms.maximum / 1000}
+                      defaultValue={inactivity / 1000} key={`inactivity-${inactivity}`}
+                      disabled={busy !== null} onBlur={event => {
+                        const seconds = Number(event.currentTarget.value);
+                        const value = seconds * 1000;
+                        if (!Number.isInteger(seconds) || value < capability.runtime_preferences.inactivity_timeout_ms.minimum
+                          || value > capability.runtime_preferences.inactivity_timeout_ms.maximum) {
+                          event.currentTarget.value = String(inactivity / 1000);
+                          return;
+                        }
+                        if (value !== inactivity) replaceGroup("runtime_preferences", { inactivity_timeout_ms: value });
+                      }} />
+                  </label>}
+                </div>
+              </section>;
+            })()}
             {renderPlacementViewSettings()}
           </> : <>
           {projectRootSelected && renderProjectInspector()}
