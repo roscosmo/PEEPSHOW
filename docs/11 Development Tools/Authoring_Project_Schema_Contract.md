@@ -643,7 +643,7 @@ Rules:
 - every package declares exactly one interaction mode: `continuous` or `timeout`.
 - `continuous` disables automatic inactivity timeout and must not declare inactive-route or inactivity-deferral fields; system-owned manual inactivity preserves the current scene.
 - `timeout` enables the system `ACTIVE`/`INACTIVE` lifecycle and must declare exactly one admitted inactive route.
-- the authoring schema does not expose a numeric inactivity-timeout field because the active target/system policy owns that timeout.
+- runtime interaction policy does not expose a package-owned numeric inactivity timeout because the active target/system policy owns that timeout. API 48 may persist an explicitly unenforced preference under project settings; it is never compiled into runtime policy.
 - the system activation gesture is target-owned; HW6 initially uses Start, while future target profiles may admit another button or a chord such as `L+R`.
 - the authoring tool must not route the physical activation gesture to a package action for the same event.
 - while active, the authoring tool may bind short `START`; firmware publishes it only on release before the target-owned manual-INACTIVE threshold, while a hold reaching that threshold is consumed and never reaches package logic.
@@ -1775,6 +1775,33 @@ must produce byte-identical eggs. No new firmware capability is implied.
 Capabilities: `service.hello.scene_object_authoring.display_names`, per-scene
 `object_display_names`, and `service.hello.asset_metadata.tags`. See
 `V2_Authoring_Metadata_Handoff.md` for Studio integration examples.
+
+## Persisted Project Settings (Service API 48)
+
+Optional `project.settings` stores authoring preferences independently of target
+execution support. Missing settings mean `{}`; no defaults are silently inserted.
+`project.settings.get` reads them with the current project revision.
+`project.settings.set` is an ordinary `project.apply_commands` command taking a
+`settings` object. It replaces the entire object, not a recursive merge; `{}`
+clears saved preferences. Unknown fields are rejected.
+
+Supported optional groups, with all fields required when a group is present:
+
+- `sfx_import`: `normalization` is `none` or `peak`; `target_peak_dbfs` is an
+  integer from -60 to 0. This names a sample-peak target, not LUFS, RMS, a
+  hardware output level or per-cue gain. The target remains stored when mode is
+  `none`. These preferences are not yet applied during import or compilation.
+- `runtime_preferences`: `inactivity_timeout_ms` is null (system-owned selection)
+  or an integer from 1000 to 86400000. This is an unenforced author preference,
+  not permission to override system inactivity or lock behavior. It does not
+  change scene interaction modes or routes.
+
+Both groups are storage-only in API 48. Settings participate in project dirty
+state, atomic batches, undo/redo, save/reload and directory-copy workflows, but
+are excluded from egg encoding and do not reprocess audio. Capability discovery
+is `service.hello.project_settings`; persistence, import application and firmware
+enforcement are advertised separately. Future settings require explicit schema
+and capability increments, not arbitrary keys. See `V2_Project_Settings_Handoff.md`.
 
 ## Validation Cases
 

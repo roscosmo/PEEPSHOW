@@ -16,6 +16,26 @@
     "validation"
   ],
   "properties": {
+    "settings": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "sfx_import": {
+          "type": "object", "additionalProperties": false,
+          "required": ["normalization", "target_peak_dbfs"],
+          "properties": {
+            "normalization": {"enum": ["none", "peak"]},
+            "target_peak_dbfs": {"type": "integer", "minimum": -60, "maximum": 0}
+          }
+        },
+        "runtime_preferences": {
+          "type": "object", "additionalProperties": false,
+          "required": ["inactivity_timeout_ms"],
+          "properties": {
+            "inactivity_timeout_ms": {"type": ["integer", "null"], "minimum": 1000, "maximum": 86400000}
+          }
+        }
+      }
+    },
     "schema_id": { "const": "peepshow.authoring.project" },
     "schema_version": { "const": 1 },
     "project_id": { "$ref": "#/$defs/stable_id" },
