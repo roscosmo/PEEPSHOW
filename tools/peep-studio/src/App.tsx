@@ -3877,11 +3877,30 @@ export default function App() {
     setBusy("Updating scene object");
     setPlaying(false);
     stopAudioPlayback();
+    const livePreviewTarget = preview === null ? null : {
+      sceneId: preview.scene.scene_id,
+      stateId: preview.scene.state_id,
+    };
     try {
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision, commands,
       });
-      applyProjectResult(result);
+      applyProjectResult(result, { preserveDerivedViews: true });
+      if (result.valid && livePreviewTarget !== null) {
+        try {
+          const refreshedPreview = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
+            project_revision: result.project_revision,
+            scene_id: livePreviewTarget.sceneId,
+            state_id: livePreviewTarget.stateId,
+          });
+          if (projectRevisionRef.current === result.project_revision) {
+            setPreview(refreshedPreview);
+          }
+        } catch (error) {
+          setMessage(errorText(error));
+          return false;
+        }
+      }
       setMessage("Scene object updated. Save to write it to the project.");
       return true;
     } catch (error) {
@@ -5680,7 +5699,7 @@ export default function App() {
     ) : renderPreviewPanel("project")
   );
   const renderPreviewPanel = (variant: "project" | "placement") => {
-    const placementPreviewMatches = placementPreview?.project_revision === projectRevision && (
+    const placementPreviewMatches = placementPreview !== null && (
       placementState === null
         ? "placement" in placementPreview && placementPreview.placement.scene_id === selectedSceneDocument?.scene_id
         : "scene" in placementPreview &&
@@ -5688,7 +5707,7 @@ export default function App() {
           placementPreview.scene.state_id === placementState.state_id
     );
     const placementFramebuffer = placementPreviewMatches ? placementPreview.framebuffer : null;
-    const matchingLiveFramebuffer = preview?.project_revision === projectRevision &&
+    const matchingLiveFramebuffer = preview !== null &&
       placementState !== null &&
       preview.scene.scene_id === selectedSceneDocument?.scene_id &&
       preview.scene.state_id === placementState.state_id
