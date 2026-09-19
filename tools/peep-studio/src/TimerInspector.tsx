@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { CalendarClock, Clock, Trash2 } from "lucide-react";
 import { EditableActionList, EditableGuardList, type SceneSelection } from "./SceneInspection";
 import { baseObjectRows } from "./sceneCapabilities";
-import { CALENDAR_SCHEDULE, calendarScheduleCapability, createCalendarScheduleCommands, createTimerCommands, deleteTimerCommands, SCENE_TIMER, STATE_TIMER, timerBounds } from "./timerAuthoring";
+import { CALENDAR_SCHEDULE, calendarScheduleCapability, calendarScheduleSummary, createCalendarScheduleCommands, createTimerCommands, deleteTimerCommands, SCENE_TIMER, STATE_TIMER, timerBounds } from "./timerAuthoring";
 import type { TimerCommand } from "./timerAuthoring";
 import type { AssetRecord, AudioCueRecord, PlacementOwnership, SceneDocument, ServiceHello, StateAction, StateGuard, StateRoute } from "./types";
 
@@ -127,6 +127,13 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
     && calendarSeconds <= calendarCapability.time_of_day_seconds.maximum
     && Number.isInteger(dayOffsetNumber) && dayOffsetNumber >= calendarCapability.day_offset.minimum
     && dayOffsetNumber <= calendarCapability.day_offset.maximum;
+  const calendarValidationMessage = calendarSeconds === null
+    ? "Enter a valid local time."
+    : calendarMode === "today_offset" && (!Number.isInteger(dayOffsetNumber)
+      || (calendarCapability !== undefined && (dayOffsetNumber < calendarCapability.day_offset.minimum
+        || dayOffsetNumber > calendarCapability.day_offset.maximum)))
+      ? `Day offset must be a whole number from ${calendarCapability?.day_offset.minimum ?? 0} to ${calendarCapability?.day_offset.maximum ?? 0}.`
+      : calendarCapability === undefined ? "Calendar schedules are unavailable for this project profile." : null;
   const startPolicyLabel = timerStartLabel(start);
   const expiryValue = adding ? destination : record?.target_scene
     ? handler?.scene_exit_ref ? `exit:${handler.scene_exit_ref}` : `scene:${record.target_scene}`
@@ -169,6 +176,7 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
       </label>}
       {!timerIsCalendar && bounds !== undefined && !validDelay && <p className="muted timer-field-note">Allowed range: {bounds.minimum}-{bounds.maximum} ms.</p>}
       {timerIsCalendar && <>
+        {!adding && binding && <p className="timer-schedule-summary">{calendarScheduleSummary(binding.configuration, true)}</p>}
         <label className="select-field">Schedule
           <select value={calendarMode} disabled={!adding && !supports("event_binding.update")}
             onChange={event => setCalendarMode(event.target.value as typeof calendarMode)}>
@@ -183,10 +191,11 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
           <input type="number" step={1} min={calendarCapability?.day_offset.minimum} max={calendarCapability?.day_offset.maximum}
             value={dayOffset} disabled={!adding && !supports("event_binding.update")} onChange={event => setDayOffset(event.target.value)} />
         </label>}
+        {calendarValidationMessage && <p className="field-error" role="alert">{calendarValidationMessage}</p>}
         {!adding && <button className="button secondary" type="button" disabled={!validCalendar || !supports("event_binding.update")}
           onClick={() => void updateCalendarBinding()}>Apply schedule</button>}
         <div className="calendar-preview-clock">
-          <label className="select-field">Preview local time
+          <label className="select-field">Simulated preview time
             <input type="datetime-local" step={1} value={previewLocalTime}
               disabled={!previewClockAvailable || onSetPreviewLocalTime === undefined}
               onChange={event => setPreviewLocalTimeValue(event.target.value)} />
@@ -194,7 +203,8 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
           <button className="button secondary" type="button"
             disabled={!previewClockAvailable || onSetPreviewLocalTime === undefined
               || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(previewLocalTime)}
-            onClick={() => void onSetPreviewLocalTime?.(previewLocalTime)}>Set preview clock</button>
+            onClick={() => void onSetPreviewLocalTime?.(previewLocalTime)}>Set simulated time</button>
+          {!previewClockAvailable && <p className="muted timer-field-note">Open this scene in the emulator to simulate its calendar time.</p>}
         </div>
       </>}
       {timerIsScene && <label className="select-field">Starts

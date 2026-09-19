@@ -5,6 +5,26 @@ export const STATE_TIMER = "time.state_entry_elapsed";
 export const CALENDAR_SCHEDULE = "time.local_schedule";
 export type TimerCommand = Record<string, unknown>;
 
+export function calendarScheduleModeLabel(mode: unknown, dayOffset: unknown = 0): string {
+  if (mode === "daily") return "Daily";
+  if (mode === "next_occurrence") return "Next occurrence";
+  if (mode === "today_offset") {
+    const days = Number(dayOffset);
+    if (days === 0) return "Today";
+    if (days === 1) return "Tomorrow";
+    return `Today + ${days} days`;
+  }
+  return "Calendar schedule";
+}
+
+export function calendarScheduleSummary(configuration: Record<string, unknown>, includeSeconds = false): string {
+  const seconds = Math.max(0, Math.min(86399, Number(configuration.time_of_day_seconds ?? 0)));
+  const time = [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60]
+    .map(value => String(value).padStart(2, "0"));
+  if (!includeSeconds) time.pop();
+  return `${calendarScheduleModeLabel(configuration.mode, configuration.day_offset)} at ${time.join(":")}`;
+}
+
 export function timerBounds(service: ServiceHello | null, profileId: string, eventType: string) {
   const source = service?.target_profiles?.available.find(profile => profile.profile_id === profileId)
     ?.state_scene_events?.sources.find(item => item.event_type === eventType);

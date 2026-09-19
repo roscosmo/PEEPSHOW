@@ -4,6 +4,7 @@ import {
   ArrowUp,
   ArrowRight,
   Box,
+  CalendarClock,
   Check,
   ChevronRight,
   Circle,
@@ -73,7 +74,7 @@ import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNat
 import { SceneObjectInspector } from "./SceneObjectInspector";
 import { TimerInspector } from "./TimerInspector";
 import { ObjectActionContext } from "./ObjectActionContext";
-import { CALENDAR_SCHEDULE, SCENE_TIMER, STATE_TIMER, calendarScheduleCapability, timerBounds, deleteTimerCommands } from "./timerAuthoring";
+import { CALENDAR_SCHEDULE, SCENE_TIMER, STATE_TIMER, calendarScheduleCapability, calendarScheduleSummary, timerBounds, deleteTimerCommands } from "./timerAuthoring";
 import type {
   AssetFrameRecord,
   AssetRecord,
@@ -8106,8 +8107,7 @@ export default function App() {
             : null;
         const timerDelayLabel = (binding: (typeof timers)[number]) => (
           binding.event_type === CALENDAR_SCHEDULE
-            ? (() => { const seconds = Number(binding.configuration.time_of_day_seconds ?? 0);
-              return `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}`; })()
+            ? calendarScheduleSummary(binding.configuration)
             : typeof binding.configuration.delay_ms === "number"
             ? `${binding.configuration.delay_ms} ms`
             : "Delay unset"
@@ -8124,12 +8124,14 @@ export default function App() {
               title={`${label} - ${timerDelayLabel(binding)}`}
               onClick={() => openHierarchyTimer(scene, binding.binding_id)}
             >
-              <img
-                className="studio-ui-icon"
-                src={binding.event_type === STATE_TIMER ? "/ui-icons/state_timer.png" : "/ui-icons/scene_timer.png"}
-                alt=""
-                aria-hidden="true"
-              />
+              {binding.event_type === CALENDAR_SCHEDULE
+                ? <CalendarClock className="studio-ui-icon" aria-hidden="true" />
+                : <img
+                    className="studio-ui-icon"
+                    src={binding.event_type === STATE_TIMER ? "/ui-icons/state_timer.png" : "/ui-icons/scene_timer.png"}
+                    alt=""
+                    aria-hidden="true"
+                  />}
               <span><strong>{label} - {timerDelayLabel(binding)}</strong></span>
             </button>
           );
@@ -8449,7 +8451,7 @@ export default function App() {
                       onDoubleClick={() => toggleHierarchyGroup(timersGroupId)}
                     >
                       <img className="studio-ui-icon" src="/ui-icons/scene_timer.png" alt="" aria-hidden="true" />
-                      <span><strong>Scene timers</strong></span>
+                      <span><strong>Timed events</strong></span>
                       <code>{sceneLevelTimers.length}</code>
                     </button>
                   </div>
