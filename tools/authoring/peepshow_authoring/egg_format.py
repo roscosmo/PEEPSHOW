@@ -836,6 +836,20 @@ def _parse_graph(
                     "binding_index": index,
                 }
             )
+        elif event_class == 2 and logical_event == 3:
+            _require(graph_version == 7 and logical_source in {1, 2, 3}
+                     and (parameter & 0x1FFFF) < 86400
+                     and (logical_source == 2 or parameter >> 17 == 0),
+                     "calendar event is invalid")
+            _require(not any(item["event_type"] == "time.local_schedule" for item in event_bindings),
+                     "only one calendar binding per scene is supported")
+            event_bindings.append({
+                "binding_id": binding_id, "event_type": "time.local_schedule",
+                "configuration": {"mode": {1: "daily", 2: "today_offset", 3: "next_occurrence"}[logical_source],
+                                  "time_of_day_seconds": parameter & 0x1FFFF,
+                                  "day_offset": parameter >> 17},
+                "binding_index": index,
+            })
         elif event_class == 2:
             _require(
                 graph_version >= 5
@@ -900,7 +914,7 @@ def _parse_graph(
             )
             range_offset = 4
         independent = record[range_offset + 1] == 0
-        scene_timer = bindings[record[1]]["event_class"] == 2 and bindings[record[1]]["event_kind"] == 2
+        scene_timer = bindings[record[1]]["event_class"] == 2 and bindings[record[1]]["event_kind"] in {2, 3}
         _require(independent == (graph_version >= 6 and scene_timer),
                  "scene timer requires an independent handler")
         _require(record[range_offset] + record[range_offset + 1] <= source_count, "route source range is invalid")
@@ -1080,7 +1094,7 @@ def _parse_graph(
             }
         )
     for binding_index, binding in enumerate(bindings):
-        if binding["event_class"] == 2 and binding["event_kind"] == 2:
+        if binding["event_class"] == 2 and binding["event_kind"] in {2, 3}:
             _require(sum(route["action_index"] == binding_index for route in routes) == 1,
                      "scene timer requires exactly one handler")
     event_refs = struct.unpack_from(f"<{event_count}H", payload, offsets[7]) if event_count else ()

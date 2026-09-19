@@ -65,11 +65,15 @@
         "configuration_schema": {}
       },
       {
-        "event_type": "time.calendar_match",
-        "status": "contracted_not_exposed",
+        "event_type": "time.local_schedule",
+        "status": "available_pending_validation",
         "required_capability": "time.calendar_schedule",
         "stop2_wake": true,
-        "configuration_schema": {}
+        "configuration_schema": {
+          "mode": {"type": "enum", "values": ["daily", "today_offset", "next_occurrence"]},
+          "time_of_day_seconds": {"type": "integer", "minimum": 0, "maximum": 86399},
+          "day_offset": {"type": "integer", "minimum": 0, "maximum": 32767}
+        }
       },
       {
         "event_type": "timeline.animation_complete",

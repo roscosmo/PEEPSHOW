@@ -30,5 +30,7 @@ uint32_t PS_HW6_CalendarRuntime_Send(uint32_t to_power,
 uint32_t PS_HW6_CalendarRuntime_Scene(void);
 uint32_t PS_HW6_CalendarRuntime_Running(void);
 uint32_t PS_HW6_CalendarRuntime_BindingValid(uint32_t binding);
+uint32_t PS_HW6_CalendarRuntime_Configuration(uint32_t *binding,
+  uint32_t *mode, uint32_t *time_of_day, uint32_t *day_offset);
 ps_calendar_delivery_state_t PS_HW6_CalendarRuntime_Apply(uint32_t binding);
 #endif

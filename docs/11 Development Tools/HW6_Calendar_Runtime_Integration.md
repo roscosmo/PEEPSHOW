@@ -2,9 +2,67 @@
 
 ## Status and First Scope
 
-Implementation plan following the passed single-registration midnight wake bench
-on 2026-09-19. These are delivery requirements, not an advertisement of executable
-package support. No schema, binary encoding or public command is introduced here.
+The wake and V2 handler benches passed on 2026-09-19: the square filled once,
+A cleared it without replay, and shell suspension deferred the fill until return.
+API 51 source/export integration is now implemented and native-tested. Its new
+installed artifact still needs hardware confirmation; this is not shipping
+qualification or measured-current evidence.
+
+### API 51 Public Export
+
+V2 supports one scene-owned `time.local_schedule` binding with exactly one
+independent handler, using existing `event_binding.*` and `event_handler.*`
+commands and handler layout. Configuration:
+
+```json
+{"mode": "daily", "time_of_day_seconds": 43200, "day_offset": 0}
+```
+
+Modes: `daily`, `today_offset`, `next_occurrence`. Seconds: 0..86399. Day offset:
+0..32767, nonzero only for `today_offset`. Resolution outside 2000..2099 fails
+rather than wrapping. Scene entry registers automatically; local state changes
+preserve the schedule. Scene replacement cancels it and fresh entry registers
+again. Unset time waits for an explicit clock change without repeated RTC reads.
+No package-wide ownership, calendar timer-control actions, random windows,
+time guards or saved-game scheduling are exposed.
+
+Suspension does not shift deadlines. One retained daily occurrence covers the
+wait for its handler; completion advances past additionally missed days without
+a second catch-up burst. Clock edits skip crossed deadlines and invalidate
+unclaimed work. False guards consume the occurrence. One-shot resolution is
+retained across clock edits, not recalculated from the new date.
+
+The hello calendar capability, per-scene capabilities and target profile expose
+`available_pending_validation`. Restricted development export is enabled;
+shipping remains unavailable. Native tests cover the public builder/parser,
+actual installed C loader/handler/framebuffer, automatic registration, unset
+clock recovery, retained queue messages, multi-day suspension and preview timing.
+
+Preview adds `project.preview_set_local_time` with a local ISO `local_time`
+string or null, plus `project.preview_suspend` and `project.preview_resume`.
+These use normal project/preview revisions. `preview_advance` advances calendar
+time while suspended but pauses scene-relative time. Resume returns deferred
+`timer_events`; setting time never runs catch-up handlers. No host-clock polling
+is used. This simulation command is not a package permission to set device time.
+
+### Exported Artifact Hardware Test
+
+Build: `python tools/authoring/build_calendar_export_fixture.py --output firmware/peepshow_hw6_fw0/build/calendar-export`.
+The builder saves/reloads a `.peepproj` and invokes the normal public exporter.
+Flash current Debug firmware; install `build/calendar-export/calendar_export.egg`.
+Artifact: 1000 bytes; SHA-256
+`56d58d58e12d557d7799c1131794951be993172ba90ae110e773d664aacceea3`.
+
+Halt in the Calendar scene and source `__fw0_calendar_export_time_enable.gdb`.
+It sets only system time to 2026-09-19 23:59:40, not calendar registration.
+Resume untouched for 25 seconds: square fills once. A clears it without replay.
+Collect `__fw0_calendar_runtime_prints.gdb`; require setup=0, one applied
+increment, failures=0 and a calendar RTC expiry. Repeat shell suspension on a
+later date: daily history intentionally prevents replay of an already delivered
+date. Restore preferred time through shell TIME. Do not use the old bench enable
+helper with this package or change low-power debug bits.
+
+The sections below retain the original bench design and procedure for reference.
 
 The first runtime increment connects a bounded calendar registration to an
 existing V2 independent event handler. Start with scene-owned daily scheduling
@@ -199,6 +257,12 @@ or export controls:
 ## Suspension and Ordering
 
 Calendar time does not pause in the shell. No suspended handler runs there.
+Pending delivery prevents STOP2 until runtime explicitly acknowledges suspension
+with DEFER, or claims and completes the occurrence. Successful notification send
+alone is not permission to sleep: ThreadX can hand it directly to a waiting
+receiver without leaving an enqueued message. DEFER retains the runtime notice
+for a single claim on resume; a blocked DEFER reply continues to prevent sleep.
+Claimed work remains awake until its completion acknowledgment reaches power.
 On resume, an overdue registration supplies at most one occurrence; daily
 recurrence advances to the next future day without a backlog burst. Relative
 timers continue to preserve their remaining duration as before.

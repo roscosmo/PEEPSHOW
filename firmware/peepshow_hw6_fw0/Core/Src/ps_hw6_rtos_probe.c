@@ -10208,8 +10208,22 @@ uint32_t PS_HW6_CalendarRuntime_Running(void)
 uint32_t PS_HW6_CalendarRuntime_BindingValid(uint32_t binding)
 {
   uint32_t scope, policy, delay;
+  if (PS_SceneRuntime_CalendarConfiguration(binding, &scope, &policy, &delay))
+  { return 1UL; }
   return PS_SceneRuntime_TimerConfiguration(binding, &scope, &policy, &delay) &&
     (scope == PS_SCENE_RUNTIME_TIMER_SCENE) && (policy == PS_SCENE_RUNTIME_TIMER_START_ACTION);
+}
+
+uint32_t PS_HW6_CalendarRuntime_Configuration(uint32_t *binding,
+  uint32_t *mode, uint32_t *time_of_day, uint32_t *day_offset)
+{
+  uint32_t index;
+  for (index = 0UL; index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX; ++index)
+  {
+    if (PS_SceneRuntime_CalendarConfiguration(index, mode, time_of_day, day_offset))
+    { *binding = index; return 1UL; }
+  }
+  return 0UL;
 }
 
 ps_calendar_delivery_state_t PS_HW6_CalendarRuntime_Apply(uint32_t binding)

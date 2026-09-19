@@ -12,11 +12,18 @@ import test_firmware_object_awake as awake
 from test_firmware_package_workflow import firmware_function
 from test_firmware_shape_primitives import panel_pixels
 from build_object_development import DEFAULT_PROJECT, timer_fixture_bundle, sfx_fixture_bundle
-from peepshow_authoring.compiler import build_development_egg_v2
+from peepshow_authoring.compiler import build_development_egg_v2, build_egg
 from peepshow_authoring.project import load_project
 
 
 class ObjectTimerTests(unittest.TestCase):
+    def test_calendar_public_export_real_loader_handler_and_render(self):
+        from build_calendar_export_fixture import calendar_export_bundle
+        pixels = self.run_timer(22, bundle=calendar_export_bundle(), installed=True)
+        self.assertEqual(3 * 3024, len(pixels))
+        self.assertEqual(pixels[:3024], pixels[6048:])
+        self.assertNotEqual(pixels[:3024], pixels[3024:6048])
+
     def test_calendar_dispatch_fixture_real_handler_and_render(self):
         from build_calendar_runtime_fixture import calendar_runtime_bundle
         for installed in (False, True):
@@ -135,7 +142,7 @@ class ObjectTimerTests(unittest.TestCase):
             bundle = timer_fixture_bundle()
         if scene is not None:
             bundle = replace(bundle, scenes=(scene,))
-        blob = build_development_egg_v2(bundle)
+        blob = build_egg(bundle) if mode == 22 else build_development_egg_v2(bundle)
         path = self.work / "timers.egg"
         path.write_bytes(blob)
         path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())

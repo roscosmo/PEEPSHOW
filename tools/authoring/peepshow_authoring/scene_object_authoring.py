@@ -138,7 +138,7 @@ def check_object_scene(scene, source, frame_lookup, animations, audio_cue_ids, i
     if len(issues) != start:
         return
     _check_scene(graph_validation_view(scene), source, frame_lookup, set(animations), audio_cue_ids, issues,
-                 allow_handler_scene_exits=True)
+                 allow_handler_scene_exits=True, allow_calendar=True)
 
 
 def check_command_model(scenes, command):

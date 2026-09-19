@@ -3936,7 +3936,7 @@ def _normalize_handler_layout(value: Any) -> dict[str, Any]:
 def _check_handler_layout_target(scene: dict[str, Any], handler_id: str, layout: dict[str, Any]) -> None:
     handler = _command_record(scene, "event_handlers", "handler_id", handler_id)
     binding = _command_record(scene, "event_bindings", "binding_id", handler.get("event_ref"))
-    if binding.get("event_type") != "time.scene_elapsed":
+    if binding.get("event_type") not in {"time.scene_elapsed", "time.local_schedule"}:
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", "layout requires a scene-timer handler")
     if "termination" in layout and ("target_state" in handler or "target_scene" in handler):
         raise ProjectCommandError("PROJECT_VALUE_INVALID", "termination position requires a targetless handler")
@@ -5418,6 +5418,7 @@ def _check_scene(
     animations: dict[str, dict[str, Any]] | None = None,
     *,
     allow_handler_scene_exits: bool = False,
+    allow_calendar: bool = False,
 ) -> None:
     if scene.get("schema_version") == 2:
         from .scene_object_authoring import check_object_scene
@@ -5492,7 +5493,7 @@ def _check_scene(
             path,
             issues,
         )
-        if binding.get("event_type") not in {"time.state_entry_elapsed", "time.scene_elapsed"}:
+        if binding.get("event_type") not in {"time.state_entry_elapsed", "time.scene_elapsed", "time.local_schedule"}:
             _issue(
                 issues,
                 "EVENT_TYPE_UNAVAILABLE",
@@ -5507,6 +5508,22 @@ def _check_scene(
                 f"{path}.configuration",
                 "must be an object",
             )
+            continue
+        if binding.get("event_type") == "time.local_schedule":
+            if not allow_calendar:
+                _issue(issues, "CALENDAR_V2_REQUIRED", path, "calendar schedules require V2 scene objects")
+            _check_keys(configuration, {"mode", "time_of_day_seconds"},
+                        f"{path}.configuration", issues,
+                        {"mode", "time_of_day_seconds", "day_offset"})
+            mode = configuration.get("mode")
+            seconds = configuration.get("time_of_day_seconds")
+            offset = configuration.get("day_offset", 0)
+            if (not isinstance(mode, str) or mode not in {"daily", "today_offset", "next_occurrence"}
+                    or type(seconds) is not int or not 0 <= seconds < 86400
+                    or type(offset) is not int or not 0 <= offset <= 32767
+                    or (mode != "today_offset" and offset != 0)):
+                _issue(issues, "CALENDAR_CONFIGURATION_INVALID", f"{path}.configuration",
+                       "requires a supported mode, seconds 0..86399 and day offset 0..32767 (today_offset only)")
             continue
         allowed_config = {"delay_ms"}
         if binding.get("event_type") == "time.scene_elapsed":
@@ -5529,6 +5546,11 @@ def _check_scene(
             )
 
     all_event_bindings = set(input_actions) | set(event_bindings)
+    calendar_bindings = {key for key, value in event_bindings.items()
+                         if value.get("event_type") == "time.local_schedule"}
+    if len(calendar_bindings) > 1:
+        _issue(issues, "CALENDAR_BINDING_LIMIT", f"{base}.event_bindings",
+               "at most one scene-owned calendar schedule is supported")
 
     joystick_policy = scene.get("joystick_policy", "four_way")
     if joystick_policy not in JOYSTICK_POLICIES:
@@ -5573,7 +5595,7 @@ def _check_scene(
     handlers = _unique_ids(scene.get("event_handlers", []), "handler_id", f"{base}.event_handlers", issues, 16)
     scene_timers = {key for key, value in event_bindings.items()
                     if value.get("event_type") == "time.scene_elapsed"}
-    for binding_id in scene_timers:
+    for binding_id in scene_timers | calendar_bindings:
         if sum(handler.get("event_ref") == binding_id for handler in handlers.values()) != 1:
             _issue(issues, "EVENT_HANDLER_REQUIRED", f"{base}.event_handlers",
                    f"scene timer '{binding_id}' requires exactly one independent handler")
@@ -5721,7 +5743,7 @@ def _check_scene(
         elif allow_handler_scene_exits:
             allowed.add("scene_exit_ref")
         _check_keys(route, required, path, issues, allowed)
-        if independent != (route.get("event_ref") in scene_timers):
+        if independent != (route.get("event_ref") in scene_timers | calendar_bindings):
             _issue(issues, "EVENT_HANDLER_SCOPE_INVALID", path,
                    "scene timers require independent handlers; state/input events require routes")
         has_action_ref = "action_ref" in route

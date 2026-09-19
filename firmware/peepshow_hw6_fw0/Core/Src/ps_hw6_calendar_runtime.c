@@ -18,6 +18,9 @@ static uint32_t runtime_out_valid, power_out_valid;
 static ps_calendar_transport_t transport;
 static ps_calendar_delivery_key_t power_key;
 static uint32_t power_active;
+static uint32_t power_deferred, runtime_deferred;
+static atomic_uint time_revision;
+static uint32_t automatic_scene, automatic_revision;
 volatile ps_hw6_calendar_runtime_probe_t g_ps_calendar_runtime_probe = {
   .api_version = 1U, .setup_status = UINT32_MAX
 };
@@ -52,12 +55,13 @@ uint32_t PS_HW6_CalendarRuntime_NeedsService(void)
   return power_out_valid ||
     (transport.delivery.state == PS_CALENDAR_DELIVERY_CLAIMED) ||
     ((transport.delivery.state == PS_CALENDAR_DELIVERY_PENDING) &&
-     !transport.notification_sent);
+     !power_deferred);
 }
 
 void PS_HW6_CalendarRuntime_Due(uint32_t occurrence, uint32_t generation)
 {
   if (!power_active) { return; }
+  power_deferred = 0U;
   power_key.clock = generation;
   if (PS_CalendarTransport_Offer(&transport, &power_key, occurrence) !=
       PS_CALENDAR_DELIVERY_OK)
@@ -72,6 +76,8 @@ void PS_HW6_CalendarRuntime_Due(uint32_t occurrence, uint32_t generation)
 
 void PS_HW6_CalendarRuntime_TimeChanged(void)
 {
+  uint32_t revision = atomic_load(&time_revision);
+  if (revision != UINT32_MAX) { atomic_store(&time_revision, revision + 1U); }
   PS_CalendarTransport_Invalidate(&transport);
   Publish();
 }
@@ -97,7 +103,8 @@ void PS_HW6_CalendarRuntime_PowerMessage(const ps_calendar_message_t *m)
         intent.request == 2U ? PS_CALENDAR_TODAY_OFFSET : PS_CALENDAR_NEXT_OCCURRENCE,
         intent.time_of_day, intent.day_offset, status, &now, &value);
     }
-    else if ((intent.time_of_day >= 86400U) || (intent.day_offset != 0U))
+    if ((intent.time_of_day >= 86400U) ||
+        ((intent.request != 2U) && (intent.day_offset != 0U)))
     { status = PS_SYSTEM_TIME_ARGUMENT; }
     if (status == PS_SYSTEM_TIME_OK)
     {
@@ -132,7 +139,9 @@ void PS_HW6_CalendarRuntime_PowerMessage(const ps_calendar_message_t *m)
   {
     if ((m->sequence == transport.delivery.sequence) &&
         (m->registration == transport.delivery.key.registration) &&
-        (transport.delivery.state == PS_CALENDAR_DELIVERY_CLAIMED))
+        ((transport.delivery.state == PS_CALENDAR_DELIVERY_CLAIMED) ||
+         ((transport.delivery.state == PS_CALENDAR_DELIVERY_PENDING) &&
+          transport.notification_sent)))
     {
       /* Runtime did not execute: return the occurrence to pending. A clock edit
        * during the grant interval invalidates it instead of reviving old work. */
@@ -140,8 +149,10 @@ void PS_HW6_CalendarRuntime_PowerMessage(const ps_calendar_message_t *m)
           (transport.delivery.key.clock == g_ps_calendar_probe.generation))
       {
         transport.delivery.state = PS_CALENDAR_DELIVERY_PENDING;
-        transport.notification_sent = 0U;
+        /* Runtime retains the notice and will claim it explicitly on resume. */
+        transport.notification_sent = 1U;
         transport.grant_sent = 0U;
+        power_deferred = 1U;
       }
       else { transport.delivery.state = PS_CALENDAR_DELIVERY_INVALIDATED; }
     }
@@ -149,6 +160,11 @@ void PS_HW6_CalendarRuntime_PowerMessage(const ps_calendar_message_t *m)
   else
   {
     result = PS_CalendarTransport_Receive(&transport, m);
+    if ((result == PS_CALENDAR_DELIVERY_OK) && (m->kind == PS_CALENDAR_CLAIM))
+    { power_deferred = 0U; }
+    if ((result == PS_CALENDAR_DELIVERY_OK) && power_active &&
+        (m->kind >= PS_CALENDAR_ACK_APPLIED) && (m->kind <= PS_CALENDAR_ACK_FAILED))
+    { PS_HW6_Calendar_DeliveryCompleted(); }
     if ((m->kind == PS_CALENDAR_CLAIM) && (result != PS_CALENDAR_DELIVERY_OK))
     {
       /* One outstanding claim per runtime registration; retain rejection until
@@ -198,6 +214,7 @@ void PS_HW6_CalendarRuntime_RuntimeMessage(const ps_calendar_message_t *m)
            (m->sequence > runtime_done))
   {
     runtime_notice = m->sequence;
+    runtime_deferred = 0U;
     g_ps_calendar_runtime_probe.notifications++;
   }
   else if ((m->kind == CAL_REJECT) && (m->sequence == runtime_notice))
@@ -216,7 +233,7 @@ void PS_HW6_CalendarRuntime_RuntimeMessage(const ps_calendar_message_t *m)
     {
       runtime_out = Packet(CAL_DEFER, m->sequence, runtime_registration);
       runtime_out_valid = 1U;
-      runtime_notice = 0U;
+      runtime_deferred = 1U;
       return;
     }
     else { outcome = PS_HW6_CalendarRuntime_Apply(runtime_binding); }
@@ -245,6 +262,24 @@ void PS_HW6_CalendarRuntime_RuntimeService(void)
   }
   if (!runtime_out_valid && !runtime_setup)
   {
+    uint32_t revision = atomic_load(&time_revision);
+    if (!request && !runtime_active && scene && PS_HW6_CalendarRuntime_Running() &&
+        ((scene != automatic_scene) ||
+         ((revision != automatic_revision) &&
+          ((g_ps_calendar_runtime_probe.setup_status == PS_SYSTEM_TIME_UNSET) ||
+           (g_ps_calendar_runtime_probe.setup_status == PS_SYSTEM_TIME_SOURCE_LOST)))))
+    {
+      uint32_t binding, mode, time_of_day, day_offset;
+      automatic_scene = scene;
+      automatic_revision = revision;
+      if (PS_HW6_CalendarRuntime_Configuration(&binding, &mode, &time_of_day, &day_offset))
+      {
+        request = mode;
+        g_ps_calendar_runtime_probe.binding = binding;
+        g_ps_calendar_runtime_probe.time_of_day = time_of_day;
+        g_ps_calendar_runtime_probe.day_offset = day_offset;
+      }
+    }
     if (runtime_active && ((scene != runtime_scene) || (request == 4U)))
     {
       runtime_out = Packet(CAL_CANCEL, 0U, runtime_registration);
@@ -286,6 +321,14 @@ void PS_HW6_CalendarRuntime_RuntimeService(void)
       g_ps_calendar_runtime_probe.claims++;
       /* Keep the sequence for GRANT, but do not enqueue another claim. */
       runtime_setup = 2U;
+    }
+    else if (runtime_active && runtime_notice && !runtime_deferred)
+    {
+      /* A sent notification is not proof runtime ran. Explicitly acknowledge
+       * suspension before power may sleep with this occurrence still pending. */
+      runtime_out = Packet(CAL_DEFER, runtime_notice, runtime_registration);
+      runtime_out_valid = 1U;
+      runtime_deferred = 1U;
     }
   }
   g_ps_calendar_runtime_probe.registration = runtime_registration;

@@ -770,6 +770,18 @@ Settled reactive presentation:
 
 ## Tool-Time Validation
 
+### Implemented Calendar Subset (API 51)
+
+Restricted HW6 V2 development export supports `time.local_schedule` with target
+capability metadata `time.calendar_schedule`: one scene-owned binding armed on
+entry, using `daily`, `today_offset`, or `next_occurrence`. This is narrower than
+the general `time.calendar` contract and does not grant arbitrary clock reads,
+time predicates, package-owned schedules or calendar control actions. Unset time
+waits for explicit setup. Relative timers remain independent of clock edits.
+See `HW6_Calendar_Runtime_Integration.md` for configuration, suspension/coalescing
+and the public artifact test. That new artifact remains hardware-pending; the
+prior owner-routed handler bench passed.
+
 Tooling must validate time and power intent before package compilation/export.
 
 Reject:

@@ -25,11 +25,11 @@ class RuntimeTextExportTests(unittest.TestCase):
 
     def test_capabilities_and_exact_hardware_fixture_public_build(self):
         hello = self.call("service.hello")
-        self.assertEqual(50, hello["service_api_version"])
+        self.assertEqual(51, hello["service_api_version"])
         profile = hello["package_export"]["v2_profile"]
         text = hello["state_scene_presentation"]["runtime_text_profile"]
         self.assertTrue(hello["state_scene_presentation"]["runtime_text"])
-        self.assertEqual(5, profile["profile_revision"])
+        self.assertEqual(6, profile["profile_revision"])
         self.assertEqual(text, profile["runtime_text"])
         self.assertEqual(text, hello["scene_object_authoring"]["runtime_text"])
         self.assertFalse(text["baked_assets"])

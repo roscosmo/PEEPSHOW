@@ -108,6 +108,14 @@ void PS_HW6_Calendar_TimeChanged(void)
   if (ps_calendar_timer.configured != 0U) { PS_HW6_Calendar_Update(4U, 0U); }
 }
 
+void PS_HW6_Calendar_DeliveryCompleted(void)
+{
+  /* A retained daily occurrence covers time spent waiting for the handler.
+   * Advance past that interval once, without emitting a second catch-up event. */
+  if (ps_calendar_timer.configured && (ps_calendar_timer.kind == PS_CALENDAR_DAILY))
+  { PS_HW6_Calendar_Update(4U, 0U); }
+}
+
 ps_calendar_result_t PS_HW6_Calendar_Register(ps_calendar_kind_t kind, uint32_t value)
 {
   if (g_ps_calendar_probe.registration == UINT32_MAX) { return PS_CALENDAR_ARGUMENT; }

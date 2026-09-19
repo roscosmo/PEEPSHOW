@@ -47,6 +47,7 @@ extern "C" {
 #define PS_SCENE_RUNTIME_EVENT_CLASS_TIMER       (2UL)
 #define PS_SCENE_RUNTIME_TIMER_STATE_ENTRY       (1UL)
 #define PS_SCENE_RUNTIME_TIMER_SCENE             (2UL)
+#define PS_SCENE_RUNTIME_TIMER_CALENDAR          (3UL)
 #define PS_SCENE_RUNTIME_TIMER_START_ENTRY       (0UL)
 #define PS_SCENE_RUNTIME_TIMER_START_ACTION      (1UL)
 
@@ -346,6 +347,8 @@ uint32_t PS_SceneRuntime_TimerConfiguration(uint32_t binding_index,
                                           uint32_t *scope,
                                           uint32_t *start_policy,
                                           uint32_t *delay_ms);
+uint32_t PS_SceneRuntime_CalendarConfiguration(uint32_t binding_index,
+  uint32_t *mode, uint32_t *time_of_day, uint32_t *day_offset);
 uint32_t PS_SceneRuntime_TakeTimerAction(uint32_t *binding_index,
                                        uint32_t *kind);
 uint32_t PS_SceneRuntime_StateFocusIndex(void);

@@ -77,10 +77,12 @@ def public_v2_text_profile():
 
 def public_v2_export_profile():
     return {
-        "profile_id": PROFILE_ID, "profile_revision": 5, "container_version": 2,
+        "profile_id": PROFILE_ID, "profile_revision": 6, "container_version": 2,
         "status": "development_restricted", "execution_model": "scene_objects",
         "limits": deepcopy(LIMITS), "interaction_modes": ["continuous"],
         "event_classes": ["input", "timer"], "audio": True,
+        "calendar_schedules": {"event_type": "time.local_schedule", "maximum_per_scene": 1,
+                               "scene_entry_only": True, "status": "available_pending_validation"},
         "audio_profile": public_v2_audio_profile(),
         "runtime_text": public_v2_text_profile(),
         "scene_connections": True, "scene_entry_modes": ["fresh_default"],

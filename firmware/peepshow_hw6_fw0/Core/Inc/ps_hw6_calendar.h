@@ -14,6 +14,7 @@ extern volatile ps_hw6_calendar_probe_t g_ps_calendar_probe;
 /* thPower only. Mailbox request: ONCE=1 DAILY=2 CANCEL=3. No package API yet. */
 void PS_HW6_Calendar_Service(uint32_t now_tick, uint32_t allowed);
 void PS_HW6_Calendar_TimeChanged(void);
+void PS_HW6_Calendar_DeliveryCompleted(void);
 uint32_t PS_HW6_Calendar_Remaining(uint32_t now_tick);
 uint32_t PS_HW6_Calendar_Prepare(uint32_t now_tick);
 void PS_HW6_Calendar_Finish(void);

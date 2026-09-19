@@ -2262,7 +2262,13 @@ static uint32_t PS_EggDecodeScene(ps_egg_context_t *context, const uint8_t *blob
              (event_kind == PS_SCENE_RUNTIME_TIMER_SCENE) &&
              (source <= PS_SCENE_RUNTIME_TIMER_START_ACTION))) &&
            (parameter >= PS_TARGET_PROFILE_STATE_TIMER_MIN_MS) &&
-           (parameter <= PS_TARGET_PROFILE_STATE_TIMER_MAX_MS))))
+           (parameter <= PS_TARGET_PROFILE_STATE_TIMER_MAX_MS)) ||
+          ((graph.format_version == 7U) &&
+           (event_class == PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
+           (event_kind == PS_SCENE_RUNTIME_TIMER_CALENDAR) &&
+           (source >= 1UL) && (source <= 3UL) &&
+           ((parameter & 0x1FFFFUL) < 86400UL) &&
+           ((source == 2UL) || ((parameter >> 17) == 0UL)))))
     {
       return PS_EggFail(context, PS_EGG_STATE_LOADER_REASON_GRAPH);
     }
@@ -2388,8 +2394,10 @@ static uint32_t PS_EggDecodeScene(ps_egg_context_t *context, const uint8_t *blob
         ((graph.format_version >= 6U) &&
          (scene->event_bindings[input_index].event_class ==
           PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
-         (scene->event_bindings[input_index].event_kind ==
-          PS_SCENE_RUNTIME_TIMER_SCENE)))
+         ((scene->event_bindings[input_index].event_kind ==
+           PS_SCENE_RUNTIME_TIMER_SCENE) ||
+          (scene->event_bindings[input_index].event_kind ==
+           PS_SCENE_RUNTIME_TIMER_CALENDAR))))
     {
       return PS_EggFail(context, PS_EGG_STATE_LOADER_REASON_GRAPH);
     }

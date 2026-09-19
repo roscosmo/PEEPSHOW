@@ -315,7 +315,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(50, SERVICE_API_VERSION)
+        self.assertEqual(51, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -436,13 +436,15 @@ class AuthoringServiceTests(unittest.TestCase):
             [trigger["kind"] for trigger in peepos_triggers],
         )
         self.assertTrue(
-            all(trigger["support"] == "contract_only" for trigger in peepos_triggers)
+            all(trigger["support"] == ("available_pending_validation" if trigger["kind"] == "local_schedule"
+                                       else "contract_only") for trigger in peepos_triggers)
         )
         self.assertIn("target_capability", peepos_triggers[0]["requires"])
         self.assertTrue(
             all(
                 "firmware_event_dispatch" in trigger["requires"]
                 for trigger in peepos_triggers
+                if trigger["kind"] != "local_schedule"
             )
         )
         audio = result["state_scene_audio"]

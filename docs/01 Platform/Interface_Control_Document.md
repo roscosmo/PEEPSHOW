@@ -74,7 +74,7 @@ No reverse dependency from Platform owners into Engine, package, or Reference Ga
 
 ## Change Control
 
-### HW6 Calendar Bench Envelope V1
+### HW6 Calendar Envelope V1
 
 The explicit calendar runtime bench uses existing thPower/thRuntime queues;
 no queue sizes or objects change. `ps_calendar_message_t` is compile-time checked
@@ -110,7 +110,20 @@ Clock changes serialize with claims in thPower. Runtime rechecks scene lifetime
 and suspension at grant receipt. Completions are retained until enqueued, with
 the executed sequence recorded before sending, preventing duplicate execution.
 Cancellation, new setup and completion share each producer's existing FIFO.
-This envelope does not advertise a public calendar package event encoding.
+API 51 also supplies REGISTER intents from installed scene descriptors; the
+four-word envelope layout is unchanged. Runtime attempts registration once per
+scene activation, or after an explicit clock change if setup was unavailable.
+Runtime never reads the RTC. Daily completion rebases through thPower to coalesce
+time spent awaiting a handler.
+
+V2 STG1 graph version 7 adds timer event kind 3 (calendar). Source encodes
+DAILY=1, TODAY_OFFSET=2, NEXT_OCCURRENCE=3. Parameter bits 0..16 encode seconds
+since midnight (less than 86400); bits 17..31 encode nonnegative day offset,
+zero except for TODAY_OFFSET. At most one calendar binding per scene and exactly
+one independent handler are allowed. Relative timer operations reject calendar
+targets. Older loaders reject the unknown kind, not interpret it as elapsed.
+Service API 51 and export profile revision 6 identify this additive encoding;
+container and queue formats do not change. Source spelling: `time.local_schedule`.
 
 Any ICD change requires:
 1. schema version bump
