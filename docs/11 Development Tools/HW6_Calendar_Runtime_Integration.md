@@ -16,6 +16,32 @@ need package-session ownership; a scene-owned bench does not provide that featur
 
 ## Existing Integration Points
 
+### Delivery Record Implementation
+
+`ps_calendar_delivery` now implements the single-owner record lifecycle:
+EMPTY -> PENDING -> CLAIMED -> APPLIED/IGNORED/FAILED. Invalidation removes
+unclaimed work; claimed work retains its slot until explicit completion. Offer
+cannot overwrite pending/claimed work. Notification transport does not mutate
+the record, so a failed send alone cannot discard it. Every claim/completion
+checks the complete identity and a monotonically increasing sequence. Sequence
+exhaustion rejects new work rather than wrapping. A terminal occurrence cannot
+be offered again with the same identity and an equal or earlier deadline.
+
+This is not yet connected to either owner queue or a V2 handler. All mutation
+must occur in one owner; it is not a concurrent mailbox. The adapter must supply
+the current authorized identity, serialize clock changes/claims, prevent obsolete
+registrations from being re-offered, and retain scheduler occurrences while the
+delivery slot is busy. Cross-generation daily deduplication remains the calendar
+scheduler's responsibility. Lifecycle suspension must also be checked again by
+runtime before action admission, not inferred from an earlier claim request.
+
+Native tests compile the production module and exercise retained pending work,
+suspended claims, every identity component, stale sequences, invalidation before
+and after claim, duplicate completion, false-guard/failed terminal outcomes,
+fresh scene identities and sequence exhaustion. These are record-level tests,
+not actual queue saturation, cross-thread race, handler or hardware evidence.
+The normal Debug firmware builds; installed runtime behavior is unchanged.
+
 - `ps_calendar_timer` owns peripheral-free deadline arithmetic and consumed
   occurrence history. The current HW6 adapter consumes into a diagnostic latch.
 - `ps_hw6_calendar` and thPower own calendar snapshots and shared wake selection.

@@ -116,6 +116,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_battery_wake.c
     Core/Src/ps_system_time.c
     Core/Src/ps_calendar_timer.c
+    Core/Src/ps_calendar_delivery.c
     Core/Src/ps_hw6_calendar.c
     Core/Src/ps_hw6_time_retention.c
     Core/Src/ps_dev_lis2dux12.c
