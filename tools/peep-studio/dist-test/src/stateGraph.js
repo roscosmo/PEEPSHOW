@@ -146,13 +146,16 @@ function stateActionDescription(action) {
             return `Clear ${target} frame override`;
     }
     if (action.kind === "set_variable") {
-        const variableName = displayRefName(action.variable_ref, "variable");
+        const scopeLabel = action.variable_scope === "package" ? "Package " : action.variable_scope === "scene" ? "Scene " : "";
+        const variableName = `${scopeLabel}${displayRefName(action.variable_ref, "variable")}`;
         if (action.operation === "add") {
-            return `${variableName}${action.value === undefined ? "" : ` ${signedValue(action.value)}`}`;
+            return `${variableName}${typeof action.value !== "number" ? "" : ` ${signedValue(action.value)}`}`;
         }
         if (action.operation === "assign" || action.operation === "set") {
             return `${variableName}${action.value === undefined ? "" : ` = ${action.value}`}`;
         }
+        if (action.operation === "reset")
+            return `Reset ${variableName}`;
         return variableName;
     }
     if (action.kind === "play_sfx") {
@@ -213,10 +216,20 @@ function routeLabel(route, inputActions) {
     return [inputLabel(inputActions, route.action_ref ?? route.event_ref ?? ""), ...badges].join(" - ");
 }
 const SCENE_TIMER_EVENT = "time.scene_elapsed";
+const CALENDAR_SCHEDULE_EVENT = "time.local_schedule";
 function timerBindingLabel(binding) {
-    return binding.event_type === SCENE_TIMER_EVENT ? "Scene timer" : "State-entry timer";
+    return binding.event_type === CALENDAR_SCHEDULE_EVENT ? "Calendar schedule"
+        : binding.event_type === SCENE_TIMER_EVENT ? "Scene timer" : "State-entry timer";
 }
 function timerBindingDetail(binding) {
+    if (binding.event_type === CALENDAR_SCHEDULE_EVENT) {
+        const seconds = Number(binding.configuration.time_of_day_seconds ?? 0);
+        const time = `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}`;
+        const mode = binding.configuration.mode === "today_offset"
+            ? `today +${binding.configuration.day_offset ?? 0}d`
+            : String(binding.configuration.mode ?? "schedule").replaceAll("_", " ");
+        return `${time} / ${mode}`;
+    }
     const delay = typeof binding.configuration.delay_ms === "number" ? `${binding.configuration.delay_ms} ms` : "delay unset";
     if (binding.event_type !== SCENE_TIMER_EVENT) {
         return delay;
@@ -1254,7 +1267,7 @@ function buildStateGraphModel(scene, editor) {
             };
         });
     });
-    const sceneTimerBindings = eventBindings.filter((binding) => binding.event_type === SCENE_TIMER_EVENT);
+    const sceneTimerBindings = eventBindings.filter((binding) => (binding.event_type === SCENE_TIMER_EVENT || binding.event_type === CALENDAR_SCHEDULE_EVENT));
     const handlerByEventRef = new Map(eventHandlers.map((handler) => [handler.event_ref, handler]));
     const exitForHandler = (handler) => {
         if (handler.scene_exit_ref !== undefined) {

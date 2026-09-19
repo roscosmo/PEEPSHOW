@@ -585,6 +585,8 @@ const selfCrossingRoute = buildStateTransitionRoute({
 assert.deepEqual(selfCrossingRoute.points, [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]);
 assert.equal(stateGuardDescription(scene.routes![0]!.guards[0]!), "Coins is greater than 0");
 assert.equal(stateActionDescription(scene.routes![0]!.actions[0]!), "Coins -1");
+assert.equal(stateActionDescription({ kind: "set_variable", variable_scope: "scene", variable_ref: "coins", operation: "add", value: -1 }), "Scene Coins -1");
+assert.equal(stateActionDescription({ kind: "set_variable", variable_scope: "package", variable_ref: "coins", operation: "reset" }), "Reset Package Coins");
 assert.equal(stateActionDescription(scene.routes![0]!.actions[1]!), null);
 
 const authoredEffects = visibleStateActions({

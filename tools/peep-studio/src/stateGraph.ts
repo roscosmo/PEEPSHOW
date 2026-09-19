@@ -362,7 +362,8 @@ export function stateActionDescription(action: StateAction): string | null {
     if (action.kind === "object.clear_frame") return `Clear ${target} frame override`;
   }
   if (action.kind === "set_variable") {
-    const variableName = `${action.variable_scope === "package" ? "Package" : "Scene"} ${displayRefName(action.variable_ref, "variable")}`;
+    const scopeLabel = action.variable_scope === "package" ? "Package " : action.variable_scope === "scene" ? "Scene " : "";
+    const variableName = `${scopeLabel}${displayRefName(action.variable_ref, "variable")}`;
     if (action.operation === "add") {
       return `${variableName}${typeof action.value !== "number" ? "" : ` ${signedValue(action.value)}`}`;
     }
