@@ -17,6 +17,15 @@ from peepshow_authoring.project import load_project
 
 
 class ObjectTimerTests(unittest.TestCase):
+    def test_calendar_dispatch_fixture_real_handler_and_render(self):
+        from build_calendar_runtime_fixture import calendar_runtime_bundle
+        for installed in (False, True):
+            with self.subTest(installed=installed):
+                pixels = self.run_timer(21, bundle=calendar_runtime_bundle(), installed=installed)
+                self.assertEqual(3 * 3024, len(pixels))
+                self.assertEqual(pixels[:3024], pixels[6048:])
+                self.assertNotEqual(pixels[:3024], pixels[3024:6048])
+
     def test_timer_controls_fixture_installed_and_development(self):
         from build_timer_controls_fixture import timer_controls_bundle
         bundle = timer_controls_bundle()
@@ -104,6 +113,8 @@ class ObjectTimerTests(unittest.TestCase):
             "ObjectAdvance", "CompleteStateSceneEvent", "RuntimeStateTimersClear",
             "RuntimeStateTimersSync", "RuntimeStateTimerNext", "RuntimeStateTimersPause",
             "RuntimeStateTimersResume", "RuntimeStateTimersService"))
+        functions += "\n" + "\n".join(firmware_function(source, name) for name in (
+            "PS_HW6_CalendarRuntime_BindingValid", "PS_HW6_CalendarRuntime_Apply"))
         fields = sorted(set(re.findall(r"g_ps_hw6_rtos_probe\.(\w+)", functions)))
         probe = "static struct {\n" + "".join(f"uint32_t {field};\n" for field in fields)
         probe += "} g_ps_hw6_rtos_probe;\n"

@@ -17,6 +17,8 @@ void PS_HW6_Calendar_TimeChanged(void);
 uint32_t PS_HW6_Calendar_Remaining(uint32_t now_tick);
 uint32_t PS_HW6_Calendar_Prepare(uint32_t now_tick);
 void PS_HW6_Calendar_Finish(void);
+ps_calendar_result_t PS_HW6_Calendar_Register(ps_calendar_kind_t kind, uint32_t value);
+void PS_HW6_Calendar_Cancel(void);
 /* Adapter supplied by the power-owned system-time service. */
 ps_system_time_status_t PS_HW6_Calendar_Read(ps_system_time_snapshot_t *snapshot);
 #endif

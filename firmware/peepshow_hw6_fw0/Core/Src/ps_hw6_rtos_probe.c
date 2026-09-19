@@ -3,6 +3,7 @@
 #include "ps_hw6_system_time.h"
 #include "ps_hw6_time_retention.h"
 #include "ps_hw6_calendar.h"
+#include "ps_hw6_calendar_runtime.h"
 
 #include <string.h>
 
@@ -10181,6 +10182,51 @@ static void PS_HW6_RTOS_RuntimeStateTimersService(uint32_t now_tick)
   }
 }
 
+uint32_t PS_HW6_CalendarRuntime_Send(uint32_t to_power,
+  const ps_calendar_message_t *packet)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS] = {
+    packet->magic, packet->kind, packet->sequence, packet->registration};
+  if (tx_thread_identify() != &ps_threads[to_power ? PS_HW6_RTOS_OWNER_RUNTIME :
+      PS_HW6_RTOS_OWNER_POWER]) { return TX_CALLER_ERROR; }
+  return tx_queue_send(&ps_queues[to_power ? PS_HW6_RTOS_OWNER_POWER :
+    PS_HW6_RTOS_OWNER_RUNTIME], message, TX_NO_WAIT);
+}
+
+uint32_t PS_HW6_CalendarRuntime_Scene(void)
+{
+  return PS_SceneRuntime_InstalledObjectsActive() && PS_SceneRuntime_StateSceneActive() ?
+    PS_SceneRuntime_SceneActivation() : 0UL;
+}
+
+uint32_t PS_HW6_CalendarRuntime_Running(void)
+{
+  return (g_ps_hw6_rtos_probe.runtime_lifecycle == PS_HW6_RUNTIME_LIFECYCLE_RUNNING) &&
+    (g_ps_hw6_battery_fault_wait_probe.active == 0UL);
+}
+
+uint32_t PS_HW6_CalendarRuntime_BindingValid(uint32_t binding)
+{
+  uint32_t scope, policy, delay;
+  return PS_SceneRuntime_TimerConfiguration(binding, &scope, &policy, &delay) &&
+    (scope == PS_SCENE_RUNTIME_TIMER_SCENE) && (policy == PS_SCENE_RUNTIME_TIMER_START_ACTION);
+}
+
+ps_calendar_delivery_state_t PS_HW6_CalendarRuntime_Apply(uint32_t binding)
+{
+  uint32_t result;
+  if (!PS_HW6_CalendarRuntime_BindingValid(binding) ||
+      PS_HW6_RTOS_ObjectAdvance((uint32_t)tx_time_get()))
+  { return PS_CALENDAR_DELIVERY_FAILED; }
+  result = PS_SceneRuntime_HandleStateSceneEvent(binding);
+  if (PS_HW6_RTOS_CompleteStateSceneEvent(result) != TX_SUCCESS)
+  { return PS_CALENDAR_DELIVERY_FAILED; }
+  PS_HW6_RTOS_RuntimeStateTimersSync((uint32_t)tx_time_get(), 0UL);
+  if (result == PS_SCENE_RUNTIME_INPUT_APPLIED) { return PS_CALENDAR_DELIVERY_APPLIED; }
+  if (result == PS_SCENE_RUNTIME_INPUT_IGNORED) { return PS_CALENDAR_DELIVERY_IGNORED; }
+  return PS_CALENDAR_DELIVERY_FAILED;
+}
+
 static void PS_HW6_RTOS_RuntimeInteractionBegin(uint32_t now_tick)
 {
   PS_HW6_RTOS_RuntimeInteractionAdvanceEpoch();
@@ -12378,7 +12424,17 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
           (uint32_t)message[word];
       }
 
-      if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+      if (((owner_id == PS_HW6_RTOS_OWNER_POWER) ||
+           (owner_id == PS_HW6_RTOS_OWNER_RUNTIME)) &&
+          (message[0] == PS_CALENDAR_TRANSPORT_MAGIC))
+      {
+        ps_calendar_message_t packet = {(uint32_t)message[0], (uint32_t)message[1],
+          (uint32_t)message[2], (uint32_t)message[3]};
+        if (owner_id == PS_HW6_RTOS_OWNER_POWER)
+        { PS_HW6_CalendarRuntime_PowerMessage(&packet); }
+        else { PS_HW6_CalendarRuntime_RuntimeMessage(&packet); }
+      }
+      else if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
           (message[0] == PS_HW6_SYSTEM_TIME_MAGIC))
       {
         PS_HW6_SystemTime_Owner(message);
@@ -12716,6 +12772,8 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     {
       if (g_ps_hw6_battery_fault_wait_probe.active == 0UL)
       {
+        if ((g_ps_system_time_request == 0UL) && (g_ps_system_time_probe.pending == 0UL))
+        { PS_HW6_CalendarRuntime_RuntimeService(); }
         PS_HW6_RTOS_RuntimeStateTimersService((uint32_t)now);
         PS_HW6_RTOS_RuntimeInteractionService((uint32_t)now);
         PS_HW6_RTOS_CandidateService();
@@ -12951,6 +13009,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         PS_HW6_Calendar_Service((uint32_t)tx_time_get(),
           g_ps_hw6_battery_fault_wait_probe.active == 0UL);
       }
+      PS_HW6_CalendarRuntime_PowerService(g_ps_hw6_battery_fault_wait_probe.active == 0UL);
       PS_HW6_RTOS_RunStop2AutoIdlePeriodic((uint32_t)now);
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&

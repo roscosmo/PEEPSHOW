@@ -74,6 +74,44 @@ No reverse dependency from Platform owners into Engine, package, or Reference Ga
 
 ## Change Control
 
+### HW6 Calendar Bench Envelope V1
+
+The explicit calendar runtime bench uses existing thPower/thRuntime queues;
+no queue sizes or objects change. `ps_calendar_message_t` is compile-time checked
+as four 32-bit words: `CAL1` magic/version (0x43414c31), operation, sequence,
+registration. No pointers or callbacks are sent.
+
+Power sends NOTIFY=1 and GRANT=3. Runtime sends CLAIM=2 and completion
+ACK_APPLIED=4 / ACK_IGNORED=5 / ACK_FAILED=6. Sequence identifies the retained
+power-owned occurrence; registration identifies the scene/binding lifetime.
+The full identity is retained by the endpoint, not truncated into a pointer.
+
+Control operations: REGISTER=7 uses sequence=registration and registration=scene
+activation to identify one runtime-owned immutable intent lease. Runtime cannot
+rewrite that fixed POD lease until the matching REGISTERED=8 reply, whose
+sequence is setup status and registration is the request identity. CANCEL=9
+removes the matching registration. REJECT=10 terminates a stale claim attempt.
+DEFER=11 returns an unexecuted grant to pending when runtime suspended; a changed
+clock generation or cancelled owner invalidates it instead. Identity counters
+do not wrap. The scene activation is unique across live installed replacements
+and serves as session/scene identity in this single-scene bench.
+
+Every send is TX_NO_WAIT. A failed send retains the outbound message; each
+existing owner service pass attempts at most one send, counted on failure.
+There is no synchronous wait, new polling timer, queue resend after success,
+or timeout that releases a still-live lease. A missing owner therefore remains
+an explicit pending transaction, not permission to overwrite its data or replay
+an action. Battery fault handling cancels scheduling and removes its sleep hold;
+this bench is not new broken-owner recovery policy. A full queue can delay work
+but cannot cause a tight zero-wait receive loop. Native queue stubs exercise
+this lifecycle; hardware dispatch remains pending validation.
+
+Clock changes serialize with claims in thPower. Runtime rechecks scene lifetime
+and suspension at grant receipt. Completions are retained until enqueued, with
+the executed sequence recorded before sending, preventing duplicate execution.
+Cancellation, new setup and completion share each producer's existing FIFO.
+This envelope does not advertise a public calendar package event encoding.
+
 Any ICD change requires:
 1. schema version bump
 2. docs update

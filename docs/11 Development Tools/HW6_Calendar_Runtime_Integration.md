@@ -16,6 +16,93 @@ need package-session ownership; a scene-owned bench does not provide that featur
 
 ## Existing Integration Points
 
+### Live Runtime Bench
+
+`ps_hw6_calendar_runtime` connects thPower and thRuntime using the existing
+four-word queues and a fixed immutable registration lease. Runtime debug requests
+are DAILY=1, TODAY_OFFSET=2, NEXT_OCCURRENCE=3, CANCEL=4. Binding, time_of_day
+(seconds since midnight) and day_offset are captured once. Setup requires valid
+local time and an installed scene's action-started scene timer handler. No action
+starts the fixture's relative timer; the calendar invokes that existing handler.
+Public source/package calendar encoding is not introduced by this bench.
+
+The adapter retains failed sends and attempts at most one outbound send per
+owner service pass. Notifications and claims carry sequence/registration identity.
+Runtime rechecks scene activation and suspension before the granted handler runs
+through normal event admission and presentation completion. Scene replacement
+cancels scheduling. Shell suspension retains the deadline and defers execution.
+Clock changes invalidate unclaimed work; a claimed transaction finishes, unless
+runtime defers it without execution, in which case stale clock work is discarded.
+
+Pending work blocks another scheduler consumption. Work discovered during sleep
+preparation aborts that sleep attempt, but does not force a zero receive wait
+that would starve runtime. Suspended pending work can sleep. Battery fault
+cancellation removes the calendar sleep hold. The older power-only debug mailbox
+cannot overwrite a live runtime registration. Registration is nonpersistent and
+must be cancelled before another explicit setup. See the ICD for lease/retry
+limits; this does not introduce broken-owner recovery policy.
+
+Native tests run both production endpoint implementations with bounded queue
+stubs: failed notification/completion sends, stale clock events, scene replacement,
+suspension before expiry and between claim/grant, ignored completion and a
+day-offset one-shot. A separate test loads the actual egg via the production
+installed/development loader, calls the production calendar handler adapter,
+checks unchanged state activation and changed framebuffer pixels, then verifies
+A restores the original pixels. Hardware remains pending.
+
+#### Hardware Procedure
+
+Flash normal Debug firmware and install through MSC:
+`firmware/peepshow_hw6_fw0/build/calendar-runtime/calendar_dispatch.egg`.
+Builder: `tools/authoring/build_calendar_runtime_fixture.py`.
+Artifact: 1004 bytes; SHA-256
+`9cca9f71493d8315c9bd7c093ffce77294bf1068e3540fe760051d8759dda51f`.
+The native test verifies compiled handler binding index 1.
+
+In the Calendar scene, wake normally/halt and source
+`__fw0_calendar_runtime_enable.gdb`. This changes saved local time to
+2026-09-19 23:59:40 and registers daily midnight. Resume untouched for 25 seconds:
+the outlined square must fill once. A clears it without rearming; it stays empty.
+Wake normally/halt and source `__fw0_calendar_runtime_prints.gdb`.
+Require setup=0, one applied increment, failed=0, pending_ack=0, delivery_state=3,
+a calendar RTC expiry and the observed fill. Counters do not prove visible pixels
+or measured current.
+
+Cancel with `set var g_ps_calendar_runtime_probe.request = 4` and resume before
+another run. To test suspension, rearm then HOLD START before expiry, stay in
+shell past midnight and resume: the square fills only upon return. Restore your
+preferred time afterward. Do not change low-power debug bits. GUI capability
+remains unavailable pending hardware evidence and source/export integration.
+
+### Power Transport Endpoint
+
+`ps_calendar_transport` now wraps the delivery record in a four-word CAL1
+protocol: magic/version, operation, sequence, registration. Operations are
+NOTIFY=1, CLAIM=2, GRANT=3, ACK_APPLIED=4, ACK_IGNORED=5, ACK_FAILED=6.
+The message size is compile-time checked. The fixed record retains the full
+identity and occurrence; queue payloads contain no pointers.
+
+The endpoint supplies one pending outbound message at a time. Only a successful
+enqueue may call Sent. Failed notification/grant sends leave the message
+available; a successful send suppresses retransmission. Claims require a sent
+notification; completion requires a sent grant. Old sequence/registration pairs
+are rejected. Invalidation before claim rejects old notifications; after claim
+the admitted transaction retains the slot until explicit completion.
+
+This module is the power-side protocol, not the live HW6 queue adapter. The
+runtime endpoint must retain unsent claims/acknowledgments, suppress duplicate
+grants and revalidate scene lifetime and suspension before executing actions.
+Registration must establish the matching immutable identity at both endpoints.
+The adapter must define bounded retry and teardown/timeout behavior, including
+rejection of claims after invalidation, before connecting these packets to the
+owner loops. No unbounded wait or retry is implemented by the endpoint itself.
+
+Native tests simulate full outgoing queues by withholding Sent; they verify
+retained packets, ordering, duplicate rejection, stale registration/sequence,
+clock invalidation and ignored completion. They do not exercise ThreadX queues
+or prove hardware execution. The live adapter and hardware procedure above now
+extend this endpoint; public capability promotion remains unavailable.
+
 ### Arm-Time Authoring Rules
 
 Agreed author-facing forms are local time plus a nonnegative calendar-day offset,
@@ -43,8 +130,8 @@ calendar days in the local-only clock model, not relative elapsed countdowns.
 Native coverage includes past-time consumption, exact/subsecond boundaries,
 leap-day/month/year rollover, large-offset range rejection, unavailable time
 and deadline preservation across rebasing. This core API does not expose a
-Studio command or change executable package encoding. Owner delivery integration
-and public capability advertisement remain outstanding.
+Studio command or change executable package encoding. The live bench uses the
+resolver; public capability advertisement remains outstanding.
 
 ### Delivery Record Implementation
 
@@ -57,7 +144,7 @@ checks the complete identity and a monotonically increasing sequence. Sequence
 exhaustion rejects new work rather than wrapping. A terminal occurrence cannot
 be offered again with the same identity and an equal or earlier deadline.
 
-This is not yet connected to either owner queue or a V2 handler. All mutation
+The live bench connects this to owner queues and a V2 handler. All mutation
 must occur in one owner; it is not a concurrent mailbox. The adapter must supply
 the current authorized identity, serialize clock changes/claims, prevent obsolete
 registrations from being re-offered, and retain scheduler occurrences while the

@@ -6,6 +6,12 @@ static ps_system_time_snapshot_t snapshot = {
   .local = {2026, 9, 19, 23, 59, 45}, .generation = 1U};
 static ps_system_time_status_t read_status = PS_SYSTEM_TIME_OK;
 static uint32_t tx_time_get(void) { return tick; }
+uint32_t PS_HW6_CalendarRuntime_Ready(void) { return 1U; }
+uint32_t PS_HW6_CalendarRuntime_Bound(void) { return 0U; }
+uint32_t PS_HW6_CalendarRuntime_NeedsService(void) { return 0U; }
+void PS_HW6_CalendarRuntime_Due(uint32_t occurrence, uint32_t generation)
+{ (void)occurrence; (void)generation; }
+void PS_HW6_CalendarRuntime_TimeChanged(void) { }
 ps_system_time_status_t PS_HW6_Calendar_Read(ps_system_time_snapshot_t *out)
 { reads++; *out = snapshot; return read_status; }
 #include "calendar_owner.inc"
