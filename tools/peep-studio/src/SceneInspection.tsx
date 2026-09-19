@@ -54,6 +54,7 @@ import { Fragment, useContext, useEffect, useMemo, useRef, useState, type Keyboa
 import { ObjectActionContext, ObjectActionPosition } from "./ObjectActionContext";
 import { FramebufferCanvas } from "./FramebufferCanvas";
 import { ObjectMotionFields } from "./ObjectMotionFields";
+import { ScopedVariableEditor } from "./ScopedVariableEditor";
 import {
   buildSceneFlowGraphModel,
   buildStateGraphModel,
@@ -205,7 +206,7 @@ function GuardList({ guards }: { guards: StateGuard[] }) {
 }
 
 const GUARD_OPERATORS = ["eq", "ne", "lt", "le", "gt", "ge"] as const;
-const ACTION_OPERATIONS = ["assign", "add"] as const;
+const ACTION_OPERATIONS = ["assign", "add", "reset"] as const;
 const INPUT_LABELS: Record<string, string> = {
   BUTTON_A: "Button A",
   BUTTON_START: "Start",
@@ -4510,6 +4511,10 @@ export function SceneAuthoringInspector({
   onAddVariable,
   onUpdateVariable,
   onDeleteVariable,
+  scopedVariableModel = false,
+  packageVariables = [],
+  scopedVariableLimit = 0,
+  onApplyScopedVariables,
   onResetRouteLayout,
   placementOwnership,
   assets,
@@ -4538,7 +4543,8 @@ export function SceneAuthoringInspector({
     guardIndex: number,
     variableRef: string,
     operator: string,
-    value: number,
+    value: number | boolean,
+    variableScope?: "scene" | "package",
   ) => Promise<void>;
   onAddRouteGuard: (
     sceneId: string,
@@ -4565,6 +4571,10 @@ export function SceneAuthoringInspector({
   onAddVariable: (sceneId: string, variable: StateVariable) => Promise<void>;
   onUpdateVariable: (sceneId: string, variable: StateVariable) => Promise<void>;
   onDeleteVariable: (sceneId: string, variableId: string) => Promise<void>;
+  scopedVariableModel?: boolean;
+  packageVariables?: StateVariable[];
+  scopedVariableLimit?: number;
+  onApplyScopedVariables?: (commands: Array<Record<string, unknown>>) => Promise<boolean>;
   onResetRouteLayout: (sceneId: string, routeId: string, sourceState: string) => Promise<void>;
   placementOwnership: PlacementOwnership | null;
   assets: AssetRecord[];
@@ -4584,6 +4594,10 @@ export function SceneAuthoringInspector({
   sceneExitActionKinds?: string[];
 }) {
   const variables = scene?.variables ?? [];
+  const actionVariables: StateVariable[] = scopedVariableModel
+    ? [...variables.map(variable => ({ ...variable, variable_scope: "scene" as const })),
+      ...packageVariables.map(variable => ({ ...variable, variable_scope: "package" as const }))]
+    : variables;
   const inputActions = scene?.input_actions ?? [];
   const states = scene?.states ?? [];
   const routes = scene?.routes ?? [];
@@ -4642,7 +4656,7 @@ export function SceneAuthoringInspector({
           scenes={scenes}
           sceneExits={scene.scene_exits ?? []}
           inputActions={inputActions}
-          variables={variables}
+          variables={actionVariables}
           renderModels={renderModels}
           waitingVisuals={waitingVisuals}
           placementOwnership={placementOwnership}
@@ -4697,6 +4711,10 @@ export function SceneAuthoringInspector({
           states={states}
           routes={routes}
           variables={variables}
+          scopedVariableModel={scopedVariableModel}
+          packageVariableCount={packageVariables.length}
+          scopedVariableLimit={scopedVariableLimit}
+          onApplyScopedVariables={onApplyScopedVariables}
           renderModels={renderModels}
           waitingVisuals={waitingVisuals}
           onSelect={onSelect}
@@ -4716,6 +4734,10 @@ function SceneOverview({
   states,
   routes,
   variables,
+  scopedVariableModel,
+  packageVariableCount,
+  scopedVariableLimit,
+  onApplyScopedVariables,
   renderModels,
   waitingVisuals,
   onSelect,
@@ -4729,6 +4751,10 @@ function SceneOverview({
   states: StateRecord[];
   routes: StateRoute[];
   variables: StateVariable[];
+  scopedVariableModel: boolean;
+  packageVariableCount: number;
+  scopedVariableLimit: number;
+  onApplyScopedVariables?: (commands: Array<Record<string, unknown>>) => Promise<boolean>;
   renderModels: RenderModel[];
   waitingVisuals: WaitingVisual[];
   onSelect: (selection: SceneSelection) => void;
@@ -4785,7 +4811,15 @@ function SceneOverview({
 
       <section className="inspector-section">
         <h3><Variable size={14} aria-hidden="true" /> Variables</h3>
-        <VariableEditorList
+        {scopedVariableModel && onApplyScopedVariables ? <ScopedVariableEditor
+          scope="scene"
+          sceneId={scene.scene_id}
+          variables={variables}
+          combinedCount={variables.length + packageVariableCount}
+          limit={scopedVariableLimit}
+          disabled={!canEdit}
+          onApply={onApplyScopedVariables}
+        /> : <VariableEditorList
           sceneId={scene.scene_id}
           variables={variables}
           variableLimit={variableLimit}
@@ -4793,7 +4827,7 @@ function SceneOverview({
           onAddVariable={onAddVariable}
           onUpdateVariable={onUpdateVariable}
           onDeleteVariable={onDeleteVariable}
-        />
+        />}
       </section>
 
       <section className="inspector-section">
@@ -4986,16 +5020,16 @@ function VariableEditorRow({
   onUpdateVariable: (sceneId: string, variable: StateVariable) => Promise<void>;
   onDeleteVariable: (sceneId: string, variableId: string) => Promise<void>;
 }) {
-  const [minimum, setMinimum] = useState(variable.minimum);
-  const [initial, setInitial] = useState(variable.initial);
-  const [maximum, setMaximum] = useState(variable.maximum);
+  const [minimum, setMinimum] = useState(variable.minimum ?? 0);
+  const [initial, setInitial] = useState(typeof variable.initial === "number" ? variable.initial : 0);
+  const [maximum, setMaximum] = useState(variable.maximum ?? 1);
   const validRange = minimum <= initial && initial <= maximum;
   const changed = minimum !== variable.minimum || initial !== variable.initial || maximum !== variable.maximum;
 
   useEffect(() => {
-    setMinimum(variable.minimum);
-    setInitial(variable.initial);
-    setMaximum(variable.maximum);
+    setMinimum(variable.minimum ?? 0);
+    setInitial(typeof variable.initial === "number" ? variable.initial : 0);
+    setMaximum(variable.maximum ?? 1);
   }, [variable.initial, variable.maximum, variable.minimum]);
 
   return (
@@ -5331,7 +5365,8 @@ function RouteInspector({
     guardIndex: number,
     variableRef: string,
     operator: string,
-    value: number,
+    value: number | boolean,
+    variableScope?: "scene" | "package",
   ) => Promise<void>;
   onAddRouteGuard: (
     sceneId: string,
@@ -5525,7 +5560,8 @@ export function EditableGuardList({
     guardIndex: number,
     variableRef: string,
     operator: string,
-    value: number,
+    value: number | boolean,
+    variableScope?: "scene" | "package",
   ) => Promise<void>;
   onAddRouteGuard: (
     sceneId: string,
@@ -5542,9 +5578,10 @@ export function EditableGuardList({
     <div className="guard-editor-list">
       {route.guards.length === 0 && <div className="plain-rule-note">Always allowed.</div>}
       {route.guards.map((guard, index) => {
-        const variable = variables.find((item) => item.variable_id === guard.variable_ref);
-        const commit = (variableRef: string, operator: string, value: number) => {
-          void onSetRouteGuard(sceneId, route.route_id, index, variableRef, operator, value);
+        const scope = guard.variable_scope ?? "scene";
+        const variable = variables.find((item) => (item.variable_scope ?? "scene") === scope && item.variable_id === guard.variable_ref);
+        const commit = (variableRef: string, operator: string, value: number | boolean, variableScope = scope) => {
+          void onSetRouteGuard(sceneId, route.route_id, index, variableRef, operator, value, variableScope);
         };
         return (
           <div className="logic-sentence-row" key={`${route.route_id}-guard-${index}`}>
@@ -5587,13 +5624,17 @@ export function EditableGuardList({
               <span>Only if</span>
               <select
                 aria-label={`Condition ${index + 1} variable`}
-                value={guard.variable_ref}
+                value={`${scope}:${guard.variable_ref}`}
                 disabled={!canEdit}
-                onChange={(event) => commit(event.target.value, guard.operator, guard.value)}
+                onChange={(event) => {
+                  const [nextScope, nextRef] = event.target.value.split(":", 2) as ["scene" | "package", string];
+                  const next = variables.find(item => (item.variable_scope ?? "scene") === nextScope && item.variable_id === nextRef);
+                  commit(nextRef, "eq", next?.initial ?? 0, nextScope);
+                }}
               >
                 {variables.map((variable) => (
-                  <option key={variable.variable_id} value={variable.variable_id}>
-                    {displayVariableName(variable.variable_id)}
+                  <option key={`${variable.variable_scope ?? "scene"}:${variable.variable_id}`} value={`${variable.variable_scope ?? "scene"}:${variable.variable_id}`}>
+                    {(variable.variable_scope ?? "scene") === "package" ? "Package / " : "Scene / "}{displayVariableName(variable.variable_id)}
                   </option>
                 ))}
               </select>
@@ -5603,19 +5644,23 @@ export function EditableGuardList({
                 disabled={!canEdit}
                 onChange={(event) => commit(guard.variable_ref, event.target.value, guard.value)}
               >
-                {GUARD_OPERATORS.map((operator) => (
+                {(variable?.value_type === "bool" ? ["eq", "ne"] : GUARD_OPERATORS).map((operator) => (
                   <option key={operator} value={operator}>
                     {GUARD_OPERATOR_LABELS[operator]}
                   </option>
                 ))}
               </select>
-              <input
+              {variable?.value_type === "bool" ? <select aria-label={`Condition ${index + 1} value`}
+                value={String(guard.value)} disabled={!canEdit}
+                onChange={event => commit(guard.variable_ref, guard.operator, event.target.value === "true")}>
+                <option value="true">True</option><option value="false">False</option>
+              </select> : <input
                 aria-label={`Condition ${index + 1} value`}
                 type="number"
                 step={1}
                 min={variable?.minimum}
                 max={variable?.maximum}
-                value={guard.value}
+                value={typeof guard.value === "number" ? guard.value : 0}
                 disabled={!canEdit}
                 onChange={(event) => {
                   const parsed = Number.parseInt(event.target.value, 10);
@@ -5623,7 +5668,7 @@ export function EditableGuardList({
                     commit(guard.variable_ref, guard.operator, parsed);
                   }
                 }}
-              />
+              />}
             </div>
           </div>
         );
@@ -5636,6 +5681,7 @@ export function EditableGuardList({
         onClick={() => {
           if (defaultVariable !== undefined) {
             void onAddRouteGuard(sceneId, route.route_id, route.guards.length, {
+              variable_scope: defaultVariable.variable_scope ?? "scene",
               variable_ref: defaultVariable.variable_id,
               operator: "eq",
               value: defaultVariable.initial,
@@ -5788,6 +5834,7 @@ export function EditableActionList({
       const variable = variables[0];
       return variable === undefined ? null : {
         kind,
+        variable_scope: variable.variable_scope ?? "scene",
         variable_ref: variable.variable_id,
         operation: "assign",
         value: variable.initial,
@@ -5875,10 +5922,11 @@ export function EditableActionList({
     <div className="action-editor-list">
       {visibleActions.length === 0 && <div className="plain-rule-note">{emptyActionMessage}</div>}
       {visibleActions.map(({ action, actionIndex }, visibleIndex) => {
+        const variableScope = action.variable_scope ?? "scene";
         const variableRef = action.variable_ref ?? variables[0]?.variable_id ?? "";
-        const variable = variables.find((item) => item.variable_id === variableRef);
-        const operation = action.operation === "add" ? "add" : "assign";
-        const value = typeof action.value === "number" ? action.value : variable?.initial ?? 0;
+        const variable = variables.find((item) => (item.variable_scope ?? "scene") === variableScope && item.variable_id === variableRef);
+        const operation = action.operation === "add" ? "add" : action.operation === "reset" ? "reset" : "assign";
+        const value = action.value !== undefined ? action.value : variable?.initial ?? 0;
         const isAdd = operation === "add";
         const cueRef = action.cue_ref ?? audioCues[0]?.cue_id ?? "";
         const isElementAction = action.kind.startsWith("set_element_") || action.kind.startsWith("object.");
@@ -6004,13 +6052,14 @@ export function EditableActionList({
                     disabled={!canEdit}
                     onChange={(event) => commit({
                       kind: "set_variable",
+                      variable_scope: variableScope,
                       variable_ref: variableRef,
                       operation: event.target.value,
-                      value,
+                      ...(event.target.value === "reset" ? {} : { value }),
                     })}
                   >
-                    {ACTION_OPERATIONS.map((item) => (
-                      <option key={item} value={item}>{item === "assign" ? "Set value" : "Add amount"}</option>
+                    {ACTION_OPERATIONS.filter(item => variable?.value_type !== "bool" || item !== "add").map((item) => (
+                      <option key={item} value={item}>{item === "assign" ? "Set value" : item === "add" ? "Add amount" : "Reset to start"}</option>
                     ))}
                   </select>
                   </label>
@@ -6018,40 +6067,45 @@ export function EditableActionList({
                   <span>Variable</span>
                   <select
                     aria-label={`Effect ${visibleIndex + 1} variable`}
-                    value={variableRef}
+                    value={`${variableScope}:${variableRef}`}
                     disabled={!canEdit || variables.length === 0}
-                    onChange={(event) => commit({
-                      kind: "set_variable",
-                      variable_ref: event.target.value,
-                      operation,
-                      value,
-                    })}
+                    onChange={(event) => {
+                      const [nextScope, nextRef] = event.target.value.split(":", 2) as ["scene" | "package", string];
+                      const next = variables.find(item => (item.variable_scope ?? "scene") === nextScope && item.variable_id === nextRef);
+                      commit({ kind: "set_variable", variable_scope: nextScope, variable_ref: nextRef,
+                        operation: next?.value_type === "bool" && operation === "add" ? "assign" : operation,
+                        ...(operation === "reset" ? {} : { value: next?.initial ?? 0 }) });
+                    }}
                   >
                     {variables.map((candidate) => (
-                      <option key={candidate.variable_id} value={candidate.variable_id}>
-                        {displayVariableName(candidate.variable_id)}
+                      <option key={`${candidate.variable_scope ?? "scene"}:${candidate.variable_id}`} value={`${candidate.variable_scope ?? "scene"}:${candidate.variable_id}`}>
+                        {(candidate.variable_scope ?? "scene") === "package" ? "Package / " : "Scene / "}{displayVariableName(candidate.variable_id)}
                       </option>
                     ))}
                   </select>
                   </label>
-                  <label className="effect-field">
+                  {operation !== "reset" && <label className="effect-field">
                   <span>{isAdd ? "Amount" : "Value"}</span>
-                  <input
+                  {variable?.value_type === "bool" ? <select value={String(value)} disabled={!canEdit}
+                    onChange={event => commit({ kind: "set_variable", variable_scope: variableScope, variable_ref: variableRef,
+                      operation: "assign", value: event.target.value === "true" })}>
+                    <option value="true">True</option><option value="false">False</option>
+                  </select> : <input
                     aria-label={isAdd ? `Effect ${visibleIndex + 1} change amount` : `Effect ${visibleIndex + 1} target value`}
                     type="number"
                     step={1}
                     min={isAdd ? undefined : variable?.minimum}
                     max={isAdd ? undefined : variable?.maximum}
-                    value={value}
+                    value={typeof value === "number" ? value : 0}
                     disabled={!canEdit}
                     onChange={(event) => {
                       const parsed = Number.parseInt(event.target.value, 10);
                       if (Number.isFinite(parsed)) {
-                        commit({ kind: "set_variable", variable_ref: variableRef, operation, value: parsed });
+                        commit({ kind: "set_variable", variable_scope: variableScope, variable_ref: variableRef, operation, value: parsed });
                       }
                     }}
-                  />
-                  </label>
+                  />}
+                  </label>}
                 </div>
               )}
               {(action.kind === "object.move_by" || action.kind === "object.set_position") && (

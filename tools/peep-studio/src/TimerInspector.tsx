@@ -4,7 +4,7 @@ import { EditableActionList, EditableGuardList, type SceneSelection } from "./Sc
 import { baseObjectRows } from "./sceneCapabilities";
 import { CALENDAR_SCHEDULE, calendarScheduleCapability, calendarScheduleSummary, createCalendarScheduleCommands, createTimerCommands, deleteTimerCommands, SCENE_TIMER, STATE_TIMER, timerBounds } from "./timerAuthoring";
 import type { TimerCommand } from "./timerAuthoring";
-import type { AssetRecord, AudioCueRecord, PlacementOwnership, SceneDocument, ServiceHello, StateAction, StateGuard, StateRoute } from "./types";
+import type { AssetRecord, AudioCueRecord, PlacementOwnership, SceneDocument, ServiceHello, StateAction, StateGuard, StateRoute, StateVariable } from "./types";
 
 function timerKindLabel(eventType: string | null | undefined): string {
   return eventType === CALENDAR_SCHEDULE ? "Calendar schedule" : eventType === SCENE_TIMER ? "Scene timer" : "State-entry timer";
@@ -40,7 +40,7 @@ function stateName(scene: SceneDocument, stateId: string | undefined): string {
   return scene.states?.find(state => state.state_id === stateId)?.display_name ?? stateId ?? "None";
 }
 
-export function TimerInspector({ scene, scenes = [], service, profileId, selection, onSelect, supports, onApply, ownership, assets, audioCues, canConnectScenes = false, sceneExitActionKinds = [], routeActionKinds = [], previewClockAvailable = false, onSetPreviewLocalTime }: {
+export function TimerInspector({ scene, scenes = [], service, profileId, selection, onSelect, supports, onApply, ownership, assets, audioCues, canConnectScenes = false, sceneExitActionKinds = [], routeActionKinds = [], previewClockAvailable = false, onSetPreviewLocalTime, packageVariables = [], scopedVariableModel = false }: {
   scene: SceneDocument; service: ServiceHello | null; profileId: string;
   selection: SceneSelection; onSelect: (selection: SceneSelection) => void; supports: (kind: string) => boolean;
   onApply: (commands: TimerCommand[]) => Promise<boolean>;
@@ -48,6 +48,8 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
   canConnectScenes?: boolean; sceneExitActionKinds?: string[]; routeActionKinds?: string[];
   previewClockAvailable?: boolean; onSetPreviewLocalTime?: (localTime: string) => Promise<boolean>;
   scenes?: SceneDocument[];
+  packageVariables?: StateVariable[];
+  scopedVariableModel?: boolean;
 }) {
   const section = useRef<HTMLElement>(null);
   const stateId = selection.kind === "state" ? selection.id : selection.kind === "timerDraft" ? selection.stateId : undefined;
@@ -67,6 +69,10 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
     return local.toISOString().slice(0, 19);
   });
   const bindings = (scene.event_bindings ?? []).filter(binding => [SCENE_TIMER, STATE_TIMER, CALENDAR_SCHEDULE].includes(binding.event_type));
+  const actionVariables: StateVariable[] = scopedVariableModel
+    ? [...(scene.variables ?? []).map(variable => ({ ...variable, variable_scope: "scene" as const })),
+      ...packageVariables.map(variable => ({ ...variable, variable_scope: "package" as const }))]
+    : scene.variables ?? [];
   const binding = bindings.find(item => item.binding_id === selected);
   const handler = scene.event_handlers?.find(item => item.event_ref === selected);
   const timerRoutes = (scene.routes ?? []).filter(item => item.event_ref === selected);
@@ -259,15 +265,15 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
       </div>}
     </>}
     {!adding && binding && handler && record && <>
-      {handler && <><h4>Conditions</h4><EditableGuardList sceneId={scene.scene_id} route={viewRecord} variables={scene.variables ?? []}
+      {handler && <><h4>Conditions</h4><EditableGuardList sceneId={scene.scene_id} route={viewRecord} variables={actionVariables}
         guardLimit={service?.state_scene_graph.limits.guards_per_route ?? 0} canEdit={supports("event_handler.update")}
-        onSetRouteGuard={async (_s, _r, index, variable_ref, operator, value) => {
-          const guards = [...record.guards]; guards[index] = { variable_ref, operator, value }; await setGuards(guards);
+        onSetRouteGuard={async (_s, _r, index, variable_ref, operator, value, variable_scope) => {
+          const guards = [...record.guards]; guards[index] = { variable_scope, variable_ref, operator, value }; await setGuards(guards);
         }} onAddRouteGuard={async (_s, _r, index, guard) => { const guards = [...record.guards]; guards.splice(index, 0, guard as StateGuard); await setGuards(guards); }}
         onDeleteRouteGuard={async (_s, _r, index) => { await setGuards(record.guards.filter((_g, i) => i !== index)); }}
         onMoveRouteGuard={async (_s, _r, index, target) => { const guards = [...record.guards]; guards.splice(target, 0, ...guards.splice(index, 1)); await setGuards(guards); }} /></>}
       <h4>Effects</h4>
-      <EditableActionList sceneObjects sceneId={scene.scene_id} route={viewRecord} variables={scene.variables ?? []}
+      <EditableActionList sceneObjects sceneId={scene.scene_id} route={viewRecord} variables={actionVariables}
         allowedActionKinds={record.target_scene ? sceneExitActionKinds : undefined}
         routeActionKinds={routeActionKinds}
         targetElements={baseObjectRows(scene, ownership)} waitingVisuals={[]} assets={assets} audioCues={audioCues}

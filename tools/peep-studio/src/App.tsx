@@ -29,6 +29,7 @@ import {
   SquareMousePointer,
   Trash2,
   Type,
+  Variable,
   Volume2,
   X,
   ZoomIn,
@@ -73,6 +74,7 @@ import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
 import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsLocalGraphCommand, supportsObjectCommand, supportsSceneConnection, usesSceneObjects } from "./sceneCapabilities";
 import { SceneObjectInspector } from "./SceneObjectInspector";
 import { TimerInspector } from "./TimerInspector";
+import { ScopedVariableEditor } from "./ScopedVariableEditor";
 import { ObjectActionContext } from "./ObjectActionContext";
 import { CALENDAR_SCHEDULE, SCENE_TIMER, STATE_TIMER, calendarScheduleCapability, calendarScheduleSummary, timerBounds, deleteTimerCommands } from "./timerAuthoring";
 import type {
@@ -3531,7 +3533,8 @@ export default function App() {
     guardIndex: number,
     variableRef: string,
     operator: string,
-    value: number,
+    value: number | boolean,
+    variableScope?: "scene" | "package",
   ) => {
     if (bridge === undefined || project === null || busy !== null) {
       return;
@@ -3541,7 +3544,11 @@ export default function App() {
     try {
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision,
-        commands: [
+        commands: project.document?.project?.variable_model === "scoped_v1" ? [
+          { kind: "route.guard.delete", scene_id: sceneId, route_id: routeId, guard_index: guardIndex },
+          { kind: "route.guard.add", scene_id: sceneId, route_id: routeId, guard_index: guardIndex,
+            guard: { variable_scope: variableScope ?? "scene", variable_ref: variableRef, operator, value } },
+        ] : [
           {
             kind: "route.set_guard",
             scene_id: sceneId,
@@ -3675,6 +3682,26 @@ export default function App() {
       setMessage(`${successMessage} Save to write it to the project.`);
     } catch (error) {
       setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const applyScopedVariableCommands = async (commands: Array<Record<string, unknown>>): Promise<boolean> => {
+    if (bridge === undefined || project === null || busy !== null) return false;
+    setBusy("Updating variables");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands,
+      });
+      applyProjectResult(result);
+      setMessage("Variables updated. Save to write them to the project.");
+      return true;
+    } catch (error) {
+      setMessage(errorText(error));
+      return false;
     } finally {
       setBusy(null);
     }
@@ -8958,6 +8985,34 @@ export default function App() {
           </>
         )}
       </section>
+      {project !== null && service?.scoped_variables?.host_editing === true && (() => {
+        const capability = service.scoped_variables;
+        const scoped = project.document?.project?.variable_model === capability.model;
+        const packageVariables = project.document?.project?.package_variables ?? [];
+        const maximumSceneVariables = Math.max(0, ...scenes.map(scene => scene.variables?.length ?? 0));
+        const allV2 = scenes.length > 0 && scenes.every(scene => scene.schema_version === 2);
+        return <section className="inspector-section project-settings-inspector">
+          <h3><Variable size={14} aria-hidden="true" /> Scoped variables</h3>
+          {!scoped ? <>
+            <p className="muted">Enable separate scene and package variable lifetimes for host authoring and preview.</p>
+            <p className="audio-import-warning">Scoped-variable projects cannot currently be exported to hardware.</p>
+            <button className="button primary" type="button" disabled={busy !== null || !allV2
+              || !capability.commands.includes("project.variables.enable")}
+              title={!allV2 ? "Scoped variables require every scene to use V2" : undefined}
+              onClick={() => void applyScopedVariableCommands([{ kind: "project.variables.enable" }])}>
+              Enable scoped variables
+            </button>
+          </> : <>
+            <p className="audio-import-warning">Host preview only. Firmware execution and package export are unavailable.</p>
+            <div className="project-settings-group-heading"><strong>Package variables</strong>
+              <span>Preserved when preview moves between scenes.</span></div>
+            <ScopedVariableEditor scope="package" variables={packageVariables}
+              combinedCount={packageVariables.length + maximumSceneVariables}
+              limit={capability.maximum_combined_variables_per_scene} disabled={busy !== null}
+              onApply={applyScopedVariableCommands} />
+          </>}
+        </section>;
+      })()}
       {project !== null && (
         <section className="inspector-section project-settings-inspector">
           <h3>Current SFX import</h3>
@@ -9656,6 +9711,10 @@ export default function App() {
               onAddVariable={addVariable}
               onUpdateVariable={updateVariable}
               onDeleteVariable={deleteVariable}
+              scopedVariableModel={project?.document?.project?.variable_model === service?.scoped_variables?.model}
+              packageVariables={project?.document?.project?.package_variables ?? []}
+              scopedVariableLimit={service?.scoped_variables?.maximum_combined_variables_per_scene ?? 0}
+              onApplyScopedVariables={applyScopedVariableCommands}
               onResetRouteLayout={(sceneId, routeId, sourceState) =>
                 setStateRouteLayout(sceneId, routeId, sourceState, [], null, null)}
               placementOwnership={project?.placement_ownership ?? null}
@@ -9678,21 +9737,31 @@ export default function App() {
                 ? busy === null && supportsObjectCommand(service, selectedSceneCapability, kind) : localCommandAllowed(kind)}
               onApply={applySceneObjectCommands} ownership={project?.placement_ownership?.scenes[selectedSceneDocument.scene_id] ?? null}
               assets={assets} audioCues={audioCues}
+              packageVariables={project?.document?.project?.package_variables ?? []}
+              scopedVariableModel={project?.document?.project?.variable_model === service?.scoped_variables?.model}
               previewClockAvailable={preview?.scene.scene_id === selectedSceneDocument.scene_id
                 && service?.state_scene_graph.calendar_schedules?.preview_clock === "project.preview_set_local_time"}
               onSetPreviewLocalTime={setPreviewLocalTime} />
           )}
           {!projectRootSelected && workspaceMode === "logic" && (
             <section className="inspector-section">
-              <h3>Variables</h3>
-              {preview === null || Object.keys(preview.variables).length === 0 ? (
+              <h3>Preview variables</h3>
+              {preview === null || (Object.keys(preview.variables).length === 0
+                && Object.keys(preview.package_variables ?? {}).length === 0) ? (
                 <p className="muted">No runtime variables.</p>
               ) : (
-                <dl className="inspector-list">
-                  {Object.entries(preview.variables).map(([name, value]) => (
-                    <div key={name}><dt>{name}</dt><dd>{value}</dd></div>
-                  ))}
-                </dl>
+                <>
+                  {Object.keys(preview.variables).length > 0 && <><h4>Scene</h4><dl className="inspector-list">
+                    {Object.entries(preview.variables).map(([name, value]) => (
+                      <div key={name}><dt>{name}</dt><dd>{String(value)}</dd></div>
+                    ))}
+                  </dl></>}
+                  {Object.keys(preview.package_variables ?? {}).length > 0 && <><h4>Package</h4><dl className="inspector-list">
+                    {Object.entries(preview.package_variables ?? {}).map(([name, value]) => (
+                      <div key={name}><dt>{name}</dt><dd>{String(value)}</dd></div>
+                    ))}
+                  </dl></>}
+                </>
               )}
             </section>
           )}

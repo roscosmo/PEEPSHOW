@@ -45,6 +45,7 @@ export type ProjectSummary = {
 };
 
 export type SceneCapabilities = {
+  scoped_variables?: ScopedVariablesCapability | null;
   audio_export?: V2AudioExportCapability | null;
   local_graph_commands?: string[];
   scene_connection_commands?: boolean;
@@ -136,11 +137,27 @@ export type SceneExitRecord = {
 };
 
 export type StateVariable = {
+  variable_scope?: "scene" | "package";
   variable_id: string;
-  value_type: string;
-  initial: number;
-  minimum: number;
-  maximum: number;
+  value_type: "int32" | "bool";
+  initial: number | boolean;
+  minimum?: number;
+  maximum?: number;
+};
+
+export type ScopedVariablesCapability = {
+  model: "scoped_v1";
+  host_editing: boolean;
+  host_preview: boolean;
+  runtime: boolean;
+  export: boolean;
+  entry_graphs: boolean;
+  scopes: Array<"scene" | "package">;
+  value_types: Array<"int32" | "bool">;
+  operations: Array<"assign" | "add" | "reset">;
+  arithmetic: "clamp";
+  maximum_combined_variables_per_scene: number;
+  commands: string[];
 };
 
 export type InputAction = {
@@ -167,9 +184,10 @@ export type StatePlacementOverride = {
 };
 
 export type StateGuard = {
+  variable_scope?: "scene" | "package";
   variable_ref: string;
   operator: string;
-  value: number;
+  value: number | boolean;
 };
 
 export type StateAction = {
@@ -179,8 +197,9 @@ export type StateAction = {
   dy?: number;
   kind: string;
   variable_ref?: string;
+  variable_scope?: "scene" | "package";
   operation?: string;
-  value?: number;
+  value?: number | boolean;
   cue_ref?: string;
   element_ref?: string;
   visible?: boolean;
@@ -437,6 +456,8 @@ export type ProjectDocument = {
   project?: {
     editor?: ProjectEditorData;
     settings?: ProjectSettings;
+    variable_model?: "scoped_v1";
+    package_variables?: StateVariable[];
   };
   scenes?: SceneDocument[];
   assets?: AssetRecord[];
@@ -558,7 +579,9 @@ export type PreviewSnapshot = {
     phase_quantum_ms?: number;
     step_count?: number;
   };
-  variables: Record<string, number>;
+  variables: Record<string, number | boolean>;
+  package_variables?: Record<string, number | boolean>;
+  scoped_variables?: Array<{ scope: "scene" | "package"; variable_id: string; value: number | boolean }>;
   input: {
     logical_source: string;
     action_id: string;
@@ -638,6 +661,7 @@ export type TimerHandlerLayoutCapability = {
 };
 
 export type ServiceHello = {
+  scoped_variables?: ScopedVariablesCapability;
   project_settings?: {
     read_operation: string;
     edit_command: string;
