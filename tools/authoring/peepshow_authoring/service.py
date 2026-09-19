@@ -10,6 +10,7 @@ from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, TextIO
+from .scoped_variables import CAPABILITY as SCOPED_VARIABLE_CAPABILITY
 
 from .audio_assets import (
     AUDIO_BLOCK_SAMPLES,
@@ -59,7 +60,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 51
+SERVICE_API_VERSION = 52
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -175,6 +176,7 @@ def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
             "execution_model": execution_model(scene),
             "host_editing": True,
             "host_preview": True,
+            "scoped_variables": deepcopy(SCOPED_VARIABLE_CAPABILITY) if scene["schema_version"] == 2 else None,
             "egg_export": True,
             "export_ready": export_ready,
             "export_profile_id": V2_EXPORT_PROFILE_ID if object_package else None,
@@ -377,6 +379,7 @@ class AuthoringService:
         return {
             "service": SERVICE_NAME,
             "service_api_version": SERVICE_API_VERSION,
+            "scoped_variables": deepcopy(SCOPED_VARIABLE_CAPABILITY),
             "protocol_version": PROTOCOL_VERSION,
             "operations": list(SERVICE_OPERATIONS),
             "project_settings": {

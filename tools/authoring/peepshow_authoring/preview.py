@@ -57,6 +57,7 @@ class StateScenePreview:
         state_id: str | None = None,
         *,
         include_waiting_visuals: bool = True,
+        _session_variables: dict[str, int] | None = None,
     ) -> None:
         self._package = package
         self._scenes = {str(scene["scene_id"]): scene for scene in package.scenes}
@@ -66,6 +67,7 @@ class StateScenePreview:
         self._include_waiting_visuals = include_waiting_visuals
         self._elapsed_ms = 0
         self._local_ms: int | None = None
+        self._package_variables = dict(_session_variables or {})
         self._activate_scene(scene_id)
         if state_id is not None:
             self.select_state(state_id)
@@ -132,6 +134,12 @@ class StateScenePreview:
         self._waiting_visuals = scene["waiting_visuals"]
         self._state_index = int(self._graph["entry_state"])
         self._variables = [int(variable["initial"]) for variable in self._graph["variables"]]
+        self._scoped_variables = scene.get("scoped_variables", {})
+        for index, variable in enumerate(self._graph["variables"]):
+            definition = self._scoped_variables.get(variable["variable_id"])
+            if definition and definition["scope"] == "package":
+                self._variables[index] = self._package_variables.setdefault(
+                    definition["variable_id"], int(definition["initial"]))
         self._element_overrides: dict[tuple[int, int], dict[str, object]] = {}
         self._waiting_element_overrides: dict[
             tuple[int, int], dict[str, object]
@@ -237,6 +245,7 @@ class StateScenePreview:
                 candidate = StateScenePreview(
                     self._package, str(target_scene),
                     include_waiting_visuals=self._include_waiting_visuals,
+                    _session_variables=self._package_variables,
                 )
                 candidate._local_ms = self._local_ms
                 candidate._rebase_calendar()
@@ -393,11 +402,17 @@ class StateScenePreview:
             else:
                 raise PreviewError("compiled variable operation is unsupported")
             definition = definitions[variable_index]
+            if self._scoped_variables:
+                value = max(int(definition["minimum"]), min(value, int(definition["maximum"])))
             if not int(definition["minimum"]) <= value <= int(definition["maximum"]):
                 raise PreviewError(f"route '{route['route_id']}' writes a variable outside its compiled bounds")
             variables[variable_index] = value
 
         self._variables = variables
+        for index, variable in enumerate(definitions):
+            definition = self._scoped_variables.get(variable["variable_id"])
+            if definition and definition["scope"] == "package":
+                self._package_variables[definition["variable_id"]] = variables[index]
         self._object_live = object_live
         self._element_overrides = element_overrides
         self._waiting_element_overrides = waiting_element_overrides
@@ -941,6 +956,12 @@ class StateScenePreview:
             str(definition["variable_id"]): value
             for definition, value in zip(self._graph["variables"], self._variables)
         }
+        if self._scoped_variables:
+            variable_values = {
+                definition["variable_id"]: bool(value) if definition["value_type"] == "bool" else value
+                for variable, value in zip(self._graph["variables"], self._variables)
+                if (definition := self._scoped_variables[variable["variable_id"]])["scope"] == "scene"
+            }
         event = None
         if input_result is not None:
             event = {
@@ -971,6 +992,17 @@ class StateScenePreview:
                 "step_count": waiting["combined_step_count"],
             },
             "variables": variable_values,
+            "package_variables": {
+                definition["variable_id"]: bool(self._package_variables[definition["variable_id"]])
+                if definition["value_type"] == "bool" else self._package_variables[definition["variable_id"]]
+                for definition in self._scoped_variables.values() if definition["scope"] == "package"
+            },
+            "scoped_variables": [
+                {"scope": definition["scope"], "variable_id": definition["variable_id"],
+                 "value": bool(self._variables[index]) if definition["value_type"] == "bool" else self._variables[index]}
+                for index, variable in enumerate(self._graph["variables"])
+                if (definition := self._scoped_variables.get(variable["variable_id"]))
+            ],
             "input": event,
             "framebuffer": {
                 "width": DISPLAY_WIDTH,

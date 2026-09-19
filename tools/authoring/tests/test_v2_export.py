@@ -39,7 +39,7 @@ class V2ExportTests(unittest.TestCase):
     def test_service_build_exact_hardware_fixture_and_capabilities(self):
         service = AuthoringService()
         hello = service.handle(ServiceRequest("hello", "service.hello", {}))
-        self.assertEqual(51, hello["service_api_version"])
+        self.assertEqual(52, hello["service_api_version"])
         self.assertTrue(hello["scene_object_authoring"]["multi_scene_export"])
         self.assertEqual(6, hello["package_export"]["v2_profile"]["profile_revision"])
         self.assertEqual(PROFILE_ID, hello["package_export"]["v2_profile"]["profile_id"])

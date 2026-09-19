@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peepshow.dev/schema/authoring/scoped-variables-v1.schema.json",
+  "$comment": "Host-only opt-in model. Shared validation requires project.variable_model=scoped_v1 and checks references, combined budgets, types and ranges.",
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+    "integer": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647},
+    "variables": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/variable"}},
+    "variable": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["variable_id", "value_type", "initial"], "properties": {
+          "variable_id": {"$ref": "#/$defs/id"}, "value_type": {"const": "bool"}, "initial": {"type": "boolean"}
+        }},
+        {"type": "object", "additionalProperties": false, "required": ["variable_id", "value_type", "minimum", "maximum", "initial"], "properties": {
+          "variable_id": {"$ref": "#/$defs/id"}, "value_type": {"const": "int32"},
+          "initial": {"$ref": "#/$defs/integer"}, "minimum": {"$ref": "#/$defs/integer"}, "maximum": {"$ref": "#/$defs/integer"}
+        }}
+      ]
+    },
+    "guard": {
+      "type": "object", "additionalProperties": false, "required": ["variable_ref", "operator", "value"],
+      "properties": {
+        "variable_scope": {"enum": ["scene", "package"]}, "variable_ref": {"$ref": "#/$defs/id"},
+        "operator": {"enum": ["eq", "ne", "lt", "le", "gt", "ge"]}, "value": {"oneOf": [{"type": "boolean"}, {"$ref": "#/$defs/integer"}]}
+      }
+    },
+    "action": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "variable_ref", "operation"],
+      "properties": {
+        "kind": {"const": "set_variable"}, "variable_scope": {"enum": ["scene", "package"]}, "variable_ref": {"$ref": "#/$defs/id"},
+        "operation": {"enum": ["assign", "add", "reset"]}, "value": {"oneOf": [{"type": "boolean"}, {"$ref": "#/$defs/integer"}]}
+      },
+      "if": {"properties": {"operation": {"const": "reset"}}},
+      "then": {"not": {"required": ["value"]}}, "else": {"required": ["value"]}
+    }
+  }
+}
