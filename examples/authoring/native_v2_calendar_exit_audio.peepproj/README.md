@@ -28,3 +28,15 @@ the CLOCK indicator fills after Resume rather than while the package is inactive
 Leaving Garden before delivery cancels its schedule; a fresh Garden entry arms a
 fresh next occurrence. The project contains no local/timer audio, parallel regions,
 remembered scene state, runtime playback controls or development-encoder workaround.
+
+## Hardware validation
+
+Validated on HW6 through the normal Studio export and install path on
+2026-09-19. The requested API 51 calendar and scene-exit-audio observations
+passed. Calendar handlers completed cleanly, including evidence of autonomous
+wake and handler delivery. Audio drained without faults or underruns, and no
+erroneous behavior was observed.
+
+This result validates this fixture's authored behavior only; it does not imply
+support beyond the calendar and scene-exit-audio capabilities advertised by the
+shared backend.
