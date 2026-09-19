@@ -13,6 +13,30 @@ static uint32_t PS_CalendarTimer_Snapshot(const ps_system_time_snapshot_t *now,
     (PS_SystemTime_Encode(&now->local, seconds) == PS_SYSTEM_TIME_OK)) ? 1U : 0U;
 }
 
+ps_system_time_status_t PS_CalendarTimer_ResolveOnce(
+  ps_calendar_once_rule_t rule, uint32_t time_of_day, uint32_t day_offset,
+  ps_system_time_status_t time_status, const ps_system_time_snapshot_t *now,
+  uint32_t *deadline)
+{
+  uint32_t seconds;
+  uint64_t resolved;
+  if ((deadline == NULL) || (time_of_day >= PS_CALENDAR_DAY_SECONDS) ||
+      ((rule != PS_CALENDAR_TODAY_OFFSET) &&
+       (rule != PS_CALENDAR_NEXT_OCCURRENCE)) ||
+      ((rule == PS_CALENDAR_NEXT_OCCURRENCE) && (day_offset != 0U)))
+  { return PS_SYSTEM_TIME_ARGUMENT; }
+  if (time_status != PS_SYSTEM_TIME_OK) { return time_status; }
+  if (PS_CalendarTimer_Snapshot(now, &seconds) == 0U)
+  { return PS_SYSTEM_TIME_ARGUMENT; }
+  resolved = ((uint64_t)(seconds / PS_CALENDAR_DAY_SECONDS) + day_offset) *
+    PS_CALENDAR_DAY_SECONDS + time_of_day;
+  if ((rule == PS_CALENDAR_NEXT_OCCURRENCE) && (resolved <= seconds))
+  { resolved += PS_CALENDAR_DAY_SECONDS; }
+  if (resolved >= PS_CALENDAR_END_SECONDS) { return PS_SYSTEM_TIME_RANGE; }
+  *deadline = (uint32_t)resolved;
+  return PS_SYSTEM_TIME_OK;
+}
+
 static ps_calendar_result_t PS_CalendarTimer_Next(ps_calendar_timer_t *timer,
   uint32_t seconds)
 {

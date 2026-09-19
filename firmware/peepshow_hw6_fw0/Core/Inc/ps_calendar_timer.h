@@ -6,6 +6,22 @@
 typedef enum { PS_CALENDAR_ONCE = 1, PS_CALENDAR_DAILY = 2 } ps_calendar_kind_t;
 typedef enum
 {
+  PS_CALENDAR_TODAY_OFFSET = 1,
+  PS_CALENDAR_NEXT_OCCURRENCE
+} ps_calendar_once_rule_t;
+
+/* Resolve only on a new arm/restart, never on wake, resume or clock rebase.
+ * time_of_day is seconds since midnight; day_offset is nonnegative calendar
+ * days and must be zero for NEXT_OCCURRENCE. NEXT is strictly future.
+ * TODAY_OFFSET may resolve to a past/equal deadline: Configure(ONCE) consumes
+ * it without delivery rather than rolling it to tomorrow. Failure preserves
+ * output. Unset time cannot select an anchor date; the adapter owns deferral. */
+ps_system_time_status_t PS_CalendarTimer_ResolveOnce(
+  ps_calendar_once_rule_t rule, uint32_t time_of_day, uint32_t day_offset,
+  ps_system_time_status_t time_status, const ps_system_time_snapshot_t *now,
+  uint32_t *deadline);
+typedef enum
+{
   PS_CALENDAR_IDLE = 0, PS_CALENDAR_ARMED, PS_CALENDAR_DUE,
   PS_CALENDAR_REBASED, PS_CALENDAR_ARGUMENT, PS_CALENDAR_STALE
 } ps_calendar_result_t;

@@ -16,6 +16,36 @@ need package-session ownership; a scene-owned bench does not provide that featur
 
 ## Existing Integration Points
 
+### Arm-Time Authoring Rules
+
+Agreed author-facing forms are local time plus a nonnegative calendar-day offset,
+next occurrence of a local time, and daily recurrence. Literal date entry is not
+required for the initial editor experience. Midnight is a rollover test case,
+not a special runtime trigger.
+
+`PS_CalendarTimer_ResolveOnce` implements the first two forms in the core:
+
+- TODAY_OFFSET resolves today's date plus N calendar days at the selected time.
+  A past or equal deadline is skipped by the existing ONCE configuration path;
+  it never silently rolls to tomorrow.
+- NEXT_OCCURRENCE selects the strictly next occurrence: today if still ahead,
+  otherwise tomorrow. At exactly the chosen second it selects tomorrow.
+- DAILY remains a separate recurrence using the existing DAILY scheduler kind.
+
+Resolution happens once on a new arm or explicit restart using a valid snapshot.
+Start while already armed must not resolve again. Wake, local state changes,
+resume and clock rebasing retain the resolved one-shot deadline. Invalid time
+returns unavailable without inventing today's date or changing the output;
+the future adapter must explicitly handle the unresolved registration.
+Range exhaustion beyond 2099 is rejected, not wrapped. Day offsets are civil
+calendar days in the local-only clock model, not relative elapsed countdowns.
+
+Native coverage includes past-time consumption, exact/subsecond boundaries,
+leap-day/month/year rollover, large-offset range rejection, unavailable time
+and deadline preservation across rebasing. This core API does not expose a
+Studio command or change executable package encoding. Owner delivery integration
+and public capability advertisement remain outstanding.
+
 ### Delivery Record Implementation
 
 `ps_calendar_delivery` now implements the single-owner record lifecycle:

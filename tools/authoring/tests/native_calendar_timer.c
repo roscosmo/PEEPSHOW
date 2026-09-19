@@ -17,11 +17,68 @@ static uint32_t seconds(ps_system_time_snapshot_t value)
   return result;
 }
 
+static void resolve_once_tests(void)
+{
+  ps_system_time_snapshot_t now = sample(2028, 2, 28, 13, 0, 0, 1);
+  ps_calendar_timer_t timer = {0};
+  uint32_t deadline = UINT32_MAX, saved;
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_TODAY_OFFSET, 43200, 0,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_OK);
+  assert(deadline == seconds(sample(2028, 2, 28, 12, 0, 0, 1)));
+  assert(PS_CalendarTimer_Configure(&timer, PS_CALENDAR_ONCE, deadline,
+    PS_SYSTEM_TIME_OK, &now) == PS_CALENDAR_IDLE);
+  assert(timer.consumed && !timer.armed);
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_TODAY_OFFSET, 43200, 1,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_OK);
+  assert(deadline == seconds(sample(2028, 2, 29, 12, 0, 0, 1)));
+  assert(PS_CalendarTimer_Configure(&timer, PS_CALENDAR_ONCE, deadline,
+    PS_SYSTEM_TIME_OK, &now) == PS_CALENDAR_ARMED);
+  saved = deadline;
+  now.local.day = 29; now.local.hour = 10; now.generation++;
+  assert(PS_CalendarTimer_Rebase(&timer, PS_SYSTEM_TIME_OK, &now) == PS_CALENDAR_ARMED);
+  assert(timer.deadline_seconds == saved);
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_TODAY_OFFSET, 43200, 1,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_OK);
+  assert(deadline == seconds(sample(2028, 3, 1, 12, 0, 0, 1)));
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_NEXT_OCCURRENCE, 43200, 0,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_OK);
+  assert(deadline == saved);
+  now.local.hour = 12;
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_NEXT_OCCURRENCE, 43200, 0,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_OK);
+  assert(deadline == saved + 86400U);
+  now.millisecond = 999;
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_NEXT_OCCURRENCE, 43200, 0,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_OK);
+  assert(deadline == saved + 86400U);
+  now = sample(2026, 12, 31, 23, 0, 0, 1);
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_TODAY_OFFSET, 0, 3,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_OK);
+  assert(deadline == seconds(sample(2027, 1, 3, 0, 0, 0, 1)));
+  saved = deadline;
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_TODAY_OFFSET, 0, UINT32_MAX,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_RANGE);
+  assert(deadline == saved);
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_NEXT_OCCURRENCE, 0, 1,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_ARGUMENT);
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_TODAY_OFFSET, 86400, 0,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_ARGUMENT);
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_TODAY_OFFSET, 0, 0,
+    PS_SYSTEM_TIME_UNSET, NULL, &deadline) == PS_SYSTEM_TIME_UNSET);
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_TODAY_OFFSET, 0, 0,
+    PS_SYSTEM_TIME_SOURCE_LOST, NULL, &deadline) == PS_SYSTEM_TIME_SOURCE_LOST);
+  now = sample(2099, 12, 31, 23, 59, 59, 1);
+  assert(PS_CalendarTimer_ResolveOnce(PS_CALENDAR_NEXT_OCCURRENCE, 0, 0,
+    PS_SYSTEM_TIME_OK, &now, &deadline) == PS_SYSTEM_TIME_RANGE);
+  assert(deadline == saved);
+}
+
 int main(void)
 {
   ps_calendar_timer_t timer = {0}, saved;
   ps_system_time_snapshot_t now = sample(2026, 9, 19, 23, 59, 50, 1);
   uint32_t due, original;
+  resolve_once_tests();
   assert(PS_CalendarTimer_Configure(&timer, PS_CALENDAR_DAILY, 0U,
     PS_SYSTEM_TIME_UNSET, NULL) == PS_CALENDAR_IDLE);
   assert(timer.configured == 1U && timer.armed == 0U);
