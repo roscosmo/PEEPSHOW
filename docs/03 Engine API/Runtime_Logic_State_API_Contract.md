@@ -491,6 +491,12 @@ Rules:
 
 ## Variables And Persistence
 
+The agreed next V2 scope/entry design is
+[[Variable_Scope_and_Scene_Entry_Design]]: scene and package-session variables,
+explicit bounded entry decisions and no implicit state-entry actions. It is
+design-only until coordinated source, profile, export and runtime support lands.
+Package-session lifetime is not save-backed persistence or full scene resume.
+
 Runtime logic may use several variable classes.
 
 | Variable Class | Purpose | Durability |

@@ -3,6 +3,11 @@
 Status: design direction agreed on 2026-09-12; not a schema, command, wire-format
 or firmware capability increment. No new hardware result is recorded here.
 
+Update 2026-09-19: [[Variable_Scope_and_Scene_Entry_Design]] supersedes the
+special remembered-selection entry mode. Use explicit package/scene variables
+and a visible entry decision path. The baseline export restrictions below are
+historical, not a statement of current service capabilities.
+
 Baseline: main `9fd07bbea8bad19f91ea87cf3480b7daa970be15` and the GUI scene
 connection reconciliation supplied by the user. Existing restricted V2 export
 remains governed by [[Peep_Studio_Restricted_V2_Export_Handoff]].
@@ -22,7 +27,7 @@ parallel state machines solve different problems and must remain explicit.
 | Concept | Meaning | Delivery boundary |
 |---|---|---|
 | Scene timer handler | Executes independently of the selected local state | Existing backend primitives; GUI can integrate advertised commands |
-| Remember selection | Recreate a scene, then enter its remembered local state | Agreed design; not implemented by this document |
+| Authored memory | Package variables plus explicit scene-entry decisions | Agreed design; not implemented by this document |
 | Resume scene | Retain and resume the scene instance | Future scene-navigation capability; not implied by existing shell resume |
 | Parallel regions | Multiple independently active state machines in one scene | Agreed design direction; execution details still to be specified |
 
@@ -43,28 +48,18 @@ A named scene exit is one shared semantic connection displayed in Scene Flow
 and Local Logic. Creating it does not invent a trigger. Go To cards are visual
 aliases, not extra scene instances or retained snapshots.
 
-### Remember Selection
+### Authored Memory, Not a Remembered State Mode
 
-Remember the destination scene's own last active state, not the state of the
-other scene from which navigation occurred. Returning recreates the scene from
-its authored defaults and enters that remembered state afresh.
+The earlier special Remembered State node is superseded. Authors explicitly
+store cross-scene values in package variables and use a scene-entry decision
+path with a visible fallback. Scene variables initialise on fresh entry;
+package variables survive scene replacement for the current package session.
+Both survive shell pause/resume; Restart resets both. Neither is durable save
+data. See [[Variable_Scope_and_Scene_Entry_Design]] for ordering and limits.
 
-This remembers selection only:
-- Object mutations, animation phase and scene variables are not retained.
-- The selected state's overrides are applied to the new scene instance.
-- Scene-entry timers start for the new scene instance.
-- State-entry timers start afresh for the selected state.
-- Existing one-shot expiry records are not inherited from the old instance.
-
-The agreed graph direction is an explicit **Remembered State** entry node with
-a visible fallback to the default state. It represents a dynamic destination,
-not a new entry port or generated route on every state. First use follows the
-fallback. An explicit fresh-entry choice follows normal entry instead.
-
-Preview should show the resolved state and whether fallback was used. An author
-must not need to implement selection memory through hidden variables or code.
-The eventual contract must specify invalid remembered-state handling, memory
-update/reset points and reference-safe behavior when states are deleted.
+Entry paths support actions before/after ordered branches and terminate in a
+local state. There is no automatic state-ID memory, hidden selection variable or
+state-entry action list. Objects, animation and timers still initialise freshly.
 
 ### Resume Scene
 
@@ -158,8 +153,8 @@ editor is not automatically another active region.
   semantics. Multi-region dispatch follows the agreed event rules below.
 - Region changes do not restart unrelated object animation. All effective
   objects still share the existing bounded display/LPBAM admission budget.
-- Remember selection can later retain the state IDs of explicitly selected
-  regions. Full resume retains all active regions as part of the scene instance.
+- Future region entry may use explicit variables and entry decisions; there is
+  no automatic remembered-state policy. Full resume remains a distinct design.
 
 ### Agreed Event Execution Rules
 
@@ -244,8 +239,8 @@ The following are requirements, not newly recorded test passes:
 | Scene timer fires while selection changes | Actions run without duplicated routes or unwanted state entry |
 | Timer handler with a local destination | Ordered actions and destination commit with existing transaction semantics |
 | Recurrence with a guarded restart | Preview shows when recurrence stops; no hidden unconditional restart |
-| First remembered visit | Default fallback is used visibly |
-| Remembered return after object/variable edits | Selection restored; other instance values initialized fresh |
+| Entry decisions with initial package values | Authored branch/default is used visibly |
+| Return after package-variable edits | Entry reads package values; scene-instance values initialise fresh |
 | Full resume | Values, phases and remaining times retained; no implicit entry replay |
 | Navigation changes while Pet behavior waits | Pet state and deadline remain unchanged |
 | Conflicting active-region overrides | Shared validation rejects the conflict with both owners identified |
@@ -270,6 +265,6 @@ Delivery order:
 4. Validate representative authored fixtures in host tests and on hardware,
    including timer lifetime, state/animation continuity and STOP2 behavior.
 
-Scene connections, remembered selection, full resume and parallel regions must
+Scene connections, scoped variables/entry graphs, full resume and parallel regions must
 not be advertised as one indivisible capability. Existing restricted export and
 passed installation fixtures remain unchanged until an explicit expansion.

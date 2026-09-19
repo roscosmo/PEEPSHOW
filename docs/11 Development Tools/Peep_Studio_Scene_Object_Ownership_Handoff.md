@@ -937,6 +937,11 @@ the development encoder used for the recorded hardware pass.
 
 ## Scene Memory and Independent Logic Design (2026-09-12)
 
+The remembered-selection proposal in this historical section is superseded by
+[[Variable_Scope_and_Scene_Entry_Design]] and
+[[Peep_Studio_Variable_Scope_and_Entry_Handoff]] (2026-09-19). Do not implement a
+special Remembered State node or automatic state-ID memory.
+
 Follow [[Scene_Memory_and_Parallel_Logic_Design]] for the agreed direction and
 explicitly unresolved execution details. This is documentation only: no service
 API, command, schema, firmware or export capability changes are delivered here.
@@ -946,9 +951,8 @@ API, command, schema, firmware or export capability changes are delivered here.
   state; action-only handlers do not. No synthetic state or duplicated per-state
   timer wiring is required. Timers remain one-shot with explicit restart, not
   an implicitly supported fixed-cadence periodic mode.
-- Remember selection means entering the scene's own remembered state afresh,
-  with other instance data reset. The graph direction is a Remembered State
-  entry node with a visible default fallback, not generated ports on all states.
+- Cross-scene memory now uses explicit package variables and scene-entry
+  decisions with a fallback, not a Remembered State node.
 - Scene resume retains the instance and remaining timers. It is distinct from
   remembered selection, existing shell resume and persistence across reboot.
 - Parallel logic uses named regions, each with its own active state and entry,
