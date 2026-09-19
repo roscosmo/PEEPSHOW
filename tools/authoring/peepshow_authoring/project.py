@@ -92,7 +92,7 @@ PROJECT_KEYS = {
     "scene_sources",
     "validation",
 }
-PROJECT_OPTIONAL_KEYS = {"asset_sources", "editor", "settings"}
+PROJECT_OPTIONAL_KEYS = {"asset_sources", "editor", "settings", "variable_model", "package_variables"}
 SCENE_KEYS = {
     "schema_id",
     "schema_version",
@@ -653,8 +653,8 @@ def _apply_variable_delete(
     for route in references:
         if not isinstance(route, dict):
             continue
-        used = any(isinstance(guard, dict) and guard.get("variable_ref") == variable_id for guard in route.get("guards", []))
-        used = used or any(isinstance(action, dict) and action.get("variable_ref") == variable_id for action in route.get("actions", []))
+        used = any(isinstance(guard, dict) and guard.get("variable_scope", "scene") == "scene" and guard.get("variable_ref") == variable_id for guard in route.get("guards", []))
+        used = used or any(isinstance(action, dict) and action.get("variable_scope", "scene") == "scene" and action.get("variable_ref") == variable_id for action in route.get("actions", []))
         if used:
             owner = f"handler '{route['handler_id']}'" if "handler_id" in route else f"route '{route.get('route_id')}'"
             raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"variable '{variable_id}' is referenced by {owner}")
@@ -4188,7 +4188,7 @@ def _apply_state_graph_route_layout(
 def _normalize_guard(scene: dict[str, Any], guard: Any) -> dict[str, Any]:
     if not isinstance(guard, dict):
         raise ProjectCommandError("GUARD_TYPE_MISMATCH", "guard must be an object")
-    _require_command_fields(guard, {"variable_ref", "operator", "value"}, {"variable_ref", "operator", "value"})
+    _require_command_fields(guard, {"variable_ref", "operator", "value"}, {"variable_ref", "operator", "value", "variable_scope"})
     variable_ref = guard.get("variable_ref")
     operator = guard.get("operator")
     value = guard.get("value")
@@ -4202,13 +4202,13 @@ def _normalize_guard(scene: dict[str, Any], guard: Any) -> dict[str, Any]:
         for variable in scene.get("variables", [])
         if isinstance(variable, dict)
     }
-    if variable_ref not in variable_ids:
+    if variable_ref not in variable_ids and guard.get("variable_scope") != "package":
         raise ProjectCommandError("GUARD_VARIABLE_UNKNOWN", f"unknown variable '{variable_ref}'")
     if operator not in GUARD_OPERATORS:
         raise ProjectCommandError("GUARD_OPERATOR_INVALID", "unsupported comparison")
-    if isinstance(value, bool) or not isinstance(value, int):
+    if not isinstance(value, int):
         raise ProjectCommandError("GUARD_TYPE_MISMATCH", "guard value must be an integer")
-    return {"variable_ref": variable_ref, "operator": operator, "value": value}
+    return deepcopy(guard)
 
 
 def _route_target_elements(
@@ -4782,6 +4782,11 @@ def _check_project_settings(settings, issues):
 
 def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> None:
     _check_keys(project, PROJECT_KEYS, "project", issues, PROJECT_KEYS | PROJECT_OPTIONAL_KEYS)
+    from .scoped_variables import project_check
+    try:
+        project_check(project)
+    except ProjectCommandError as exc:
+        _issue(issues, exc.code, "project", exc.message)
     if "settings" in project:
         _check_project_settings(project["settings"], issues)
     if project.get("schema_id") != "peepshow.authoring.project" or project.get("schema_version") != 1:
@@ -5478,7 +5483,15 @@ def _check_scene(
     *,
     allow_handler_scene_exits: bool = False,
     allow_calendar: bool = False,
+    variable_project: dict[str, Any] | None = None,
 ) -> None:
+    if variable_project is not None:
+        from .scoped_variables import project_scene
+        try:
+            scene, _ = project_scene(variable_project, scene)
+        except ProjectCommandError as exc:
+            _issue(issues, exc.code, f"scene[{source}]", exc.message)
+            return
     if scene.get("schema_version") == 2:
         from .scene_object_authoring import check_object_scene
         check_object_scene(scene, source, frame_lookup, animations or {}, audio_cue_ids, issues)
@@ -6662,6 +6675,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                 audio_cue_ids,
                 issues,
                 {animation["animation_id"]: animation for animation in animations},
+                variable_project=project,
             )
             scene_id = scene.get("scene_id")
             if isinstance(scene_id, str):
@@ -6922,7 +6936,10 @@ def apply_project_commands(
             raise ProjectCommandError("COMMAND_SHAPE_INVALID", "each command must be an object")
         kind = command.get("kind")
         check_command_model(scenes, command)
-        if kind in OBJECT_COMMANDS:
+        if kind in {"project.variables.enable", "package_variable.add", "package_variable.update", "package_variable.delete"}:
+            from .scoped_variables import apply_command
+            applied.append(apply_command(project, scenes, command))
+        elif kind in OBJECT_COMMANDS:
             applied.append(apply_object_command(scenes, command))
         elif kind == "scene.add":
             applied.append(
@@ -7144,6 +7161,7 @@ def apply_project_commands(
             audio_cue_ids,
             validation_issues,
             {animation["animation_id"]: animation for animation in animations},
+            variable_project=project,
         )
     if validation_issues:
         issue = validation_issues[0]

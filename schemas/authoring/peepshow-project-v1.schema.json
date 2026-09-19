@@ -16,6 +16,8 @@
     "validation"
   ],
   "properties": {
+    "variable_model": {"const": "scoped_v1"},
+    "package_variables": {"$ref": "scoped-variables-v1.schema.json#/$defs/variables"},
     "settings": {
       "type": "object", "additionalProperties": false,
       "properties": {

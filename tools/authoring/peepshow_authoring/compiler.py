@@ -164,6 +164,10 @@ class EggCompileError(ValueError):
 
 
 def build_readiness_issues(bundle: ProjectBundle) -> list[dict[str, str]]:
+    from .scoped_variables import enabled
+    if enabled(bundle.project):
+        return [{"code": "SCOPED_VARIABLE_RUNTIME_UNAVAILABLE", "path": "project.variable_model",
+                 "message": "Scoped variables support authoring/preview only; firmware export is not available"}]
     if not bundle.valid:
         return []
     if any(scene.get("schema_version") == 2 for scene in bundle.scenes):
@@ -934,7 +938,9 @@ def build_preview_package(bundle: ProjectBundle) -> EggPackage:
         from .scene_object_authoring import graph_validation_view
         if not bundle.valid:
             raise EggCompileError("project must validate before preview")
-        views = tuple(graph_validation_view(scene) if scene.get("schema_version") == 2 else scene for scene in bundle.scenes)
+        from .scoped_variables import project_scene
+        projected = {scene["scene_id"]: project_scene(bundle.project, scene) for scene in bundle.scenes}
+        views = tuple(graph_validation_view(projected[scene["scene_id"]][0]) if scene.get("schema_version") == 2 else scene for scene in bundle.scenes)
         # The preview graph projection uses legacy visual records, not exported
         # V2 objects. Preserve binding indexes and restore calendar semantics below.
         for view in views:
@@ -949,6 +955,7 @@ def build_preview_package(bundle: ProjectBundle) -> EggPackage:
             if source.get("schema_version") != 2:
                 continue
             scene["object_source"] = deepcopy(source)
+            scene["scoped_variables"] = projected[scene["scene_id"]][1]
             calendar = {binding["binding_id"]: binding for binding in source.get("event_bindings", [])
                         if binding["event_type"] == "time.local_schedule"}
             for binding in scene["graph"]["event_bindings"]:
@@ -977,6 +984,9 @@ def build_development_egg_v2(bundle: ProjectBundle) -> bytes:
 
 
 def _build_egg(bundle: ProjectBundle, *, _draft: bool = False, _development_v2: bool = False) -> bytes:
+    from .scoped_variables import enabled
+    if enabled(bundle.project) and not _draft:
+        raise EggCompileError("SCOPED_VARIABLE_RUNTIME_UNAVAILABLE: host-only variable model cannot be exported")
     if not bundle.valid:
         raise EggCompileError("project must validate before package compilation")
     if any(scene.get("schema_version") == 2 for scene in bundle.scenes) and not _development_v2:

@@ -37,7 +37,7 @@ class V2AudioExportTests(unittest.TestCase):
         service, params, loaded = self.service()
         hello = self.call(service, "service.hello", {})
         profile = hello["package_export"]["v2_profile"]
-        self.assertEqual(51, hello["service_api_version"])
+        self.assertEqual(52, hello["service_api_version"])
         self.assertEqual(6, profile["profile_revision"])
         self.assertTrue(profile["audio"])
         self.assertEqual(65536, profile["limits"]["package_bytes"])

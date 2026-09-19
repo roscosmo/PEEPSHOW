@@ -520,6 +520,15 @@ Rules:
 
 ## Variables And Persistence
 
+The agreed next V2 scope/entry design is
+[[Variable_Scope_and_Scene_Entry_Design]]: scene and package-session variables,
+explicit bounded entry decisions and no implicit state-entry actions. It is
+design-only until coordinated source, profile, export and runtime support lands.
+Package-session lifetime is not save-backed persistence or full scene resume.
+The opt-in host subset and export block are specified by
+[[Peep_Studio_Scoped_Variables_API52_Handoff]]; this does not change the current
+firmware variable table or its executable semantics.
+
 Runtime logic may use several variable classes.
 
 | Variable Class | Purpose | Durability |

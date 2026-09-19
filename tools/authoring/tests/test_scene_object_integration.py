@@ -212,6 +212,7 @@ class SceneObjectIntegrationTests(unittest.TestCase):
         self.assertFalse(self.cursor(before)["effective"]["visible"])
         preview.suspend()
         preview.advance(2000)
+        before["local_time"]["suspended"] = True
         self.assertEqual(before, preview.snapshot())
         preview.resume()
         preview.apply_input("BUTTON_R")
