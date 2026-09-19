@@ -329,6 +329,13 @@ scene loads successfully, and may finish after that scene becomes active.
 Scene-local variable, render, element, and system actions are invalid on that
 route.
 
+This SFX-only rule also applies to V2 input routes and independent timer handlers
+that replace a scene. Source validation, the JSON schema, host preview and normal
+public export must agree. Persisted projects must survive save/reopen with these
+actions intact; testing an injected in-memory bundle is not sufficient. Preview
+returns ordered cue events only after successful destination admission, and
+rejects mixed actions or invalid cue references without committing replacement.
+
 Required package-facing audio artifacts:
 
 The initial STATE subset emits exactly these optional PKG1 chunks as one

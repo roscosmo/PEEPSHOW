@@ -120,8 +120,9 @@ def check_object_scene(scene, source, frame_lookup, animations, audio_cue_ids, i
                 path = f"{base}.{collection}[{index}]"
                 if route["target_scene"] == scene["scene_id"]:
                     issues.append(ValidationIssue("SCENE_EXIT_TARGET_INVALID", path, "scene replacement must target another scene"))
-                if route["actions"]:
-                    issues.append(ValidationIssue("SCENE_TRANSITION_ACTION_UNSUPPORTED", f"{path}.actions", "version-2 fresh scene replacement requires an empty action list"))
+                if any(not isinstance(action, dict) or action.get("kind") != "play_sfx"
+                       for action in route["actions"]):
+                    issues.append(ValidationIssue("SCENE_TRANSITION_ACTION_UNSUPPORTED", f"{path}.actions", "version-2 fresh scene replacement supports only play_sfx actions"))
             elif "scene_exit_ref" in route:
                 issues.append(ValidationIssue("SCENE_EXIT_TARGET_MISMATCH", f"{base}.{collection}[{index}]", "a scene exit reference requires target_scene"))
             for action_index, action in enumerate(route["actions"]):

@@ -213,20 +213,6 @@ class StateScenePreview:
 
         target_scene = route["target_scene"]
         if target_scene is not None:
-            if self._object_source:
-                if route["operations"]:
-                    raise PreviewError("version-2 fresh scene replacement requires an empty action list")
-                # Admit the fresh destination without modifying the live source.
-                candidate = StateScenePreview(
-                    self._package, str(target_scene),
-                    include_waiting_visuals=self._include_waiting_visuals,
-                )
-                candidate._local_ms = self._local_ms
-                candidate._rebase_calendar()
-                self.__dict__.update(candidate.__dict__)
-                return PreviewInputResult(
-                    logical_source, event_kind, binding_id, True, str(route["route_id"]),
-                )
             audio_events: list[dict[str, object]] = []
             for operation in route["operations"]:
                 if int(operation["kind"]) != 7:
@@ -245,6 +231,19 @@ class StateScenePreview:
                         "priority": cue["priority"],
                         "volume": cue["volume"],
                     }
+                )
+            if self._object_source:
+                # Admit the fresh destination before publishing any exit cues.
+                candidate = StateScenePreview(
+                    self._package, str(target_scene),
+                    include_waiting_visuals=self._include_waiting_visuals,
+                )
+                candidate._local_ms = self._local_ms
+                candidate._rebase_calendar()
+                self.__dict__.update(candidate.__dict__)
+                return PreviewInputResult(
+                    logical_source, event_kind, binding_id, True, str(route["route_id"]),
+                    tuple(audio_events),
                 )
             self._activate_scene(str(target_scene))
             self._render_framebuffer()

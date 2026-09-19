@@ -46,7 +46,7 @@
     },
     "scene_replacement": {
       "if": {"required": ["target_scene"]},
-      "then": {"properties": {"actions": {"maxItems": 0}}}
+      "then": {"properties": {"actions": {"items": {"properties": {"kind": {"const": "play_sfx"}}}}}}
     },
     "handler": {
       "type": "object", "additionalProperties": false,
