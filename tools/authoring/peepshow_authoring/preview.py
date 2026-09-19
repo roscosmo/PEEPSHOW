@@ -68,7 +68,7 @@ class StateScenePreview:
         self._elapsed_ms = 0
         self._local_ms: int | None = None
         self._package_variables = dict(_session_variables or {})
-        self._activate_scene(scene_id)
+        self._activate_scene(scene_id, run_entry=state_id is None and include_waiting_visuals)
         if state_id is not None:
             self.select_state(state_id)
         else:
@@ -120,7 +120,7 @@ class StateScenePreview:
             return left >= right
         raise PreviewError("compiled guard operator is unsupported")
 
-    def _activate_scene(self, scene_id: str) -> None:
+    def _activate_scene(self, scene_id: str, *, run_entry: bool = True) -> None:
         scene = self._scenes.get(scene_id)
         if scene is None:
             raise PreviewError(f"scene '{scene_id}' is not present in the package")
@@ -140,6 +140,10 @@ class StateScenePreview:
             if definition and definition["scope"] == "package":
                 self._variables[index] = self._package_variables.setdefault(
                     definition["variable_id"], int(definition["initial"]))
+        self.entry_audio_events: list[dict[str, object]] = []
+        self._entry_trace: list[str] = []
+        if run_entry and self._object_source and self._object_source.get("entry_graph"):
+            self._run_scene_entry()
         self._element_overrides: dict[tuple[int, int], dict[str, object]] = {}
         self._waiting_element_overrides: dict[
             tuple[int, int], dict[str, object]
@@ -169,6 +173,55 @@ class StateScenePreview:
         self._step_elapsed_ms = 0
         self._step_index = int(self._waiting()["settled_step"])
         self._validate_scene_subset()
+
+    def _run_scene_entry(self) -> None:
+        from .scene_entry import NODE_LIMIT
+        graph = self._object_source["entry_graph"]
+        nodes = {node["node_id"]: node for node in graph["nodes"]}
+        variables = {
+            (definition["scope"], definition["variable_id"]): (index, definition)
+            for index, variable in enumerate(self._graph["variables"])
+            if (definition := self._scoped_variables.get(variable["variable_id"]))
+        }
+        operators = {"eq": 1, "ne": 2, "lt": 3, "le": 4, "gt": 5, "ge": 6}
+
+        def passes(guard):
+            index, _ = variables[(guard.get("variable_scope", "scene"), guard["variable_ref"])]
+            return self._guard_passes({"variable_index": index,
+                                      "operator": operators[guard["operator"]], "value": int(guard["value"])})
+
+        ident = graph["root"]
+        for _ in range(NODE_LIMIT):
+            node = nodes[ident]
+            self._entry_trace.append(ident)
+            if node["kind"] == "state":
+                self._state_index = next(index for index, state in enumerate(self._graph["states"])
+                                         if state["state_id"] == node["state_ref"])
+                return
+            if node["kind"] == "decision":
+                ident = next((branch["next"] for branch in node["branches"]
+                              if all(passes(guard) for guard in branch["guards"])), node["default"])
+                continue
+            for action in node["actions"]:
+                if action["kind"] == "play_sfx":
+                    cue = next(cue for cue in self._audio_cues if cue["cue_id"] == action["cue_ref"])
+                    self.entry_audio_events.append({"kind": "play_sfx", **{
+                        key: cue[key] for key in ("cue_id", "asset_id", "priority", "volume")}})
+                    continue
+                index, definition = variables[(action.get("variable_scope", "scene"), action["variable_ref"])]
+                operation = action["operation"]
+                if operation == "reset":
+                    value = int(definition["initial"])
+                elif operation == "assign":
+                    value = int(action["value"])
+                else:
+                    value = max(definition["minimum"], min(definition["maximum"],
+                                self._variables[index] + int(action["value"])))
+                self._variables[index] = value
+                if definition["scope"] == "package":
+                    self._package_variables[definition["variable_id"]] = value
+            ident = node["next"]
+        raise PreviewError("entry graph exceeded its bounded path length")
 
     def apply_input(self, logical_source: str, event_kind: str = "press") -> PreviewInputResult:
         if self._suspended:
@@ -249,6 +302,7 @@ class StateScenePreview:
                 )
                 candidate._local_ms = self._local_ms
                 candidate._rebase_calendar()
+                audio_events.extend(candidate.entry_audio_events)
                 self.__dict__.update(candidate.__dict__)
                 return PreviewInputResult(
                     logical_source, event_kind, binding_id, True, str(route["route_id"]),
@@ -992,6 +1046,7 @@ class StateScenePreview:
                 "step_count": waiting["combined_step_count"],
             },
             "variables": variable_values,
+            "entry_trace": list(self._entry_trace),
             "package_variables": {
                 definition["variable_id"]: bool(self._package_variables[definition["variable_id"]])
                 if definition["value_type"] == "bool" else self._package_variables[definition["variable_id"]]

@@ -4,8 +4,8 @@ Date: 2026-09-19. Design handoff only; no service API bump, new command names,
 schema fields, runtime support or export capability is delivered here.
 
 Follow-up: [[Peep_Studio_Scoped_Variables_API52_Handoff]] now defines the delivered
-opt-in variable authoring/preview subset. Entry graphs remain design-only, and
-scoped-variable firmware/export support is still blocked.
+opt-in variable authoring/preview subset. [[Peep_Studio_Scene_Entry_API53_Handoff]]
+adds explicit host entry graphs. Scoped-variable firmware/export remains blocked.
 
 Authoritative design: [[Variable_Scope_and_Scene_Entry_Design]]. This replaces
 the earlier special Remembered State entry-node proposal, not existing scene

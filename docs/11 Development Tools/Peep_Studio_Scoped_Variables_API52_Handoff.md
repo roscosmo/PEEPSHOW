@@ -1,5 +1,9 @@
 # Studio Scoped Variables API 52 Handoff
 
+API 53 follow-up: [[Peep_Studio_Scene_Entry_API53_Handoff]] adds host entry graphs
+and changes entry_graphs to true. The API 52 description below is historical;
+firmware/export for scoped_v1 remain blocked.
+
 Status: shared source editing and host preview implemented. Firmware execution,
 egg export and scene-entry graphs are NOT enabled for this model. This implements
 the variable foundation of [[Variable_Scope_and_Scene_Entry_Design]], not an

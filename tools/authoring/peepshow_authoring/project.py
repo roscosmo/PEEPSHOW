@@ -109,7 +109,7 @@ SCENE_KEYS = {
     "reactive_wait_default",
     "interaction_policy",
 }
-SCENE_OPTIONAL_KEYS = {"joystick_policy", "scene_exits", "event_bindings", "event_handlers"}
+SCENE_OPTIONAL_KEYS = {"joystick_policy", "scene_exits", "event_bindings", "event_handlers", "entry_graph"}
 
 
 @dataclass(frozen=True)
@@ -648,6 +648,8 @@ def _apply_variable_delete(
     scene = _command_scene(scenes, command.get("scene_id"))
     variable_id = command.get("variable_id")
     references = list(scene.get("routes", []))
+    from .scene_entry import references as entry_references
+    references.extend(entry_references(scene))
     if scene.get("schema_version") == 2:
         references.extend(scene.get("event_handlers", []))
     for route in references:
@@ -5428,7 +5430,9 @@ def _check_scene(
 ) -> None:
     if variable_project is not None:
         from .scoped_variables import project_scene
+        from .scene_entry import validate as validate_entry
         try:
+            validate_entry(variable_project, scene, audio_cue_ids)
             scene, _ = project_scene(variable_project, scene)
         except ProjectCommandError as exc:
             _issue(issues, exc.code, f"scene[{source}]", exc.message)
@@ -6888,7 +6892,10 @@ def apply_project_commands(
             raise ProjectCommandError("COMMAND_SHAPE_INVALID", "each command must be an object")
         kind = command.get("kind")
         check_command_model(scenes, command)
-        if kind in {"project.variables.enable", "package_variable.add", "package_variable.update", "package_variable.delete"}:
+        if kind in {"scene.entry_graph.set", "scene.entry_graph.clear"}:
+            from .scene_entry import apply_command
+            applied.append(apply_command(scenes, command))
+        elif kind in {"project.variables.enable", "package_variable.add", "package_variable.update", "package_variable.delete"}:
             from .scoped_variables import apply_command
             applied.append(apply_command(project, scenes, command))
         elif kind in OBJECT_COMMANDS:

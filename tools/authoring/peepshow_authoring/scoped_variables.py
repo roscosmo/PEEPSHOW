@@ -5,7 +5,7 @@ MODEL = "scoped_v1"
 LIMIT = 32
 CAPABILITY = {
     "model": MODEL, "host_editing": True, "host_preview": True,
-    "runtime": False, "export": False, "entry_graphs": False,
+    "runtime": False, "export": False, "entry_graphs": True,
     "scopes": ["scene", "package"], "value_types": ["int32", "bool"],
     "operations": ["assign", "add", "reset"], "arithmetic": "clamp",
     "maximum_combined_variables_per_scene": LIMIT,
@@ -147,8 +147,9 @@ def apply_command(project, scenes, command):
         if existing is None:
             raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", "unknown package variable")
         if delete:
+            from .scene_entry import references
             for scene in scenes:
-                for route in [*scene.get("routes", []), *scene.get("event_handlers", [])]:
+                for route in [*scene.get("routes", []), *scene.get("event_handlers", []), *references(scene)]:
                     if any(item.get("variable_scope", "scene") == "package" and item.get("variable_ref") == ident
                            for item in [*route.get("guards", []), *route.get("actions", [])]):
                         raise ProjectCommandError("COMMAND_TARGET_IN_USE", "package variable is referenced")

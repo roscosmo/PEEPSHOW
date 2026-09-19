@@ -44,6 +44,7 @@ SCENE_CONNECTION_COMMANDS = (
     "scene_exit.add", "scene_exit.set_target", "scene_exit.delete", *SCENE_FLOW_COMMANDS,
 )
 COMMON_SCENE_COMMANDS = (
+    "scene.entry_graph.set", "scene.entry_graph.clear",
     "scene.rename", "project.set_entry_scene", *STATE_MANAGEMENT_COMMANDS,
     *LOCAL_GRAPH_COMMANDS, *SCENE_CONNECTION_COMMANDS,
 )

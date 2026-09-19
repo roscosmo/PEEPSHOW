@@ -4,8 +4,9 @@ Status: agreed design, 2026-09-19. Not an implemented schema, command, package
 format or advertised runtime capability. Existing exports retain their semantics.
 
 Implementation progress: [[Peep_Studio_Scoped_Variables_API52_Handoff]] delivers
-an opt-in source/host-preview variable subset. Entry graphs and firmware/export
-remain unavailable; the full design below is not a claim of completed support.
+an opt-in source/host-preview variable subset. API 53 adds explicit host entry
+graphs; see [[Peep_Studio_Scene_Entry_API53_Handoff]]. Firmware/export remain
+unavailable; the full design below is not a claim of completed support.
 
 This supersedes the special Remembered State entry-node proposal in
 [[Scene_Memory_and_Parallel_Logic_Design]]. Remembering is authored data and entry

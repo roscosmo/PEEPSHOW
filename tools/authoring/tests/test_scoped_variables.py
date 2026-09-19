@@ -112,7 +112,7 @@ class ScopedVariableTests(unittest.TestCase):
         self.assertTrue(cap["host_preview"])
         self.assertFalse(cap["runtime"])
         self.assertFalse(cap["export"])
-        self.assertFalse(cap["entry_graphs"])
+        self.assertTrue(cap["entry_graphs"])
         before = h.service._bundle.canonical_bytes()
         with self.assertRaises(ProtocolError):
             h.edit(*[{"kind": "package_variable.add", "variable": self.integer(f"extra{i}")} for i in range(32)])
