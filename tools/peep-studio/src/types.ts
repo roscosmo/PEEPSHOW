@@ -769,6 +769,22 @@ export type ServiceHello = {
       actions: string[];
       editor_layout?: TimerHandlerLayoutCapability;
     };
+    calendar_schedules?: {
+      event_type: string;
+      scene_schema_versions: number[];
+      maximum_per_scene: number;
+      ownership: string;
+      start_policy: string;
+      modes: Array<"daily" | "today_offset" | "next_occurrence">;
+      time_of_day_seconds: { minimum: number; maximum: number };
+      day_offset: { minimum: number; maximum: number; mode: "today_offset" };
+      handler_collection: string;
+      handler_target_optional: boolean;
+      timer_actions: string[];
+      status: string;
+      preview_clock?: string;
+      editor_layout?: TimerHandlerLayoutCapability;
+    };
     command_batch_maximum: number;
     target_scene_actions?: string[];
     scene_commands: string[];

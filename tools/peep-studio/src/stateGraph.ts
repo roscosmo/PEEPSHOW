@@ -438,12 +438,22 @@ function routeLabel(route: StateRoute, inputActions: InputAction[]): string {
 }
 
 const SCENE_TIMER_EVENT = "time.scene_elapsed";
+const CALENDAR_SCHEDULE_EVENT = "time.local_schedule";
 
 function timerBindingLabel(binding: EventBinding): string {
-  return binding.event_type === SCENE_TIMER_EVENT ? "Scene timer" : "State-entry timer";
+  return binding.event_type === CALENDAR_SCHEDULE_EVENT ? "Calendar schedule"
+    : binding.event_type === SCENE_TIMER_EVENT ? "Scene timer" : "State-entry timer";
 }
 
 function timerBindingDetail(binding: EventBinding): string {
+  if (binding.event_type === CALENDAR_SCHEDULE_EVENT) {
+    const seconds = Number(binding.configuration.time_of_day_seconds ?? 0);
+    const time = `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}`;
+    const mode = binding.configuration.mode === "today_offset"
+      ? `today +${binding.configuration.day_offset ?? 0}d`
+      : String(binding.configuration.mode ?? "schedule").replaceAll("_", " ");
+    return `${time} / ${mode}`;
+  }
   const delay = typeof binding.configuration.delay_ms === "number" ? `${binding.configuration.delay_ms} ms` : "delay unset";
   if (binding.event_type !== SCENE_TIMER_EVENT) {
     return delay;
@@ -1684,7 +1694,9 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
       });
   });
 
-  const sceneTimerBindings = eventBindings.filter((binding) => binding.event_type === SCENE_TIMER_EVENT);
+  const sceneTimerBindings = eventBindings.filter((binding) => (
+    binding.event_type === SCENE_TIMER_EVENT || binding.event_type === CALENDAR_SCHEDULE_EVENT
+  ));
   const handlerByEventRef = new Map(eventHandlers.map((handler) => [handler.event_ref, handler]));
   const exitForHandler = (handler: EventHandler): SceneExitRecord | undefined => {
     if (handler.scene_exit_ref !== undefined) {

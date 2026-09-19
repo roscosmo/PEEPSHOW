@@ -73,7 +73,7 @@ import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNat
 import { SceneObjectInspector } from "./SceneObjectInspector";
 import { TimerInspector } from "./TimerInspector";
 import { ObjectActionContext } from "./ObjectActionContext";
-import { SCENE_TIMER, STATE_TIMER, timerBounds, deleteTimerCommands } from "./timerAuthoring";
+import { CALENDAR_SCHEDULE, SCENE_TIMER, STATE_TIMER, calendarScheduleCapability, timerBounds, deleteTimerCommands } from "./timerAuthoring";
 import type {
   AssetFrameRecord,
   AssetRecord,
@@ -1425,6 +1425,28 @@ export default function App() {
     },
     [bridge],
   );
+
+  const setPreviewLocalTime = useCallback(async (localTime: string) => {
+    const current = previewRef.current;
+    if (bridge === undefined || current === null || operationLock.current
+      || service?.operations.includes("project.preview_set_local_time") !== true) return false;
+    operationLock.current = true;
+    try {
+      const result = await bridge.serviceRequest<PreviewSnapshot>("project.preview_set_local_time", {
+        project_revision: current.project_revision,
+        preview_revision: current.preview_revision,
+        local_time: localTime,
+      });
+      setPreview(result);
+      setMessage("Preview clock updated.");
+      return true;
+    } catch (error) {
+      setMessage(errorText(error));
+      return false;
+    } finally {
+      operationLock.current = false;
+    }
+  }, [bridge, service?.operations]);
 
   useEffect(() => {
     if (!playing || nativeWindowInteracting) {
@@ -8067,12 +8089,12 @@ export default function App() {
         const timersExpanded = !collapsedHierarchyIds.includes(timersGroupId);
         const variablesExpanded = !collapsedHierarchyIds.includes(variablesGroupId);
         const timers = (scene.event_bindings ?? []).filter((binding) => (
-          binding.event_type === SCENE_TIMER || binding.event_type === STATE_TIMER
+          binding.event_type === SCENE_TIMER || binding.event_type === STATE_TIMER || binding.event_type === CALENDAR_SCHEDULE
         ));
         const timerSourceStateIds = (bindingId: string) => Array.from(new Set((scene.routes ?? [])
           .filter((route) => route.event_ref === bindingId)
           .flatMap((route) => route.from_states)));
-        const sceneTimers = timers.filter((binding) => binding.event_type === SCENE_TIMER);
+        const sceneTimers = timers.filter((binding) => binding.event_type === SCENE_TIMER || binding.event_type === CALENDAR_SCHEDULE);
         const unassignedStateTimers = timers.filter((binding) => (
           binding.event_type === STATE_TIMER && timerSourceStateIds(binding.binding_id).length === 0
         ));
@@ -8083,7 +8105,10 @@ export default function App() {
             ? scene.routes?.find((route) => route.route_id === sceneSelection.id)?.event_ref ?? null
             : null;
         const timerDelayLabel = (binding: (typeof timers)[number]) => (
-          typeof binding.configuration.delay_ms === "number"
+          binding.event_type === CALENDAR_SCHEDULE
+            ? (() => { const seconds = Number(binding.configuration.time_of_day_seconds ?? 0);
+              return `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}`; })()
+            : typeof binding.configuration.delay_ms === "number"
             ? `${binding.configuration.delay_ms} ms`
             : "Delay unset"
         );
@@ -8101,7 +8126,7 @@ export default function App() {
             >
               <img
                 className="studio-ui-icon"
-                src={binding.event_type === SCENE_TIMER ? "/ui-icons/scene_timer.png" : "/ui-icons/state_timer.png"}
+                src={binding.event_type === STATE_TIMER ? "/ui-icons/state_timer.png" : "/ui-icons/scene_timer.png"}
                 alt=""
                 aria-hidden="true"
               />
@@ -8431,7 +8456,8 @@ export default function App() {
                   {timersExpanded && <div className="hierarchy-reference-rows">
                     {sceneLevelTimers.map((binding) => renderHierarchyTimerRow(
                       binding,
-                      binding.event_type === SCENE_TIMER ? "Scene timer" : "Unassigned state timer",
+                      binding.event_type === CALENDAR_SCHEDULE ? "Calendar schedule"
+                        : binding.event_type === SCENE_TIMER ? "Scene timer" : "Unassigned state timer",
                     ))}
                   </div>}
                 </section>
@@ -9318,9 +9344,14 @@ export default function App() {
               selected={sceneSelection}
               physicalEventKinds={service?.state_scene_presentation.logical_input_events ?? ["press"]}
               peepOSTriggers={service?.state_scene_graph.peepos_trigger_catalog ?? []}
-              timerTypes={objectSceneSelected ? [SCENE_TIMER, STATE_TIMER].filter(type =>
-                timerBounds(service, project?.summary.target_profile ?? "", type)
-                && ["event_binding.add", "scene.set_reactive_wait_default", type === SCENE_TIMER ? "event_handler.add" : "route.add"].every(localCommandAllowed)) : []}
+              timerTypes={objectSceneSelected ? [SCENE_TIMER, STATE_TIMER, CALENDAR_SCHEDULE].filter(type => {
+                const available = type === CALENDAR_SCHEDULE
+                  ? calendarScheduleCapability(service) !== undefined
+                    && !(selectedSceneDocument?.event_bindings ?? []).some(binding => binding.event_type === CALENDAR_SCHEDULE)
+                  : timerBounds(service, project?.summary.target_profile ?? "", type) !== undefined;
+                return available && ["event_binding.add", "scene.set_reactive_wait_default",
+                  type === STATE_TIMER ? "route.add" : "event_handler.add"].every(localCommandAllowed);
+              }) : []}
               onRequestTimer={(stateId, eventType) => {
                 setSceneSelection({ kind: "timerDraft", eventType, stateId: eventType === STATE_TIMER ? stateId : undefined });
               }}
@@ -9644,7 +9675,10 @@ export default function App() {
               supports={kind => kind === "object_actions.set"
                 ? busy === null && supportsObjectCommand(service, selectedSceneCapability, kind) : localCommandAllowed(kind)}
               onApply={applySceneObjectCommands} ownership={project?.placement_ownership?.scenes[selectedSceneDocument.scene_id] ?? null}
-              assets={assets} audioCues={audioCues} />
+              assets={assets} audioCues={audioCues}
+              previewClockAvailable={preview?.scene.scene_id === selectedSceneDocument.scene_id
+                && service?.state_scene_graph.calendar_schedules?.preview_clock === "project.preview_set_local_time"}
+              onSetPreviewLocalTime={setPreviewLocalTime} />
           )}
           {!projectRootSelected && workspaceMode === "logic" && (
             <section className="inspector-section">

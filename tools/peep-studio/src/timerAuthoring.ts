@@ -2,6 +2,7 @@ import type { SceneDocument, ServiceHello } from "./types";
 
 export const SCENE_TIMER = "time.scene_elapsed";
 export const STATE_TIMER = "time.state_entry_elapsed";
+export const CALENDAR_SCHEDULE = "time.local_schedule";
 export type TimerCommand = Record<string, unknown>;
 
 export function timerBounds(service: ServiceHello | null, profileId: string, eventType: string) {
@@ -9,6 +10,12 @@ export function timerBounds(service: ServiceHello | null, profileId: string, eve
     ?.state_scene_events?.sources.find(item => item.event_type === eventType);
   return source && ["available", "available_pending_validation"].includes(source.status)
     ? source.configuration_schema.delay_ms : undefined;
+}
+
+export function calendarScheduleCapability(service: ServiceHello | null) {
+  const capability = service?.state_scene_graph.calendar_schedules;
+  return capability && ["available", "available_pending_validation"].includes(capability.status)
+    ? capability : undefined;
 }
 
 export function nextTimerId(scene: SceneDocument, base: string): string {
@@ -37,6 +44,24 @@ export function createTimerCommands(scene: SceneDocument, eventType: string, del
     commands.push({ ...common, kind: "route.add", route: { route_id: `${id}_expired`, event_ref: id,
       from_states: [stateId], target_state: targetState, guards: [], actions: [] } });
   }
+  if (scene.reactive_wait_default) commands.push({ ...common, kind: "scene.set_reactive_wait_default",
+    reactive_wait_default: { ...scene.reactive_wait_default,
+      event_interests: [...new Set([...(scene.reactive_wait_default.event_interests ?? []), id])] } });
+  return commands;
+}
+
+export function createCalendarScheduleCommands(scene: SceneDocument, mode: string, timeOfDaySeconds: number,
+  dayOffset: number, targetState?: string): TimerCommand[] {
+  const id = nextTimerId(scene, "calendar_schedule");
+  const common = { scene_id: scene.scene_id };
+  const commands: TimerCommand[] = [{ ...common, kind: "event_binding.add", event_binding: {
+    binding_id: id,
+    event_type: CALENDAR_SCHEDULE,
+    configuration: { mode, time_of_day_seconds: timeOfDaySeconds, ...(mode === "today_offset" ? { day_offset: dayOffset } : {}) },
+  } }, { ...common, kind: "event_handler.add", event_handler: {
+    handler_id: `${id}_matched`, event_ref: id, guards: [], actions: [],
+    ...(targetState ? { target_state: targetState } : {}),
+  } }];
   if (scene.reactive_wait_default) commands.push({ ...common, kind: "scene.set_reactive_wait_default",
     reactive_wait_default: { ...scene.reactive_wait_default,
       event_interests: [...new Set([...(scene.reactive_wait_default.event_interests ?? []), id])] } });

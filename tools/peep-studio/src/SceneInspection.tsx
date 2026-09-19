@@ -956,7 +956,7 @@ function TimerGraphNode({ data, selected }: NodeProps<Node<TimerGraphNodeData>>)
       role="button"
       tabIndex={0}
       aria-label={`${timer.label}: ${timer.detail}`}
-      title={`${timer.bindingId}: ${timer.detail}`}
+      title={`${timer.label}: ${timer.detail}`}
       onClick={() => onSelect(timer.bindingId)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -967,7 +967,7 @@ function TimerGraphNode({ data, selected }: NodeProps<Node<TimerGraphNodeData>>)
     >
       <Handle className="state-timer-node-handle" id="timer-out" type="source" position={Position.Right} isConnectable={false} />
       <span className="state-timer-node-icon" aria-hidden="true">
-        <SceneToolIcon name={iconName} />
+        {timer.eventType === "time.local_schedule" ? <CalendarClock size={28} /> : <SceneToolIcon name={iconName} />}
       </span>
       <strong>{timer.label}</strong>
       <small>{timer.detail}</small>
@@ -3515,8 +3515,11 @@ export function StateGraphView({
           <div className="peepos-trigger-list">
             {timerTypes.map(eventType => <button key={eventType} type="button" onClick={() => {
               onRequestTimer?.(peepOSTriggerStateId, eventType); setPeepOSTriggerStateId(null);
-            }}><SceneToolIcon name={eventType === "time.scene_elapsed" ? "sceneTimer" : "stateTimer"} className="peepos-trigger-icon" /><span><strong>{eventType === "time.scene_elapsed" ? "Scene timer" : "State-entry timer"}</strong></span></button>)}
-            {peepOSTriggers.filter(trigger => trigger.kind !== "delay_elapsed" || timerTypes.length === 0).map((trigger) => (
+            }}>{eventType === "time.local_schedule" ? <CalendarClock className="peepos-trigger-icon" />
+              : <SceneToolIcon name={eventType === "time.scene_elapsed" ? "sceneTimer" : "stateTimer"} className="peepos-trigger-icon" />}
+              <span><strong>{eventType === "time.local_schedule" ? "Calendar schedule" : eventType === "time.scene_elapsed" ? "Scene timer" : "State-entry timer"}</strong></span></button>)}
+            {peepOSTriggers.filter(trigger => (trigger.kind !== "delay_elapsed" || timerTypes.length === 0)
+              && (trigger.kind !== "local_schedule" || !timerTypes.includes("time.local_schedule"))).map((trigger) => (
               <button
                 disabled
                 key={trigger.kind}
@@ -3593,6 +3596,23 @@ export function StateGraphView({
           >
             <SceneToolIcon name="stateTimer" className="graph-panel-button-icon" />
             <span className="sr-only">Add state-entry timer</span>
+          </button>
+        )}
+        {timerTypes.includes("time.local_schedule") && (
+          <button
+            className="button secondary"
+            disabled={!canEdit || onRequestTimer === undefined}
+            title="Add calendar schedule"
+            aria-label="Add calendar schedule"
+            type="button"
+            onClick={() => {
+              setPendingPhysicalConnection(null);
+              setPeepOSTriggerStateId(null);
+              onRequestTimer?.(selected.kind === "state" ? selected.id : scene.entry_state ?? "", "time.local_schedule");
+            }}
+          >
+            <CalendarClock className="graph-panel-button-icon" />
+            <span className="sr-only">Add calendar schedule</span>
           </button>
         )}
         {!graph.endpoints.some((endpoint) => endpoint.kind === "system") && (
