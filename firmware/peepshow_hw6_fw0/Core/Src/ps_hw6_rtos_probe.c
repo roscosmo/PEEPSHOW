@@ -1,5 +1,9 @@
 #include "ps_hw6_rtos_probe.h"
 #include "ps_battery_wake.h"
+#include "ps_hw6_system_time.h"
+#include "ps_hw6_time_retention.h"
+#include "ps_hw6_calendar.h"
+#include "ps_hw6_calendar_runtime.h"
 
 #include <string.h>
 
@@ -53,6 +57,7 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_COMMAND_MAGIC         (0x434D4421UL)
 #define PS_HW6_RTOS_COMMAND_TOKEN         (0xC0DEC0DEUL)
 #define PS_HW6_RTOS_DISPLAY_UI_MAGIC      (0x44554921UL)
+#define PS_HW6_RTOS_DISPLAY_TIME_MAGIC    (0x4454494DUL)
 #define PS_HW6_RTOS_UI_INPUT_MAGIC        (0x55494221UL)
 #define PS_HW6_RTOS_UI_LIFECYCLE_MAGIC    (0x554C4621UL)
 #define PS_HW6_RTOS_RUNTIME_INPUT_MAGIC   (0x52494221UL)
@@ -146,6 +151,7 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_INTERACTION (1UL)
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_STATE_TIMER (2UL)
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY (3UL)
+#define PS_HW6_RTOS_RTC_WAKE_SOURCE_CALENDAR (4UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_PACKAGE_READER_ACK    (1UL << 15U)
@@ -4400,17 +4406,26 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RenderDisplayWaitingSequenceFrame(
   HAL_StatusTypeDef status;
   uint32_t sequence_count =
     g_ps_hw6_owner_probe.display_waiting_sequence_frame_count;
+  uint32_t object_timeline =
+    ((g_ps_ui_router_probe.current_page == PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
+     (g_ps_object_lpbam_probe.enabled != 0UL) &&
+     (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL)) ? 1UL : 0UL;
 
-  if ((g_ps_object_lpbam_probe.enabled != 0UL) &&
-      (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL))
+  /* A suspended package does not own the shell's waiting sequence. */
+  if (object_timeline != 0UL)
   {
     if (PS_HW6_DisplayOwner_ObjectWaitingPosition(now_tick, &sequence_frame, &period_ticks) == 0UL)
-    { return HAL_ERROR; }
+    {
+      PS_HW6_RTOS_ResetDisplayCursorBlink(now_tick);
+      return HAL_ERROR;
+    }
     g_ps_object_lpbam_probe.deadline_tick = now_tick + period_ticks;
   }
 
-  if ((sequence_count == 0UL) || (sequence_frame >= sequence_count))
+  if ((sequence_count == 0UL) || (sequence_frame >= sequence_count) ||
+      (period_ticks == 0UL))
   {
+    PS_HW6_RTOS_ResetDisplayCursorBlink(now_tick);
     return HAL_ERROR;
   }
 
@@ -4426,8 +4441,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RenderDisplayWaitingSequenceFrame(
     ps_display_waiting_sequence_count = sequence_count;
     ps_display_blink_visible =
       g_ps_hw6_owner_probe.display_lpbam_sequence_phase[sequence_frame];
-    if ((g_ps_object_lpbam_probe.enabled != 0UL) &&
-        (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL))
+    if (object_timeline != 0UL)
     { ps_display_blink_visible = sequence_frame; }
   }
   else
@@ -5584,6 +5598,11 @@ static uint32_t PS_HW6_RTOS_Stop2AutoUiAllowsIdle(void)
   uint32_t page = g_ps_ui_router_probe.current_page;
   uint32_t nav = g_ps_ui_router_probe.nav_state;
 
+  if ((g_ps_system_time_probe.pending != 0UL) ||
+      ((page == PS_UI_ROUTER_PAGE_TIME) &&
+       ((g_ps_ui_time_probe.status == PS_UI_TIME_LOADING) ||
+        (g_ps_ui_time_probe.status == PS_UI_TIME_SAVING)))) { return 0UL; }
+
   if ((g_ps_ui_router_request != 0UL) ||
       (g_ps_ui_router_probe.pending_action !=
        (uint32_t)PS_UI_ROUTER_ACTION_NONE) ||
@@ -5605,6 +5624,7 @@ static uint32_t PS_HW6_RTOS_Stop2AutoUiAllowsIdle(void)
   return ((page == (uint32_t)PS_UI_ROUTER_PAGE_HOME) ||
           (page == (uint32_t)PS_UI_ROUTER_PAGE_MENU) ||
           (page == (uint32_t)PS_UI_ROUTER_PAGE_SETTINGS) ||
+          (page == (uint32_t)PS_UI_ROUTER_PAGE_TIME) ||
           (page == (uint32_t)PS_UI_ROUTER_PAGE_PACKAGE_BROWSER) ||
           (page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF)) ?
          1UL : 0UL;
@@ -6233,6 +6253,7 @@ static uint32_t PS_HW6_RTOS_InputPolicyShellPageActive(void)
     case PS_UI_ROUTER_PAGE_HOME:
     case PS_UI_ROUTER_PAGE_MENU:
     case PS_UI_ROUTER_PAGE_SETTINGS:
+    case PS_UI_ROUTER_PAGE_TIME:
     case PS_UI_ROUTER_PAGE_CALIBRATION:
     case PS_UI_ROUTER_PAGE_PACKAGE_BROWSER:
       return 1UL;
@@ -7218,6 +7239,20 @@ static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void)
        ((g_ps_ui_router_probe.shutdown_state >= PS_UI_ROUTER_SHUTDOWN_MSC_EXPORT) &&
         (g_ps_ui_router_probe.shutdown_state <= PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY))))
   {
+    return;
+  }
+  if (g_ps_ui_router_probe.current_page ==
+      (uint32_t)PS_UI_ROUTER_PAGE_TIME)
+  {
+    ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+    ps_system_datetime_t local = g_ps_ui_time_probe.draft;
+    uint32_t seconds = 0UL;
+    (void)PS_SystemTime_Encode(&local, &seconds);
+    message[0] = PS_HW6_RTOS_DISPLAY_TIME_MAGIC;
+    message[1] = seconds;
+    message[2] = display_focus;
+    message[3] = g_ps_ui_time_probe.status;
+    (void)tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_DISPLAY], message, TX_NO_WAIT);
     return;
   }
   if (g_ps_ui_router_probe.current_page ==
@@ -8557,6 +8592,144 @@ static void PS_HW6_RTOS_RuntimePackageReturn(void)
     (uint32_t)PS_STATUS_OK : (uint32_t)PS_STATUS_INTERNAL_ERROR);
 }
 
+/* System-time transaction: thUI submits/consumes, thPower samples and edits. */
+static ps_system_time_t ps_system_clock;
+static uint32_t ps_system_time_seconds;
+static uint32_t ps_system_time_debug_token;
+volatile uint32_t g_ps_system_time_request;
+volatile ps_system_datetime_t g_ps_system_time_request_local;
+volatile ps_hw6_system_time_probe_t g_ps_system_time_probe = {
+  .api_version = 1UL, .send_status = 0xFFFFFFFFUL,
+  .result = {.status = PS_SYSTEM_TIME_UNSET, .source_status = 0xFFFFFFFFUL}
+};
+
+uint32_t PS_HW6_SystemTime_Request(uint32_t operation,
+  const ps_system_datetime_t *local, uint32_t *token)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+  uint32_t seconds = 0UL;
+  UINT status;
+  if (tx_thread_identify() != &ps_threads[PS_HW6_RTOS_OWNER_UI]) { return TX_CALLER_ERROR; }
+  if ((token == NULL) || ((operation != PS_HW6_SYSTEM_TIME_READ) &&
+      (operation != PS_HW6_SYSTEM_TIME_SET))) { return TX_PTR_ERROR; }
+  if ((operation == PS_HW6_SYSTEM_TIME_SET) &&
+      (PS_SystemTime_Encode(local, &seconds) != PS_SYSTEM_TIME_OK)) { return TX_PTR_ERROR; }
+  if ((g_ps_hw6_rtos_probe.runtime_complete == 0UL) ||
+      (g_ps_system_time_probe.pending != 0UL)) { return TX_NOT_AVAILABLE; }
+  if (g_ps_system_time_probe.request == UINT32_MAX) { return TX_NOT_AVAILABLE; }
+  g_ps_system_time_probe.request++;
+  g_ps_system_time_probe.pending = 1UL;
+  g_ps_system_time_probe.operation = operation;
+  ps_system_time_seconds = seconds;
+  message[0] = PS_HW6_SYSTEM_TIME_MAGIC;
+  message[1] = g_ps_system_time_probe.request;
+  message[2] = operation;
+  message[3] = seconds;
+  __DMB();
+  status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_POWER], message, TX_NO_WAIT);
+  g_ps_system_time_probe.send_status = status;
+  if (status != TX_SUCCESS)
+  {
+    g_ps_system_time_probe.pending = 0UL;
+    return status;
+  }
+  *token = (uint32_t)message[1];
+  return TX_SUCCESS;
+}
+
+uint32_t PS_HW6_SystemTime_Take(uint32_t token, ps_hw6_system_time_result_t *result)
+{
+  if (tx_thread_identify() != &ps_threads[PS_HW6_RTOS_OWNER_UI]) { return TX_CALLER_ERROR; }
+  if ((result == NULL) || (token == 0UL) ||
+      (token != g_ps_system_time_probe.request) ||
+      (g_ps_system_time_probe.pending == 0UL)) { return TX_PTR_ERROR; }
+  if (g_ps_system_time_probe.complete != token) { return TX_NO_EVENTS; }
+  __DMB();
+  *result = g_ps_system_time_probe.result;
+  g_ps_system_time_probe.pending = 0UL;
+  return TX_SUCCESS;
+}
+
+static void PS_HW6_SystemTime_Owner(const ULONG *message)
+{
+  RTC_TimeTypeDef time;
+  RTC_DateTypeDef date;
+  ps_system_datetime_t raw, requested;
+  ps_hw6_system_time_result_t result = {0};
+  uint32_t seconds;
+  if ((tx_thread_identify() != &ps_threads[PS_HW6_RTOS_OWNER_POWER]) ||
+      (message[0] != PS_HW6_SYSTEM_TIME_MAGIC) ||
+      (g_ps_system_time_probe.pending == 0UL) ||
+      (message[1] != g_ps_system_time_probe.request) ||
+      (message[1] == g_ps_system_time_probe.complete) ||
+      (message[2] != g_ps_system_time_probe.operation) ||
+      (message[3] != ps_system_time_seconds))
+  {
+    g_ps_system_time_probe.rejected_messages++;
+    return;
+  }
+  result.source_status = HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN);
+  if (result.source_status == HAL_OK)
+  { result.source_status = HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN); }
+  if (result.source_status == HAL_OK)
+  {
+    raw = (ps_system_datetime_t){(uint16_t)(2000U + date.Year), date.Month,
+      date.Date, time.Hours, time.Minutes, time.Seconds};
+    if ((PS_SystemTime_Encode(&raw, &seconds) != PS_SYSTEM_TIME_OK) ||
+        (time.SubSeconds > time.SecondFraction))
+    { result.source_status = HAL_ERROR; }
+    else
+    {
+      result.source_ms = (uint64_t)seconds * 1000ULL +
+        (uint64_t)(time.SecondFraction - time.SubSeconds) * 1000ULL /
+        ((uint64_t)time.SecondFraction + 1ULL);
+    }
+  }
+  if (result.source_status != HAL_OK)
+  {
+    PS_SystemTime_Invalidate(&ps_system_clock);
+    result.status = PS_SYSTEM_TIME_SOURCE_LOST;
+  }
+  else if (message[2] == PS_HW6_SYSTEM_TIME_SET)
+  {
+    result.status = PS_SystemTime_Decode((uint32_t)message[3], &requested);
+    if (result.status == PS_SYSTEM_TIME_OK)
+    { result.status = PS_SystemTime_Set(&ps_system_clock, &requested, result.source_ms); }
+    if (result.status == PS_SYSTEM_TIME_OK)
+    { result.status = PS_SystemTime_Read(&ps_system_clock, result.source_ms, &result.snapshot); }
+  }
+  else
+  { result.status = PS_SystemTime_Read(&ps_system_clock, result.source_ms, &result.snapshot); }
+  if (PS_HW6_TimeRetention_Store(&ps_system_clock) == 0U)
+  {
+    PS_SystemTime_Invalidate(&ps_system_clock);
+    result.status = PS_SYSTEM_TIME_SOURCE_LOST;
+  }
+  g_ps_system_time_probe.result = result;
+  if ((message[2] == PS_HW6_SYSTEM_TIME_SET) || (result.status != PS_SYSTEM_TIME_OK))
+  { PS_HW6_Calendar_TimeChanged(); }
+  __DMB();
+  g_ps_system_time_probe.complete = (uint32_t)message[1];
+}
+
+static void PS_HW6_SystemTime_DebugUi(void)
+{
+  ps_hw6_system_time_result_t result;
+  ps_system_datetime_t local;
+  uint32_t operation;
+  if (ps_system_time_debug_token != 0UL)
+  {
+    if (PS_HW6_SystemTime_Take(ps_system_time_debug_token, &result) == TX_SUCCESS)
+    { ps_system_time_debug_token = 0UL; }
+  }
+  if ((g_ps_system_time_request == 0UL) || (ps_system_time_debug_token != 0UL)) { return; }
+  operation = g_ps_system_time_request;
+  local = g_ps_system_time_request_local;
+  g_ps_system_time_request = 0UL;
+  g_ps_system_time_probe.send_status = PS_HW6_SystemTime_Request(operation, &local,
+    &ps_system_time_debug_token);
+}
+
 static HAL_StatusTypeDef PS_HW6_RTOS_ObjectRtcMilliseconds(uint64_t *value)
 {
   static const uint16_t before_month[12] =
@@ -8578,6 +8751,49 @@ static HAL_StatusTypeDef PS_HW6_RTOS_ObjectRtcMilliseconds(uint64_t *value)
     ((uint64_t)(time.SecondFraction - time.SubSeconds) * 1000ULL) /
       ((uint64_t)time.SecondFraction + 1ULL);
   return HAL_OK;
+}
+
+ps_system_time_status_t PS_HW6_Calendar_Read(ps_system_time_snapshot_t *snapshot)
+{
+  uint64_t source_ms;
+  ps_system_time_status_t status;
+  if (tx_thread_identify() != &ps_threads[PS_HW6_RTOS_OWNER_POWER])
+  { return PS_SYSTEM_TIME_ARGUMENT; }
+  if (PS_HW6_RTOS_ObjectRtcMilliseconds(&source_ms) != HAL_OK)
+  {
+    PS_SystemTime_Invalidate(&ps_system_clock);
+    (void)PS_HW6_TimeRetention_Store(&ps_system_clock);
+    return PS_SYSTEM_TIME_SOURCE_LOST;
+  }
+  status = PS_SystemTime_Read(&ps_system_clock, source_ms, snapshot);
+  if ((status != PS_SYSTEM_TIME_OK) && (status != PS_SYSTEM_TIME_UNSET))
+  { (void)PS_HW6_TimeRetention_Store(&ps_system_clock); }
+  return status;
+}
+
+/* Consume only our own token; late results cannot reopen an abandoned editor. */
+static void PS_HW6_SystemTime_EditorUi(void)
+{
+  static uint32_t token, session, operation;
+  ps_hw6_system_time_result_t result;
+  ps_system_datetime_t local;
+  uint32_t status;
+  if (token != 0UL)
+  {
+    if (PS_HW6_SystemTime_Take(token, &result) != TX_SUCCESS) { return; }
+    token = 0UL;
+    if (PS_UIRouter_CompleteTimeRequest(session, operation, result.status,
+                                       &result.snapshot.local) != 0UL)
+    { PS_HW6_RTOS_SendCurrentUiRenderCommand(); }
+  }
+  operation = PS_UIRouter_TakeTimeRequest(&session, &local);
+  if (operation == 0UL) { return; }
+  status = PS_HW6_SystemTime_Request(operation, &local, &token);
+  if (status != TX_SUCCESS)
+  {
+    if (PS_UIRouter_CompleteTimeRequest(session, operation, UINT32_MAX, &local) != 0UL)
+    { PS_HW6_RTOS_SendCurrentUiRenderCommand(); }
+  }
 }
 
 uint32_t PS_HW6_RTOS_ObjectSleepClockBegin(void)
@@ -9320,7 +9536,8 @@ void RTC_IRQHandler(void)
       g_ps_hw6_battery_wake_probe.rtc_expiries++;
     }
     if ((ps_runtime_interaction_rtc_armed != 0UL) &&
-        (ps_runtime_rtc_wake_source != PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY))
+        (ps_runtime_rtc_wake_source != PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY) &&
+        (ps_runtime_rtc_wake_source != PS_HW6_RTOS_RTC_WAKE_SOURCE_CALENDAR))
     {
       if (ps_runtime_interaction_rtc_command_queued == 0UL)
       {
@@ -9338,6 +9555,7 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
 {
   uint32_t now_tick;
   uint32_t battery_remaining_ticks;
+  uint32_t calendar_remaining_ticks;
   uint32_t remaining_ticks = 0UL;
   uint32_t interaction_remaining_ticks = 0UL;
   uint32_t interaction_available = 0UL;
@@ -9386,6 +9604,8 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
 
   battery_remaining_ticks = PS_BatteryWake_Prepare(
     &g_ps_hw6_battery_wake_probe, now_tick);
+  calendar_remaining_ticks = (g_ps_hw6_battery_fault_wait_probe.active == 0UL) ?
+    PS_HW6_Calendar_Prepare(now_tick) : UINT32_MAX;
 
   if ((state_timer_available != 0UL) &&
       (state_timer_remaining_ticks <= battery_remaining_ticks) &&
@@ -9410,8 +9630,15 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
   {
     ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY;
     remaining_ticks = battery_remaining_ticks;
-    g_ps_hw6_battery_wake_probe.rtc_selections++;
   }
+  if (calendar_remaining_ticks < remaining_ticks)
+  {
+    ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_CALENDAR;
+    remaining_ticks = calendar_remaining_ticks;
+    g_ps_calendar_probe.rtc_selections++;
+  }
+  if (ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY)
+  { g_ps_hw6_battery_wake_probe.rtc_selections++; }
   g_ps_hw6_rtos_probe.runtime_rtc_wake_source =
     ps_runtime_rtc_wake_source;
 
@@ -9639,6 +9866,10 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
     elapsed_ticks;
   PS_BatteryWake_Finish(&g_ps_hw6_battery_wake_probe, now_tick, elapsed_ticks,
     (read_status == HAL_OK) && (deactivate_status == HAL_OK));
+  if ((ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_CALENDAR) &&
+      (ps_runtime_interaction_rtc_irq_expired != 0UL))
+  { g_ps_calendar_probe.rtc_expiries++; }
+  if (g_ps_hw6_battery_fault_wait_probe.active == 0UL) { PS_HW6_Calendar_Finish(); }
   if (ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_STATE_TIMER)
   {
     g_ps_hw6_rtos_probe.runtime_state_timer_rtc_elapsed_ticks =
@@ -9949,6 +10180,65 @@ static void PS_HW6_RTOS_RuntimeStateTimersService(uint32_t now_tick)
     PS_HW6_RTOS_RuntimeStateTimersSync(now_tick, 0UL);
     dispatch_budget--;
   }
+}
+
+uint32_t PS_HW6_CalendarRuntime_Send(uint32_t to_power,
+  const ps_calendar_message_t *packet)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS] = {
+    packet->magic, packet->kind, packet->sequence, packet->registration};
+  if (tx_thread_identify() != &ps_threads[to_power ? PS_HW6_RTOS_OWNER_RUNTIME :
+      PS_HW6_RTOS_OWNER_POWER]) { return TX_CALLER_ERROR; }
+  return tx_queue_send(&ps_queues[to_power ? PS_HW6_RTOS_OWNER_POWER :
+    PS_HW6_RTOS_OWNER_RUNTIME], message, TX_NO_WAIT);
+}
+
+uint32_t PS_HW6_CalendarRuntime_Scene(void)
+{
+  return PS_SceneRuntime_InstalledObjectsActive() && PS_SceneRuntime_StateSceneActive() ?
+    PS_SceneRuntime_SceneActivation() : 0UL;
+}
+
+uint32_t PS_HW6_CalendarRuntime_Running(void)
+{
+  return (g_ps_hw6_rtos_probe.runtime_lifecycle == PS_HW6_RUNTIME_LIFECYCLE_RUNNING) &&
+    (g_ps_hw6_battery_fault_wait_probe.active == 0UL);
+}
+
+uint32_t PS_HW6_CalendarRuntime_BindingValid(uint32_t binding)
+{
+  uint32_t scope, policy, delay;
+  if (PS_SceneRuntime_CalendarConfiguration(binding, &scope, &policy, &delay))
+  { return 1UL; }
+  return PS_SceneRuntime_TimerConfiguration(binding, &scope, &policy, &delay) &&
+    (scope == PS_SCENE_RUNTIME_TIMER_SCENE) && (policy == PS_SCENE_RUNTIME_TIMER_START_ACTION);
+}
+
+uint32_t PS_HW6_CalendarRuntime_Configuration(uint32_t *binding,
+  uint32_t *mode, uint32_t *time_of_day, uint32_t *day_offset)
+{
+  uint32_t index;
+  for (index = 0UL; index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX; ++index)
+  {
+    if (PS_SceneRuntime_CalendarConfiguration(index, mode, time_of_day, day_offset))
+    { *binding = index; return 1UL; }
+  }
+  return 0UL;
+}
+
+ps_calendar_delivery_state_t PS_HW6_CalendarRuntime_Apply(uint32_t binding)
+{
+  uint32_t result;
+  if (!PS_HW6_CalendarRuntime_BindingValid(binding) ||
+      PS_HW6_RTOS_ObjectAdvance((uint32_t)tx_time_get()))
+  { return PS_CALENDAR_DELIVERY_FAILED; }
+  result = PS_SceneRuntime_HandleStateSceneEvent(binding);
+  if (PS_HW6_RTOS_CompleteStateSceneEvent(result) != TX_SUCCESS)
+  { return PS_CALENDAR_DELIVERY_FAILED; }
+  PS_HW6_RTOS_RuntimeStateTimersSync((uint32_t)tx_time_get(), 0UL);
+  if (result == PS_SCENE_RUNTIME_INPUT_APPLIED) { return PS_CALENDAR_DELIVERY_APPLIED; }
+  if (result == PS_SCENE_RUNTIME_INPUT_IGNORED) { return PS_CALENDAR_DELIVERY_IGNORED; }
+  return PS_CALENDAR_DELIVERY_FAILED;
 }
 
 static void PS_HW6_RTOS_RuntimeInteractionBegin(uint32_t now_tick)
@@ -11866,6 +12156,13 @@ static ULONG PS_HW6_RTOS_OwnerReceiveWaitTicks(uint32_t owner_id,
   int32_t remaining_ticks;
   ULONG wait_ticks = PS_HW6_RTOS_HEARTBEAT_TICKS;
 
+  if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+      (g_ps_hw6_battery_fault_wait_probe.active == 0UL))
+  {
+    uint32_t calendar_wait = PS_HW6_Calendar_Remaining(now_tick);
+    if (calendar_wait < (uint32_t)wait_ticks) { wait_ticks = calendar_wait; }
+  }
+
   /* Disabled services cannot advance their deadlines; do not spin on them. */
   if ((g_ps_hw6_battery_fault_wait_probe.active != 0UL) &&
       ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) ||
@@ -12090,6 +12387,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
 
   now = tx_time_get();
   g_ps_hw6_rtos_probe.owner_last_tick[owner_id] = (uint32_t)now;
+  if (owner_id == PS_HW6_RTOS_OWNER_POWER) { PS_HW6_TimeRetention_Restore(&ps_system_clock); }
   g_ps_hw6_rtos_probe.owner_start_mask |= (1UL << owner_id);
   PS_HW6_RTOS_RecordThreadStackProbe(owner_id);
   PS_HW6_RTOS_UpdateRuntimeComplete();
@@ -12140,7 +12438,22 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
           (uint32_t)message[word];
       }
 
-      if ((message[0] == PS_HW6_RTOS_PACKAGE_WORKFLOW_MAGIC) &&
+      if (((owner_id == PS_HW6_RTOS_OWNER_POWER) ||
+           (owner_id == PS_HW6_RTOS_OWNER_RUNTIME)) &&
+          (message[0] == PS_CALENDAR_TRANSPORT_MAGIC))
+      {
+        ps_calendar_message_t packet = {(uint32_t)message[0], (uint32_t)message[1],
+          (uint32_t)message[2], (uint32_t)message[3]};
+        if (owner_id == PS_HW6_RTOS_OWNER_POWER)
+        { PS_HW6_CalendarRuntime_PowerMessage(&packet); }
+        else { PS_HW6_CalendarRuntime_RuntimeMessage(&packet); }
+      }
+      else if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+          (message[0] == PS_HW6_SYSTEM_TIME_MAGIC))
+      {
+        PS_HW6_SystemTime_Owner(message);
+      }
+      else if ((message[0] == PS_HW6_RTOS_PACKAGE_WORKFLOW_MAGIC) &&
           (message[1] == owner_id))
       {
         PS_HW6_RTOS_PackageWorkflowHandleMessage(owner_id, message);
@@ -12268,6 +12581,26 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (void)tx_event_flags_set(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
           PS_HW6_RTOS_OBJECT_DISPLAY_ACK, TX_OR);
       }
+      else if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
+               (message[0] == PS_HW6_RTOS_DISPLAY_TIME_MAGIC))
+      {
+        ps_system_datetime_t local;
+        if ((g_ps_hw6_battery_fault_wait_probe.active != 0UL) ||
+            (g_ps_ui_router_probe.current_page != PS_UI_ROUTER_PAGE_TIME) ||
+            (message[2] > 7UL) || (message[3] > PS_UI_TIME_SAVE_ERROR) ||
+            (PS_SystemTime_Decode((uint32_t)message[1], &local) != PS_SYSTEM_TIME_OK))
+        { continue; }
+        (void)PS_HW6_RTOS_RequestDisplayClockCapabilities(
+          PS_HW6_RTOS_DISPLAY_CLOCK_REASON_TRANSFER,
+          PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES);
+        /* TIME payload: encoded civil seconds, focus, no shutdown, editor status. */
+        (void)PS_HW6_DisplayOwner_RenderUI(PS_UI_ROUTER_PAGE_TIME,
+          (uint32_t)message[1], (uint32_t)message[2], PS_UI_ROUTER_SHUTDOWN_NONE,
+          (uint32_t)message[3]);
+        (void)PS_HW6_RTOS_RequestDisplayClockCapabilities(
+          PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE, 0UL);
+        PS_HW6_RTOS_ResetDisplayCursorBlink((uint32_t)tx_time_get());
+      }
       else if (PS_HW6_RTOS_DisplayUiCommandIsValid(owner_id, message) != 0UL)
       {
         if (g_ps_hw6_battery_fault_wait_probe.active != 0UL) { continue; }
@@ -12378,7 +12711,9 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
             router_status = PS_UIRouter_Dispatch(
               PS_HW6_RTOS_RouterEventForLogicalSource(button));
           }
-          if (router_status == PS_STATUS_OK)
+          if ((router_status == PS_STATUS_OK) &&
+              ((g_ps_ui_router_probe.current_page != PS_UI_ROUTER_PAGE_TIME) ||
+               (dispatch != 0UL)))
           {
             PS_HW6_RTOS_SendCurrentUiRenderCommand();
           }
@@ -12451,6 +12786,8 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     {
       if (g_ps_hw6_battery_fault_wait_probe.active == 0UL)
       {
+        if ((g_ps_system_time_request == 0UL) && (g_ps_system_time_probe.pending == 0UL))
+        { PS_HW6_CalendarRuntime_RuntimeService(); }
         PS_HW6_RTOS_RuntimeStateTimersService((uint32_t)now);
         PS_HW6_RTOS_RuntimeInteractionService((uint32_t)now);
         PS_HW6_RTOS_CandidateService();
@@ -12681,6 +13018,12 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (ps_power_boot_done != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      if ((g_ps_system_time_request == 0UL) && (g_ps_system_time_probe.pending == 0UL))
+      {
+        PS_HW6_Calendar_Service((uint32_t)tx_time_get(),
+          g_ps_hw6_battery_fault_wait_probe.active == 0UL);
+      }
+      PS_HW6_CalendarRuntime_PowerService(g_ps_hw6_battery_fault_wait_probe.active == 0UL);
       PS_HW6_RTOS_RunStop2AutoIdlePeriodic((uint32_t)now);
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
@@ -13256,6 +13599,8 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     }
     if (owner_id == PS_HW6_RTOS_OWNER_UI)
     {
+      PS_HW6_SystemTime_DebugUi();
+      PS_HW6_SystemTime_EditorUi();
       PS_HW6_RTOS_PackageWorkflowServiceUi();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&

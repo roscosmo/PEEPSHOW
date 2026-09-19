@@ -477,6 +477,16 @@ def _compile_graph(
                 )
             )
         for record in events:
+            if record["event_type"] == "time.local_schedule":
+                if not _objects:
+                    raise EggCompileError("calendar schedules require V2 objects")
+                config = record["configuration"]
+                encoded_bindings.extend(EVENT_RECORD.pack(
+                    strings[record["binding_id"]], EVENT_CLASS_TIMER, 3,
+                    {"daily": 1, "today_offset": 2, "next_occurrence": 3}[config["mode"]],
+                    config["time_of_day_seconds"] | (config.get("day_offset", 0) << 17),
+                ))
+                continue
             if record["event_type"] not in {"time.state_entry_elapsed", "time.scene_elapsed"}:
                 raise EggCompileError("unsupported STATE event binding")
             encoded_bindings.extend(
@@ -925,6 +935,13 @@ def build_preview_package(bundle: ProjectBundle) -> EggPackage:
         if not bundle.valid:
             raise EggCompileError("project must validate before preview")
         views = tuple(graph_validation_view(scene) if scene.get("schema_version") == 2 else scene for scene in bundle.scenes)
+        # The preview graph projection uses legacy visual records, not exported
+        # V2 objects. Preserve binding indexes and restore calendar semantics below.
+        for view in views:
+            for binding in view.get("event_bindings", []):
+                if binding["event_type"] == "time.local_schedule":
+                    binding["event_type"] = "time.scene_elapsed"
+                    binding["configuration"] = {"delay_ms": 1000, "start_policy": "action"}
         package = parse_egg(_build_egg(replace(bundle, scenes=views), _draft=True), _draft=True)
         sources = {scene["scene_id"]: scene for scene in bundle.scenes}
         for scene in package.scenes:
@@ -932,6 +949,11 @@ def build_preview_package(bundle: ProjectBundle) -> EggPackage:
             if source.get("schema_version") != 2:
                 continue
             scene["object_source"] = deepcopy(source)
+            calendar = {binding["binding_id"]: binding for binding in source.get("event_bindings", [])
+                        if binding["event_type"] == "time.local_schedule"}
+            for binding in scene["graph"]["event_bindings"]:
+                if binding["binding_id"] in calendar:
+                    binding.update(deepcopy(calendar[binding["binding_id"]]))
             scene["object_animations"] = {clip["animation_id"]: deepcopy(clip) for clip in bundle.animations}
             routes = {route.get("route_id", route.get("handler_id")): route for route in [*source["routes"], *source.get("event_handlers", [])]}
             for route in scene["graph"]["routes"]:

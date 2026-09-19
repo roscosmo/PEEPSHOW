@@ -32,6 +32,8 @@ static uint32_t ps_runtime_interaction_cue_active, ps_runtime_interaction_cue_de
 static uint32_t ps_runtime_interaction_activation_active, ps_runtime_interaction_activation_deadline_tick;
 static uint32_t ps_display_blink_next_tick, ps_display_blink_stop2_suppressed;
 static uint32_t buttons_wait = PS_HW6_RTOS_HEARTBEAT_TICKS;
+static uint32_t PS_HW6_Calendar_Remaining(uint32_t now)
+{ (void)now; return UINT32_MAX; }
 static uint32_t timer_active, timer_remaining, timer_queries, objects_active, audio_active;
 
 static uint32_t PS_InputButtons_NextWaitTicks(uint32_t now, uint32_t maximum)

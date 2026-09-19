@@ -114,6 +114,13 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_dev_audio.c
     Core/Src/ps_dev_adp5360.c
     Core/Src/ps_battery_wake.c
+    Core/Src/ps_system_time.c
+    Core/Src/ps_calendar_timer.c
+    Core/Src/ps_calendar_delivery.c
+    Core/Src/ps_calendar_transport.c
+    Core/Src/ps_hw6_calendar_runtime.c
+    Core/Src/ps_hw6_calendar.c
+    Core/Src/ps_hw6_time_retention.c
     Core/Src/ps_dev_lis2dux12.c
     Core/Src/ps_dev_tmag3001.c
     Core/Src/ps_hw_i2c3.c

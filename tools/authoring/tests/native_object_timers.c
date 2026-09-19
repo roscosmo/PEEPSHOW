@@ -1,6 +1,7 @@
 #define PS_OBJECT_AWAKE_MAIN awake_fixture_main
 #include "native_object_awake.c"
 #include "ps_hw6_object_development.h"
+#include "ps_hw6_calendar_runtime.h"
 #include "object_timer_probe_under_test.inc"
 
 typedef uint32_t UINT;
@@ -310,10 +311,10 @@ int main(int argc, char **argv)
   size = read_blob(argv[1], candidate);
   set_hash(argv[1], candidate, size);
   mode = (uint32_t)atoi(argv[3]);
-  if (mode == 20)
+  if (mode == 20 || mode == 21 || mode == 22)
   {
     uint32_t status = timer_scene_admission(candidate, size, 1, NULL, NULL);
-    assert(size == 3356);
+    if (mode != 22) { assert(size == (mode == 20 ? 3356U : 1004U)); }
     if (status != 0)
     { fprintf(stderr, "Timer fixture preflight failed: status=%u loader reason=%u states=%u routes=%u\n",
         status, g_ps_egg_validation_probe.reason, g_ps_egg_validation_probe.state_count, g_ps_egg_validation_probe.route_count); }
@@ -341,7 +342,30 @@ int main(int argc, char **argv)
   if (mode >= 16)
   {
     output = fopen(argv[2], "wb"); assert(output != NULL);
-    if (mode == 20) { timer_controls_hardware_fixture(output); }
+    if (mode == 21 || mode == 22)
+    {
+      uint32_t activation = PS_SceneRuntime_StateActivation();
+      timer = binding(mode == 22 ? PS_SCENE_RUNTIME_TIMER_CALENDAR : PS_SCENE_RUNTIME_TIMER_SCENE);
+      if (mode == 22)
+      {
+        uint32_t calendar_mode, seconds, offset;
+        assert(PS_SceneRuntime_CalendarConfiguration(timer, &calendar_mode, &seconds, &offset));
+        assert(calendar_mode == 1 && seconds == 0 && offset == 0);
+      }
+      assert(timer == 1U);
+      assert(ps_runtime_state_timers[timer].active == 0U);
+      frame(output);
+      service(5000); /* No relative timer can produce the visible change. */
+      assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 0);
+      assert(PS_HW6_CalendarRuntime_Apply(timer) == PS_CALENDAR_DELIVERY_APPLIED);
+      assert(PS_SceneRuntime_StateActivation() == activation);
+      assert(s_ps_object_snapshot.objects[3].effective.flags & 1U);
+      frame(output);
+      input(1);
+      assert((s_ps_object_snapshot.objects[3].effective.flags & 1U) == 0U);
+      frame(output);
+    }
+    else if (mode == 20) { timer_controls_hardware_fixture(output); }
     else if (mode == 19) { scene_exit_hardware_fixture(output); }
     else { replacement_timers(mode); frame(output); }
     fclose(output);

@@ -59,7 +59,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 50
+SERVICE_API_VERSION = 51
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -85,6 +85,9 @@ SERVICE_OPERATIONS = (
     "project.preview_scene_base",
     "project.preview_input",
     "project.preview_advance",
+    "project.preview_set_local_time",
+    "project.preview_suspend",
+    "project.preview_resume",
 )
 
 
@@ -184,6 +187,8 @@ def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
             "state_management_commands": list(STATE_MANAGEMENT_COMMANDS),
             "graph_construction_commands": True,
             "timer_handler_layout": _timer_handler_layout_capability(),
+            "calendar_schedules": {"supported": scene["schema_version"] == 2,
+                                   "event_type": "time.local_schedule", "maximum_per_scene": 1},
             "local_graph_commands": list(LOCAL_GRAPH_COMMANDS),
             "scene_connection_commands": True,
             "connection_commands": list(SCENE_CONNECTION_COMMANDS),
@@ -558,6 +563,20 @@ class AuthoringService:
                     "element_actions_require_target_state": True,
                     "editor_layout": _timer_handler_layout_capability(),
                 },
+                "calendar_schedules": {
+                    "event_type": "time.local_schedule", "scene_schema_versions": [2],
+                    "maximum_per_scene": 1, "ownership": "scene", "start_policy": "scene_entry",
+                    "modes": ["daily", "today_offset", "next_occurrence"],
+                    "time_of_day_seconds": {"minimum": 0, "maximum": 86399},
+                    "day_offset": {"minimum": 0, "maximum": 32767, "mode": "today_offset"},
+                    "handler_collection": "event_handlers", "handler_target_optional": True,
+                    "unset_clock": "wait_for_explicit_time_set", "clock_edit": "skip_crossed_occurrences",
+                    "suspension": "defer_without_moving_deadline", "late_daily": "coalesce_one",
+                    "scene_replacement": "cancel_and_fresh_arm", "timer_actions": [],
+                    "editor_layout": _timer_handler_layout_capability(),
+                    "status": "available_pending_validation",
+                    "preview_clock": "project.preview_set_local_time",
+                },
                 "command_batch_maximum": 64,
                 "target_scene_actions": ["play_sfx"],
                 "scene_commands": ["scene.add", "scene.rename", "project.set_entry_scene"],
@@ -597,8 +616,8 @@ class AuthoringService:
                         "kind": "local_schedule",
                         "label": "Date and time",
                         "detail": "Local calendar schedule matched",
-                        "support": "contract_only",
-                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                        "support": "available_pending_validation",
+                        "requires": ["scene_schema_v2", "valid_local_time"],
                     },
                     {
                         "kind": "device_active",
@@ -1189,6 +1208,27 @@ class AuthoringService:
         snapshot["timer_events"] = [asdict(event) for event in events]
         return self._preview_result(snapshot)
 
+    def _preview_set_local_time(self, params: dict[str, Any]) -> dict[str, Any]:
+        preview = self._current_preview(params, {"local_time"})
+        try:
+            preview.set_local_time(params["local_time"])
+        except PreviewError as exc:
+            raise ProtocolError("PREVIEW_TIME_INVALID", str(exc)) from exc
+        return self._preview_result(preview.snapshot())
+
+    def _preview_suspend(self, params: dict[str, Any]) -> dict[str, Any]:
+        preview = self._current_preview(params, set())
+        preview.suspend()
+        return self._preview_result(preview.snapshot())
+
+    def _preview_resume(self, params: dict[str, Any]) -> dict[str, Any]:
+        preview = self._current_preview(params, set())
+        preview.resume()
+        events = preview.advance(0)
+        snapshot = preview.snapshot()
+        snapshot["timer_events"] = [asdict(event) for event in events]
+        return self._preview_result(snapshot)
+
     def handle(self, request: ServiceRequest) -> dict[str, Any]:
         handlers = {
             "service.hello": self._hello,
@@ -1213,6 +1253,9 @@ class AuthoringService:
             "project.preview_scene_base": self._preview_scene_base,
             "project.preview_input": self._preview_input,
             "project.preview_advance": self._preview_advance,
+            "project.preview_set_local_time": self._preview_set_local_time,
+            "project.preview_suspend": self._preview_suspend,
+            "project.preview_resume": self._preview_resume,
         }
         handler = handlers.get(request.operation)
         if handler is None:

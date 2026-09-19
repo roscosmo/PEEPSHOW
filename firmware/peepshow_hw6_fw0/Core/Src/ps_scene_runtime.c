@@ -473,7 +473,12 @@ uint32_t PS_SceneRuntime_ValidateDescriptor(
             ((binding->event_kind == PS_SCENE_RUNTIME_TIMER_SCENE) &&
              (binding->source <= PS_SCENE_RUNTIME_TIMER_START_ACTION))) &&
            (binding->parameter >= PS_TARGET_PROFILE_STATE_TIMER_MIN_MS) &&
-           (binding->parameter <= PS_TARGET_PROFILE_STATE_TIMER_MAX_MS))))
+           (binding->parameter <= PS_TARGET_PROFILE_STATE_TIMER_MAX_MS)) ||
+          ((binding->event_class == PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
+           (binding->event_kind == PS_SCENE_RUNTIME_TIMER_CALENDAR) &&
+           (binding->source >= 1UL) && (binding->source <= 3UL) &&
+           ((binding->parameter & 0x1FFFFUL) < 86400UL) &&
+           ((binding->source == 2UL) || ((binding->parameter >> 17) == 0UL)))))
     {
       return 1UL;
     }
@@ -481,7 +486,11 @@ uint32_t PS_SceneRuntime_ValidateDescriptor(
          compare_index < scene->event_binding_count;
          ++compare_index)
     {
-      if (binding->binding_id == scene->event_bindings[compare_index].binding_id)
+      if ((binding->binding_id == scene->event_bindings[compare_index].binding_id) ||
+          ((binding->event_class == PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
+           (binding->event_kind == PS_SCENE_RUNTIME_TIMER_CALENDAR) &&
+           (scene->event_bindings[compare_index].event_class == PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
+           (scene->event_bindings[compare_index].event_kind == PS_SCENE_RUNTIME_TIMER_CALENDAR)))
       {
         return 1UL;
       }
@@ -807,8 +816,10 @@ uint32_t PS_SceneRuntime_ValidateDescriptor(
     if (((transition->source_state_id == 0UL) ? 1UL : 0UL) !=
         (((scene->event_bindings[transition->scene_event_id - 1UL].event_class ==
            PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
-          (scene->event_bindings[transition->scene_event_id - 1UL].event_kind ==
-           PS_SCENE_RUNTIME_TIMER_SCENE)) ? 1UL : 0UL))
+          ((scene->event_bindings[transition->scene_event_id - 1UL].event_kind ==
+            PS_SCENE_RUNTIME_TIMER_SCENE) ||
+           (scene->event_bindings[transition->scene_event_id - 1UL].event_kind ==
+            PS_SCENE_RUNTIME_TIMER_CALENDAR))) ? 1UL : 0UL))
     {
       return 1UL;
     }
@@ -2186,6 +2197,23 @@ uint32_t PS_SceneRuntime_HandleStateSceneEvent(uint32_t binding_index)
     g_ps_scene_runtime_probe.event_dispatch_reject_count++;
   }
   return result;
+}
+
+uint32_t PS_SceneRuntime_CalendarConfiguration(uint32_t binding_index,
+  uint32_t *mode, uint32_t *time_of_day, uint32_t *day_offset)
+{
+  const ps_scene_runtime_event_binding_t *binding;
+  if (!s_ps_scene_runtime_state_scene || !mode || !time_of_day || !day_offset ||
+      (binding_index >= s_ps_scene_runtime_state_scene->event_binding_count))
+  { return 0UL; }
+  binding = &s_ps_scene_runtime_state_scene->event_bindings[binding_index];
+  if ((binding->event_class != PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) ||
+      (binding->event_kind != PS_SCENE_RUNTIME_TIMER_CALENDAR))
+  { return 0UL; }
+  *mode = binding->source;
+  *time_of_day = binding->parameter & 0x1FFFFUL;
+  *day_offset = binding->parameter >> 17;
+  return 1UL;
 }
 
 uint32_t PS_SceneRuntime_TimerConfiguration(uint32_t binding_index,

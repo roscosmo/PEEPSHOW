@@ -161,7 +161,7 @@ static void assert_package_tools_reachable(void)
   press(PS_INPUT_LOGICAL_SOURCE_BUTTON_L);
   assert(g_ps_ui_router_probe.focus_index == 0);
   press(PS_INPUT_LOGICAL_SOURCE_BUTTON_A);
-  assert(g_ps_ui_router_probe.current_page == PS_UI_ROUTER_PAGE_SETTINGS);
+  assert(g_ps_ui_router_probe.current_page == PS_UI_ROUTER_PAGE_TIME);
   press(PS_INPUT_LOGICAL_SOURCE_BUTTON_B);
   assert(g_ps_ui_router_probe.current_page == PS_UI_ROUTER_PAGE_MENU);
   press(PS_INPUT_LOGICAL_SOURCE_BUTTON_L);

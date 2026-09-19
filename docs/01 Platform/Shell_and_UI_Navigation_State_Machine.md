@@ -25,6 +25,7 @@ States:
 - `SHELL_HOME`
 - `SHELL_MENU`
 - `SHELL_SETTINGS`
+- `SHELL_TIME`
 - `SHELL_CALIBRATION`
 - `SHELL_PACKAGE_BROWSER`
 - `SHELL_RUNTIME_HANDOFF`
@@ -36,6 +37,7 @@ Key events:
 - `EV_NAV_HOME`
 - `EV_NAV_MENU`
 - `EV_NAV_SETTINGS`
+- `EV_NAV_TIME`
 - `EV_NAV_CALIBRATION`
 - `EV_NAV_PACKAGES`
 - `EV_LAUNCH_RUNTIME`
@@ -50,7 +52,7 @@ Rules:
   action may enter the PeepOS shell. Low-battery recovery retries normal boot
   package arbitration.
 - Shell navigation must not depend on a healthy package runtime. Visible HOME,
-  MENU, SETTINGS, CALIBRATION and PACKAGES pages own button and joystick input
+  MENU, SETTINGS, TIME, CALIBRATION and PACKAGES pages own button and joystick input
   even when the runtime class is NONE or the package lifecycle is ERROR.
   Runtime-owned pages do not acquire shell focus merely because loading failed.
   Explicit operation locks, power/shutdown overlays and MSC ownership still win.
@@ -77,6 +79,12 @@ Rules:
 - MSC entry and package installation discard a suspended package before storage
   may replace package bytes. Package scanning is non-destructive and may leave
   the resume action available.
+- HW6 TIME is an optional draft editor under SYSTEM. It replaces the current
+  SETTINGS placeholder row, not calibration/package access. Entry reads once;
+  only explicit Save writes through thPower. Cancel abandons a draft without
+  writing, except it is unavailable after Save has already been submitted.
+  Completion is session-scoped and cannot reopen a closed page. Power overlays
+  still take precedence. See [[HW6_System_Time_Bringup]] for controls and evidence.
 
 ---
 

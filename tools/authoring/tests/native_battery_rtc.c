@@ -16,6 +16,12 @@ typedef enum {HAL_OK, HAL_ERROR, HAL_BUSY, HAL_TIMEOUT} HAL_StatusTypeDef;
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_INTERACTION 1U
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_STATE_TIMER 2U
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY 3U
+#define PS_HW6_RTOS_RTC_WAKE_SOURCE_CALENDAR 4U
+static struct { uint32_t rtc_selections, rtc_expiries; } g_ps_calendar_probe;
+static uint32_t calendar_remaining = UINT32_MAX, calendar_finishes;
+static uint32_t PS_HW6_Calendar_Prepare(uint32_t now)
+{ (void)now; return calendar_remaining; }
+static void PS_HW6_Calendar_Finish(void) { calendar_finishes++; }
 #define PS_HW6_RTOS_RTC_UNITS_PER_SECOND 256U
 #define PS_HW6_RTOS_RTC_UNITS_PER_DAY (86400U * 256U)
 #define PS_HW6_RTOS_RTC_DIV16_COUNTS_PER_SECOND 2048U
@@ -272,5 +278,22 @@ int main(void)
   PS_HW6_RTOS_InteractionStop2TimeoutFinish();
   assert(g_ps_hw6_battery_wake_probe.clock_failures == 1);
   assert(g_ps_hw6_battery_wake_probe.pending && commands == 0);
+  reset_fixture();
+  calendar_remaining = 1500;
+  assert(PS_HW6_RTOS_InteractionStop2TimeoutPrepare() == HAL_OK);
+  assert(ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_CALENDAR);
+  assert(g_ps_hw6_battery_wake_probe.rtc_selections == 0);
+  units += 15 * 256;
+  rtc_flag = 1;
+  RTC_IRQHandler();
+  assert(commands == 0);
+  PS_HW6_RTOS_InteractionStop2TimeoutFinish();
+  assert(g_ps_calendar_probe.rtc_expiries == 1 && calendar_finishes > 0);
+  assert(PS_BatteryWake_Remaining(&g_ps_hw6_battery_wake_probe, tick) == 178500);
+  reset_fixture();
+  PS_BatteryWake_Shorten(&g_ps_hw6_battery_wake_probe, tick, 1500);
+  assert(PS_HW6_RTOS_InteractionStop2TimeoutPrepare() == HAL_OK);
+  assert(ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY);
+  calendar_remaining = UINT32_MAX;
   return 0;
 }

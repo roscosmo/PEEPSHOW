@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from .egg_format import EggPackage
@@ -64,6 +65,7 @@ class StateScenePreview:
         self._audio_cues = package.audio_cues
         self._include_waiting_visuals = include_waiting_visuals
         self._elapsed_ms = 0
+        self._local_ms: int | None = None
         self._activate_scene(scene_id)
         if state_id is not None:
             self.select_state(state_id)
@@ -148,6 +150,13 @@ class StateScenePreview:
             if binding["event_type"] == "time.scene_elapsed"
             and binding["configuration"]["start_policy"] == "scene_entry"
         }
+        self._calendar_binding = next((binding for binding in self._graph.get("event_bindings", ())
+                                       if binding["event_type"] == "time.local_schedule"), None)
+        self._calendar_deadline: int | None = None
+        self._calendar_once: int | None = None
+        self._calendar_consumed = False
+        self._calendar_last: int | None = None
+        self._rebase_calendar()
         self._suspended = False
         self._step_elapsed_ms = 0
         self._step_index = int(self._waiting()["settled_step"])
@@ -204,18 +213,6 @@ class StateScenePreview:
 
         target_scene = route["target_scene"]
         if target_scene is not None:
-            if self._object_source:
-                if route["operations"]:
-                    raise PreviewError("version-2 fresh scene replacement requires an empty action list")
-                # Admit the fresh destination without modifying the live source.
-                candidate = StateScenePreview(
-                    self._package, str(target_scene),
-                    include_waiting_visuals=self._include_waiting_visuals,
-                )
-                self.__dict__.update(candidate.__dict__)
-                return PreviewInputResult(
-                    logical_source, event_kind, binding_id, True, str(route["route_id"]),
-                )
             audio_events: list[dict[str, object]] = []
             for operation in route["operations"]:
                 if int(operation["kind"]) != 7:
@@ -234,6 +231,19 @@ class StateScenePreview:
                         "priority": cue["priority"],
                         "volume": cue["volume"],
                     }
+                )
+            if self._object_source:
+                # Admit the fresh destination before publishing any exit cues.
+                candidate = StateScenePreview(
+                    self._package, str(target_scene),
+                    include_waiting_visuals=self._include_waiting_visuals,
+                )
+                candidate._local_ms = self._local_ms
+                candidate._rebase_calendar()
+                self.__dict__.update(candidate.__dict__)
+                return PreviewInputResult(
+                    logical_source, event_kind, binding_id, True, str(route["route_id"]),
+                    tuple(audio_events),
                 )
             self._activate_scene(str(target_scene))
             self._render_framebuffer()
@@ -434,6 +444,7 @@ class StateScenePreview:
         if isinstance(elapsed_ms, bool) or not isinstance(elapsed_ms, int) or not 0 <= elapsed_ms <= 600000:
             raise PreviewError("elapsed_ms must be an integer in 0..600000")
         if self._suspended:
+            self._advance_clock(elapsed_ms)
             return ()
         results: list[PreviewInputResult] = []
         remaining_ms = elapsed_ms
@@ -449,14 +460,22 @@ class StateScenePreview:
                 break
             self._advance_visual(due_in_ms)
             remaining_ms -= due_in_ms
+            is_calendar = (self._calendar_binding is not None
+                           and binding_index == self._calendar_binding["binding_index"])
             timer_state = (set(self._fired_timer_bindings), dict(self._scene_timer_deadlines)) if self._object_source else None
+            if is_calendar:
+                self._calendar_last = self._calendar_deadline
+                if self._calendar_binding["configuration"]["mode"] != "daily":
+                    self._calendar_consumed = True
+                self._rebase_calendar()
             self._fired_timer_bindings.add(binding_index)
             self._scene_timer_deadlines.pop(binding_index, None)
             try:
                 result = self._apply_binding(
                     binding_index,
-                    "time.scene_elapsed" if binding_index in self._scene_timer_delays else "time.state_entry_elapsed",
-                    "elapsed",
+                    "time.local_schedule" if is_calendar else
+                    ("time.scene_elapsed" if binding_index in self._scene_timer_delays else "time.state_entry_elapsed"),
+                    "scheduled" if is_calendar else "elapsed",
                     binding_id,
                 )
             except PreviewError:
@@ -479,6 +498,11 @@ class StateScenePreview:
         candidates: list[tuple[int, int, str]] = []
         for binding in self._graph.get("event_bindings", ()):
             binding_index = int(binding["binding_index"])
+            if binding["event_type"] == "time.local_schedule":
+                if self._calendar_deadline is not None and self._local_ms is not None:
+                    candidates.append((max(0, self._calendar_deadline - self._local_ms),
+                                       binding_index, str(binding["binding_id"])))
+                continue
             if binding["event_type"] == "time.scene_elapsed":
                 if binding_index in self._scene_timer_deadlines:
                     candidates.append((max(0, self._scene_timer_deadlines[binding_index] - self._elapsed_ms),
@@ -508,7 +532,54 @@ class StateScenePreview:
     def resume(self) -> None:
         self._suspended = False
 
+    def set_local_time(self, local_time: str | None) -> None:
+        """Explicit simulation clock edit; no host-clock polling or catch-up actions."""
+        if local_time is None:
+            self._local_ms = None
+        else:
+            try:
+                value = datetime.fromisoformat(local_time)
+                if value.tzinfo is not None or not 2000 <= value.year <= 2099:
+                    raise ValueError()
+                self._local_ms = int((value - datetime(2000, 1, 1)).total_seconds() * 1000)
+            except (ValueError, TypeError):
+                raise PreviewError("local_time must be a local ISO date/time in 2000..2099 or null") from None
+        self._rebase_calendar()
+
+    def _advance_clock(self, elapsed_ms: int) -> None:
+        if self._local_ms is not None:
+            self._local_ms += elapsed_ms
+            if self._local_ms >= 3155760000000:
+                self._local_ms = None
+                self._calendar_deadline = None
+
+    def _rebase_calendar(self) -> None:
+        self._calendar_deadline = None
+        if self._calendar_binding is None or self._local_ms is None or self._calendar_consumed:
+            return
+        config = self._calendar_binding["configuration"]
+        day_ms = 86400000
+        target = self._local_ms // day_ms * day_ms + config["time_of_day_seconds"] * 1000
+        if config["mode"] == "daily":
+            floor = max(self._local_ms, self._calendar_last or 0)
+            if target <= floor:
+                target += ((floor - target) // day_ms + 1) * day_ms
+        else:
+            if self._calendar_once is None:
+                if config["mode"] == "today_offset":
+                    target += config.get("day_offset", 0) * day_ms
+                elif target <= self._local_ms:
+                    target += day_ms
+                self._calendar_once = target
+            target = self._calendar_once
+            if target <= self._local_ms:
+                self._calendar_consumed = True
+                return
+        if target < 3155760000000:
+            self._calendar_deadline = target
+
     def _advance_visual(self, elapsed_ms: int) -> None:
+        self._advance_clock(elapsed_ms)
         waiting = self._waiting()
         quantum = int(waiting["phase_quantum_ms"])
         step_count = int(waiting["combined_step_count"])
@@ -881,6 +952,10 @@ class StateScenePreview:
                 "audio_events": list(input_result.audio_events),
             }
         result = {
+            "local_time": {"valid": self._local_ms is not None,
+                           "milliseconds_since_2000": self._local_ms,
+                           "calendar_deadline_ms": self._calendar_deadline,
+                           "suspended": self._suspended},
             "scene": {
                 "scene_id": self.scene_id,
                 "state_index": self._state_index,

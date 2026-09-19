@@ -2912,7 +2912,7 @@ static void DisplayRenderer_UIList(uint32_t page,
       break;
     case PS_UI_ROUTER_PAGE_MENU:
       list->title = "SYSTEM";
-      list->rows[0] = "SETTINGS";
+      list->rows[0] = "TIME";
       list->rows[1] = "CALIB";
       list->rows[2] = "PACKAGES";
       list->selected_row = (focus_index >= DISPLAY_RENDERER_LIST_ROW_COUNT) ?
@@ -4040,6 +4040,50 @@ static uint32_t DisplayRenderer_DrawJoystickCalibrationReview(void)
   return black_pixels;
 }
 
+static void DisplayRenderer_TimeDigits(char *text, uint32_t value, uint32_t digits)
+{
+  for (uint32_t i = digits; i > 0UL; --i)
+  {
+    text[i - 1UL] = (char)('0' + value % 10UL);
+    value /= 10UL;
+  }
+}
+
+static uint32_t DisplayRenderer_DrawTimeEditor(uint32_t seconds, uint32_t focus, uint32_t status)
+{
+  static const char *const labels[] = {"YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND", "SAVE", "CANCEL"};
+  static const char *const states[] = {"READING", "TIME NOT SET", "LOCAL TIME", "SAVING", "SAVED", "A RETRY / B BACK", "SAVE FAILED"};
+  ps_system_datetime_t local;
+  char date[] = "0000-00-00", time[] = "00:00:00", value[] = "0000";
+  uint32_t values[6], black = 0UL;
+  if ((focus > 7UL) || (status > PS_UI_TIME_SAVE_ERROR) ||
+      (PS_SystemTime_Decode(seconds, &local) != PS_SYSTEM_TIME_OK)) { return 0UL; }
+  DisplayRenderer_TimeDigits(date, local.year, 4UL);
+  DisplayRenderer_TimeDigits(date + 5, local.month, 2UL);
+  DisplayRenderer_TimeDigits(date + 8, local.day, 2UL);
+  DisplayRenderer_TimeDigits(time, local.hour, 2UL);
+  DisplayRenderer_TimeDigits(time + 3, local.minute, 2UL);
+  DisplayRenderer_TimeDigits(time + 6, local.second, 2UL);
+  values[0] = local.year; values[1] = local.month; values[2] = local.day;
+  values[3] = local.hour; values[4] = local.minute; values[5] = local.second;
+  black += DisplayRenderer_DrawCenteredText(2U, "TIME", 2U);
+  black += DisplayRenderer_DrawCenteredText(23U, states[status], 1U);
+  black += DisplayRenderer_DrawCenteredText(37U, date, 1U);
+  black += DisplayRenderer_DrawCenteredText(51U, time, 2U);
+  black += DisplayRenderer_DrawCenteredText(76U, labels[focus], 1U);
+  if (focus < 6UL)
+  {
+    uint32_t digits = (focus == 0UL) ? 4UL : 2UL;
+    DisplayRenderer_TimeDigits(value, values[focus], digits);
+    value[digits] = '\0';
+    black += DisplayRenderer_DrawCenteredText(90U, value, 2U);
+  }
+  black += DisplayRenderer_DrawText(12U, 115U, (focus == 6UL) ? ">SAVE" : " SAVE", 1U);
+  black += DisplayRenderer_DrawText(92U, 115U, (focus == 7UL) ? ">CANCEL" : " CANCEL", 1U);
+  black += DisplayRenderer_DrawCenteredText(133U, "POWER OFF LOSES TIME", 1U);
+  return black;
+}
+
 void DisplayRenderer_PrepareUIPage(
   uint32_t page,
   uint32_t calibration_page,
@@ -4053,6 +4097,25 @@ void DisplayRenderer_PrepareUIPage(
   uint32_t black_pixels = 0UL;
   uint32_t primitive_id = DISPLAY_RENDERER_PRIMITIVE_LIST_FULL;
   uint32_t previous_focus_row = DISPLAY_RENDERER_ROW_NONE;
+
+  if (page == PS_UI_ROUTER_PAGE_TIME)
+  {
+    /* TIME uses calibration_page for encoded seconds and countdown for status. */
+    DisplayRenderer_ClearWhite();
+    s_rotate_ccw = 1UL;
+    black_pixels = DisplayRenderer_DrawTimeEditor(calibration_page, focus_index,
+                                                  shutdown_countdown_seconds);
+    DisplayRenderer_RecordCursorBaseFrame();
+    DisplayRenderer_ComputeDirtyRowsFromCommitted();
+    s_rotate_ccw = 0UL;
+    s_display_pending_list_valid = 0UL;
+    s_display_pending_focus_index = DISPLAY_RENDERER_ROW_NONE;
+    s_display_pending_focus_valid = 0UL;
+    s_display_pending_focus_invalidates = 1UL;
+    DisplayRenderer_FillStats(stats, black_pixels, DISPLAY_RENDERER_PRIMITIVE_LIST_FULL,
+                             DISPLAY_RENDERER_ROW_NONE, DISPLAY_RENDERER_ROW_NONE);
+    return;
+  }
 
   if (page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_ACTIVATION)
   {

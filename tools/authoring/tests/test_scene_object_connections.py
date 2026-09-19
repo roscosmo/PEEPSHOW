@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from test_authoring_service import make_audio_project
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -82,6 +83,80 @@ class SceneObjectConnectionTests(unittest.TestCase):
         self.edit(self.command("event_handler.update", event_handler=handler))
         return handler
 
+    def add_audio(self):
+        self.call("project.save")
+        audio_root = make_audio_project(Path(self.temp.name))
+        shutil.copyfile(audio_root / "assets/select.wav", self.root / "assets/select.wav")
+        path = self.root / "assets/catalog.json"
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+        audio = json.loads((audio_root / "assets/catalog.json").read_text(encoding="utf-8"))
+        for key in ("audio_assets", "audio_cues"):
+            catalog[key] = audio[key]
+        path.write_text(json.dumps(catalog), encoding="utf-8")
+        self.call("project.load", path=str(self.root))
+
+    def test_exit_sfx_public_save_reopen_preview_build(self):
+        self.add_audio()
+        exit_id = self.add_exit()
+        route_id = self.wire(exit_id)
+        self.edit(self.command("object_actions.set", owner_kind="route", owner_id=route_id,
+                               actions=[{"kind": "play_sfx", "cue_ref": "ui.select.cue"}]))
+        handler = self.timer_exit(exit_id)
+        handler["actions"] = [{"kind": "play_sfx", "cue_ref": "ui.select.cue"}]
+        self.edit(self.command("event_handler.update", event_handler=handler))
+        self.call("project.save")
+        self.service = AuthoringService()
+        self.call("project.load", path=str(self.root))
+        self.assertTrue(load_project(self.root).valid)
+        built = self.call("project.build_package")["package"]["blob_base64"]
+        self.call("project.preview_reset", scene_id="main")
+        result = self.call("project.preview_input", logical_source="BUTTON_R")
+        self.assertEqual("settings", result["scene"]["scene_id"])
+        self.assertEqual("ui.select.cue", result["input"]["audio_events"][0]["cue_id"])
+        self.call("project.preview_reset", scene_id="main")
+        result = self.call("project.preview_advance", elapsed_ms=2000)
+        self.assertEqual("settings", result["scene"]["scene_id"])
+        self.assertEqual("ui.select.cue", result["timer_events"][0]["audio_events"][0]["cue_id"])
+        self.call("project.save")
+        self.call("project.load", path=str(self.root))
+        self.assertEqual(built, self.call("project.build_package")["package"]["blob_base64"])
+
+    def test_exit_sfx_rejected_destination_does_not_commit(self):
+        self.add_audio()
+        route_id = self.wire(self.add_exit())
+        self.edit(self.command("object_actions.set", owner_kind="route", owner_id=route_id,
+                               actions=[{"kind": "play_sfx", "cue_ref": "ui.select.cue"}]))
+        self.call("project.preview_reset", scene_id="main")
+        preview = self.service._preview
+        before = preview.snapshot()
+        validate = StateScenePreview._validate_scene_subset
+        def reject_destination(candidate):
+            if candidate.scene_id == "settings":
+                raise PreviewError("injected destination admission failure")
+            validate(candidate)
+        with patch.object(StateScenePreview, "_validate_scene_subset", reject_destination):
+            with self.assertRaises(ProtocolError):
+                self.call("project.preview_input", logical_source="BUTTON_R")
+        self.assertEqual(before, preview.snapshot())
+
+    def test_persisted_exit_actions_reject_mixed_and_invalid_cues(self):
+        self.add_audio()
+        route_id = self.wire(self.add_exit())
+        self.call("project.save")
+        scene = deepcopy(self.scene())
+        route = next(r for r in scene["routes"] if r["route_id"] == route_id)
+        for actions in (
+            [{"kind": "play_sfx", "cue_ref": "missing"}],
+            [{"kind": "play_sfx"}],
+            [{"kind": "restart_timer", "timer_ref": "reveal_timer"}],
+            [{"kind": "play_sfx", "cue_ref": "ui.select.cue"},
+             {"kind": "object.move_by", "object_ref": "position_marker", "dx": 1}],
+        ):
+            with self.subTest(actions=actions):
+                route["actions"] = actions
+                (self.root / "scenes/main.state.json").write_text(json.dumps(scene), encoding="utf-8")
+                self.assertFalse(load_project(self.root).valid)
+
     def test_capabilities_and_unwired_named_exit(self):
         before_inputs = deepcopy(self.scene()["input_actions"])
         before_routes = deepcopy(self.scene()["routes"])
@@ -90,7 +165,7 @@ class SceneObjectConnectionTests(unittest.TestCase):
         self.assertEqual(before_routes, self.scene()["routes"])
         self.assertEqual("to_settings", exit_id)
         hello = self.call("service.hello")
-        self.assertEqual(50, hello["service_api_version"])
+        self.assertEqual(51, hello["service_api_version"])
         caps = hello["scene_object_authoring"]
         scene_caps = self.call("project.normalize")["scene_capabilities"]["main"]
         for item in (caps, scene_caps):
@@ -174,7 +249,7 @@ class SceneObjectConnectionTests(unittest.TestCase):
         for action in actions:
             for kind, owner_id in (("route", route_id), ("handler", handler["handler_id"])):
                 self.reject(self.command("object_actions.set", owner_kind=kind, owner_id=owner_id, actions=[action]),
-                            code="SCENE_TRANSITION_ACTION_UNSUPPORTED")
+                            code="AUDIO_CUE_UNKNOWN" if action["kind"] == "play_sfx" else "SCENE_TRANSITION_ACTION_UNSUPPORTED")
         for change in ({"target_scene": "credits"}, {"target_scene": "main"}, {"scene_exit_ref": "missing"}):
             self.reject(self.command("event_handler.update", event_handler={**handler, **change}))
         handler.pop("target_scene")
@@ -290,7 +365,7 @@ class SceneObjectConnectionTests(unittest.TestCase):
         schema = Path(__file__).resolve().parents[3] / "schemas/authoring/state-scene-v2.schema.json"
         definitions = json.loads(schema.read_text(encoding="utf-8"))["$defs"]
         self.assertIn("scene_exit_ref", definitions["handler"]["properties"])
-        self.assertEqual(0, definitions["scene_replacement"]["then"]["properties"]["actions"]["maxItems"])
+        self.assertEqual("play_sfx", definitions["scene_replacement"]["then"]["properties"]["actions"]["items"]["properties"]["kind"]["const"])
         invalid = deepcopy(self.scene())
         invalid["event_handlers"][0]["actions"] = [{"kind": "restart_timer", "timer_ref": "reveal_timer"}]
         (self.root / "scenes/main.state.json").write_text(json.dumps(invalid), encoding="utf-8")
